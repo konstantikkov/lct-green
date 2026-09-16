@@ -1,0 +1,216 @@
+# ─────────────────────────────────────────────────────────────
+#  lct-green — автопроектирование озеленения
+#  Ядро: Python · Фронт: React · Упаковка: Docker
+# ─────────────────────────────────────────────────────────────
+
+
+# ═══ СЕКРЕТЫ ═══════════════════════════════════════════════════
+# Ключи к LLM-API. Держим только пример без значений.
+.env
+.env.*
+*.env
+!.env.example
+!.env.template
+
+secrets/
+*.pem
+*.key
+!**/fixtures/**/*.key
+
+
+# ═══ PYTHON ════════════════════════════════════════════════════
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Сборка и установка
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Тесты, линтеры, типы
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Jupyter — черновые разборы чертежей
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+
+# ═══ NODE / REACT ══════════════════════════════════════════════
+node_modules/
+.pnp
+.pnp.js
+
+# Сборка фронта (dist/ уже покрыт выше, но пусть будет явно)
+frontend/dist/
+frontend/build/
+.vite/
+.parcel-cache/
+.turbo/
+
+# Кэши инструментов
+.eslintcache
+.stylelintcache
+
+# Логи пакетных менеджеров
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Локальные переопределения Vite
+*.local
+
+
+# ═══ ДАННЫЕ ════════════════════════════════════════════════════
+# Датасет 23 ГБ и живёт снаружи репозитория (../dataset).
+# Эти правила — страховка на случай, если кто-то скопирует его внутрь.
+dataset/
+Датасет/
+data/raw/
+data/interim/
+data/external/
+Пилотный проект 20 улиц/
+
+# Тяжёлые исходники чертежей и ГИС.
+# Исключения ниже: маленькие образцы для тестов и демо коммитить можно.
+*.dwg
+*.dwl
+*.dwl2
+*.shp
+*.shx
+*.dbf
+*.gpkg
+*.gdb/
+
+# DXF тоже тяжёлые, но пара штук нужна в репозитории —
+# без них не прогнать тесты и не показать демо.
+*.dxf
+!tests/fixtures/**/*.dxf
+!samples/**/*.dxf
+!docs/**/*.dxf
+
+# Ведомости и растры из датасета
+*.xlsm
+*.heic
+*.HEIC
+*.mp4
+
+# Архивы — внутри объектов их 50+ штук
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+
+# ═══ ВЫВОД ПАЙПЛАЙНА ═══════════════════════════════════════════
+# Результаты прогонов пересоздаются из входа — в репозиторий не кладём.
+out/
+output/
+outputs/
+runs/
+results/
+data/processed/
+
+# Отчёты об интерпретируемости
+report.json
+report.csv
+report.md
+reports/
+
+# Бонусные визуализации
+renders/
+visualizations/
+
+
+# ═══ CAD-МУСОР ═════════════════════════════════════════════════
+# AutoCAD и nanoCAD плодят это рядом с каждым открытым чертежом.
+*.bak
+*.sv$
+*.ac$
+*.err
+*.dwg.lock
+PaxHeader/
+
+# Конфигурации печати и стили из eTransmit-пакетов
+*.pc3
+*.ctb
+*.stb
+*.dxe
+
+# QGIS
+*.qgs~
+*.qgz~
+*.gpkg-shm
+*.gpkg-wal
+
+
+# ═══ ВНЕШНИЕ БИНАРНИКИ ═════════════════════════════════════════
+# ODA File Converter лицензируется отдельно и весит сотни мегабайт.
+# В образ он ставится Dockerfile'ом, в git не попадает.
+vendor/
+third_party/
+*.AppImage
+*.deb
+*.rpm
+
+# Веса и кэши моделей
+models/*.bin
+models/*.onnx
+models/*.pt
+models/*.safetensors
+.cache/
+.huggingface/
+
+
+# ═══ DOCKER И ЛОКАЛЬНОЕ ОКРУЖЕНИЕ ══════════════════════════════
+docker-compose.override.yml
+.docker/
+
+
+# ═══ ОС И РЕДАКТОРЫ ════════════════════════════════════════════
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+.idea/
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+.claude/settings.local.json
+
+
+# ═══ ПРОЧЕЕ ════════════════════════════════════════════════════
+*.log
+logs/
+tmp/
+temp/
+scratch/
