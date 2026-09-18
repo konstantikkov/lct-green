@@ -86,11 +86,18 @@ Restart=always
 WantedBy=multi-user.target
 UNIT
 
-# nginx: /api on port 80, SSE-friendly, large uploads
+# nginx: static UI (when deployed to /opt/greenplan/web) + /api proxy,
+# SSE-friendly, large uploads
+sudo mkdir -p /opt/greenplan/web && sudo chown "$USER" /opt/greenplan/web
+[ -f /opt/greenplan/web/index.html ] || \
+    echo 'GreenPlan API host. Deploy the web UI to /opt/greenplan/web. Health: /api/capabilities' \
+    > /opt/greenplan/web/index.html
 sudo tee /etc/nginx/sites-available/greenplan > /dev/null <<'NGINX'
 server {
     listen 80 default_server;
     client_max_body_size 200m;
+    root /opt/greenplan/web;
+    index index.html;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
@@ -99,8 +106,7 @@ server {
         proxy_set_header Host $host;
     }
     location / {
-        return 200 'GreenPlan API host. UI: see Vercel deployment. Health: /api/capabilities';
-        add_header Content-Type text/plain;
+        try_files $uri /index.html;
     }
 }
 NGINX

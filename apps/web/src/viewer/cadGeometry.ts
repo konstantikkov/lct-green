@@ -208,6 +208,9 @@ export function disposeObject(obj: THREE.Object3D) {
   };
   obj.traverse((child) => {
     const anyChild = child as THREE.Mesh;
+    if ((anyChild as THREE.InstancedMesh).isInstancedMesh) {
+      (anyChild as THREE.InstancedMesh).dispose(); // frees instance buffers
+    }
     if (anyChild.geometry) anyChild.geometry.dispose();
     const mat = anyChild.material as THREE.Material | THREE.Material[] | undefined;
     if (Array.isArray(mat)) mat.forEach(disposeMat);

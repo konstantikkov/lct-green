@@ -27,9 +27,10 @@ export interface SceneCallbacks {
   onHover: (hit: HoverHit, px: number, py: number) => void;
 }
 
+// 3D clear color matches the sky-dome horizon so extreme zoom-outs stay seamless.
 const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
-  light: { "2d": 0xf6f7f5, "3d": 0xe9ecea },
-  dark: { "2d": 0x0b0f14, "3d": 0x10151b },
+  light: { "2d": 0xf6f7f5, "3d": 0xf6f2ea },
+  dark: { "2d": 0x0b0f14, "3d": 0xf6f2ea },
 };
 
 /** Owns the three.js scene; imperative API driven by React effects. */
@@ -75,6 +76,7 @@ export class SceneManager {
   private massing: THREE.Object3D | null = null;
   private pickMeshes3d: PlacementsBuild["pickMeshes"] = [];
   private massingDirty = true;
+  private fog3d: THREE.Fog | null = null;
 
   // source-data caches (for theme rebuilds / 3D rebuilds)
   private doc: ProjectDocument | null = null;
@@ -113,6 +115,11 @@ export class SceneManager {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(CLEAR_COLORS[theme]["2d"], 1);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // ACES tone mapping only in 3D; the 2D plan keeps exact flat colors.
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.shadowMap.enabled = true; // only 3D materials/lights use it
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
     this.camera.position.set(0, 0, 100);
@@ -202,6 +209,8 @@ export class SceneManager {
     this.allowedObj = swapChild(this.slotRoot, this.allowedObj, c ? buildAllowedGroup(c, this.theme) : null);
     this.zoneById.clear();
     if (c) for (const z of c.exclusionZones) this.zoneById.set(z.id, z);
+    this.massingDirty = true; // 3D allowed-area patches derive from constraints
+    if (this.mode === "3d") this.rebuild3d();
     this.applyVisibility();
     this.invalidate();
   }
@@ -262,6 +271,8 @@ export class SceneManager {
     if (mode === this.mode) return;
     this.mode = mode;
     this.renderer.setClearColor(CLEAR_COLORS[this.theme][mode], 1);
+    this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    this.scene.fog = mode === "3d" ? this.fog3d : null;
     if (mode === "3d") {
       if (this.massingDirty) this.rebuild3d();
       if (!this.orbit.initialized) this.fit3d();
@@ -397,17 +408,21 @@ export class SceneManager {
       this.massing = null;
     }
     this.pickMeshes3d = [];
+    this.fog3d = null;
     if (this.doc) {
       const build = buildMassing3D(
         this.doc.entities,
         this.doc.layers,
         this.iteration?.placements ?? [],
         this.doc.extents,
+        this.constraints?.allowedArea.polygons ?? [],
       );
       this.massing = build.group;
       this.pickMeshes3d = build.pickMeshes;
+      this.fog3d = build.fog;
       this.root3d.add(build.group);
     }
+    if (this.mode === "3d") this.scene.fog = this.fog3d;
     this.massingDirty = false;
     this.applyVisibility();
     this.invalidate();
@@ -418,8 +433,8 @@ export class SceneManager {
     if (p) {
       const r = Math.max(p.crownRadiusM, 0.15);
       this.selectionRing.scale.set(r, r, 1);
-      // In 3D the ring lies flat on the ground under the tree.
-      const z = this.mode === "3d" ? 0.06 : Z.selection;
+      // In 3D the ring lies flat on the ground under the tree (above ribbons).
+      const z = this.mode === "3d" ? 0.2 : Z.selection;
       this.selectionRing.position.set(p.position[0], p.position[1], z);
       this.selectionRing.visible = true;
     } else {
