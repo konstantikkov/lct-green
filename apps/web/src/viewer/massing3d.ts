@@ -210,26 +210,6 @@ function polygonArea(flat: number[]): number {
   return Math.abs(a) / 2;
 }
 
-/** Vertical wall quads (two triangles each) along an open polyline. */
-function appendWallSegments(
-  positions: number[], normals: number[], flat: number[], height: number,
-): void {
-  const n = Math.floor(flat.length / 2);
-  for (let i = 0; i < n - 1; i++) {
-    const x0 = flat[i * 2], y0 = flat[i * 2 + 1];
-    const x1 = flat[i * 2 + 2], y1 = flat[i * 2 + 3];
-    const dx = x1 - x0, dy = y1 - y0;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-6) continue;
-    const nx = dy / len, ny = -dx / len;
-    positions.push(
-      x0, y0, 0, x1, y1, 0, x1, y1, height,
-      x0, y0, 0, x1, y1, height, x0, y0, height,
-    );
-    for (let k = 0; k < 6; k++) normals.push(nx, ny, 0);
-  }
-}
-
 /** Flat ribbon (two triangles per segment) along a polyline, ~2*halfW wide. */
 function appendRibbon(
   positions: number[], flat: number[], closed: boolean, halfW: number, z: number,
@@ -270,6 +250,103 @@ function appendSegmentsAtZ(out: number[], flat: number[], closed: boolean, z: nu
 }
 
 /** Centroid of a flat [x,y,...] vertex list, or the explicit position. */
+/** Andrew monotone-chain convex hull. */
+function convexHull(points: [number, number][]): [number, number][] | null {
+  if (points.length < 3) return null;
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const pt of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0) lower.pop();
+    lower.push(pt);
+  }
+  const upper: [number, number][] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const pt = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pt) <= 0) upper.pop();
+    upper.push(pt);
+  }
+  lower.pop();
+  upper.pop();
+  const hull = lower.concat(upper);
+  return hull.length >= 3 ? hull : null;
+}
+
+/**
+ * Rebuilds solid building footprints from loose wall segments — topo drawings
+ * often store buildings as individual LINE entities. Endpoints are snapped
+ * (0.75 m), segments grouped into connected components, and each component
+ * becomes one closed ring: the exact wall cycle when it closes, otherwise the
+ * convex hull ("solid but simple" is the goal, not architectural detail).
+ */
+function reconstructFootprints(segs: number[]): number[][] {
+  const SNAP = 0.75;
+  const keyOf = (x: number, y: number) => Math.round(x / SNAP) + ":" + Math.round(y / SNAP);
+  const pts = new Map<string, [number, number]>();
+  const adj = new Map<string, Set<string>>();
+  const addPoint = (x: number, y: number): string => {
+    const k = keyOf(x, y);
+    if (!pts.has(k)) pts.set(k, [x, y]);
+    return k;
+  };
+  for (let i = 0; i < segs.length; i += 4) {
+    const a = addPoint(segs[i], segs[i + 1]);
+    const b = addPoint(segs[i + 2], segs[i + 3]);
+    if (a === b) continue;
+    let sa = adj.get(a);
+    if (!sa) adj.set(a, (sa = new Set()));
+    let sb = adj.get(b);
+    if (!sb) adj.set(b, (sb = new Set()));
+    sa.add(b);
+    sb.add(a);
+  }
+  const seen = new Set<string>();
+  const rings: number[][] = [];
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue;
+    const comp: string[] = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length) {
+      const k = stack.pop()!;
+      comp.push(k);
+      for (const nb of adj.get(k) ?? []) {
+        if (!seen.has(nb)) {
+          seen.add(nb);
+          stack.push(nb);
+        }
+      }
+    }
+    if (comp.length < 3) continue;
+    let ring: [number, number][] | null = null;
+    if (comp.every((k) => (adj.get(k)?.size ?? 0) === 2)) {
+      // clean cycle — walk it
+      ring = [];
+      let prev = "";
+      let cur = comp[0];
+      for (let i = 0; i < comp.length; i++) {
+        ring.push(pts.get(cur)!);
+        const next = [...(adj.get(cur) ?? [])].find((nb) => nb !== prev);
+        if (!next) {
+          ring = null;
+          break;
+        }
+        prev = cur;
+        cur = next;
+      }
+      if (ring && cur !== comp[0]) ring = null; // open chain, not a loop
+    }
+    if (!ring) ring = convexHull(comp.map((k) => pts.get(k)!));
+    if (!ring || ring.length < 3) continue;
+    const flat: number[] = [];
+    for (const [x, y] of ring) flat.push(x, y);
+    if (polygonArea(flat) < 6) continue; // sheds/noise
+    rings.push(flat);
+  }
+  return rings;
+}
+
 function entityAnchor(e: EntityRender): [number, number] | null {
   if (e.position) return [e.position[0], e.position[1]];
   const n = Math.floor(e.points.length / 2);
@@ -581,9 +658,29 @@ export function buildMassing3D(
   const roofItems: { shape: THREE.Shape; z: number }[] = [];
   const padItems: { shape: THREE.Shape; z: number }[] = [];
   const edgePositions: number[] = [];
-  const wallPositions: number[] = [];
-  const wallNormals: number[] = [];
+  const buildingSegments: number[] = [];
   const ribbonPositions: Record<RibbonBucket, number[]> = { asphalt: [], sidewalk: [], curb: [] };
+
+  /** Extrudes one closed footprint into the shared solid/roof/pad/edge buffers. */
+  const addSolidBuilding = (flat: number[], idSeed: string): void => {
+    const shape = shapeFromFlatXY(flat);
+    if (!shape) return;
+    const height = buildingHeight(idSeed, polygonArea(flat));
+    try {
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+      const edges = new THREE.EdgesGeometry(geo, 25);
+      const ep = edges.getAttribute("position");
+      for (let i = 0; i < ep.count; i++) {
+        edgePositions.push(ep.getX(i), ep.getY(i), ep.getZ(i));
+      }
+      edges.dispose();
+      extrudeGeos.push(geo);
+      roofItems.push({ shape, z: height + 0.02 });
+      padItems.push({ shape, z: 0.05 });
+    } catch {
+      /* degenerate footprint — skip */
+    }
+  };
 
   for (const e of entities) {
     const cat = catByLayer.get(e.layer);
@@ -592,32 +689,27 @@ export function buildMassing3D(
     if (cat === "BUILDING" && (e.kind === "polyline" || e.kind === "polygon")) {
       const closed = e.kind === "polygon" || e.closed === true;
       if (closed && e.points.length >= 6) {
-        const shape = shapeFromFlatXY(e.points);
-        if (shape) {
-          const height = buildingHeight(e.id, polygonArea(e.points));
-          try {
-            const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
-            const edges = new THREE.EdgesGeometry(geo, 25);
-            const ep = edges.getAttribute("position");
-            for (let i = 0; i < ep.count; i++) {
-              edgePositions.push(ep.getX(i), ep.getY(i), ep.getZ(i));
-            }
-            edges.dispose();
-            extrudeGeos.push(geo);
-            roofItems.push({ shape, z: height + 0.02 });
-            padItems.push({ shape, z: 0.05 });
-          } catch {
-            /* degenerate footprint — skip */
-          }
-        }
+        addSolidBuilding(e.points, e.id);
       } else {
-        const height = 6 + rand01(hash32(e.id), 12) * 6;
-        appendWallSegments(wallPositions, wallNormals, e.points, height);
+        // loose wall lines — collected and reconstructed into solid
+        // footprints after the loop (never rendered as floating planes)
+        const n = Math.floor(e.points.length / 2);
+        for (let i = 0; i < n - 1; i++) {
+          buildingSegments.push(
+            e.points[i * 2], e.points[i * 2 + 1],
+            e.points[(i + 1) * 2], e.points[(i + 1) * 2 + 1],
+          );
+        }
       }
     } else if (ribbon && (e.kind === "polyline" || e.kind === "polygon")) {
       const closed = e.kind === "polygon" || e.closed === true;
       appendRibbon(ribbonPositions[ribbon.bucket], e.points, closed, ribbon.halfW, ribbon.z);
     }
+  }
+
+  // Buildings drawn as loose wall lines → reconstructed solid footprints.
+  for (const flat of reconstructFootprints(buildingSegments)) {
+    addSolidBuilding(flat, `bldg:${flat[0].toFixed(1)}:${flat[1].toFixed(1)}`);
   }
 
   const wallMat = new THREE.MeshLambertMaterial({ color: pal.wall, side: THREE.DoubleSide });
@@ -626,16 +718,6 @@ export function buildMassing3D(
     const mesh = new THREE.Mesh(solidGeo, wallMat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.frustumCulled = false;
-    mesh.raycast = () => {};
-    group.add(mesh);
-  }
-  if (wallPositions.length > 0) {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(wallPositions, 3));
-    geo.setAttribute("normal", new THREE.Float32BufferAttribute(wallNormals, 3));
-    const mesh = new THREE.Mesh(geo, wallMat);
-    mesh.castShadow = true;
     mesh.frustumCulled = false;
     mesh.raycast = () => {};
     group.add(mesh);
