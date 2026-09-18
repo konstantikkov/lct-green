@@ -27,6 +27,12 @@ interface OverlayPalette {
   chunkGrid: number;
 }
 
+/** Append src to dst without spread — spreading huge vertex arrays into
+ *  push() overflows the call stack on complex (vegetation-derived) polygons. */
+function appendAll(dst: number[], src: number[]): void {
+  for (let i = 0; i < src.length; i++) dst.push(src[i]);
+}
+
 const PALETTES: Record<Theme, OverlayPalette> = {
   light: {
     zone: 0xdc2626, zoneFillOpacity: 0.09, zoneLineOpacity: 0.4,
@@ -58,7 +64,7 @@ export function buildZonesGroup(zones: ExclusionZone[], theme: Theme): THREE.Gro
     mesh.userData.zoneId = zone.id;
     mesh.frustumCulled = false;
     group.add(mesh);
-    outlinePositions.push(...ringOutlinePositions([shell, ...(holes ?? [])], Z.zones + 0.01));
+    appendAll(outlinePositions, ringOutlinePositions([shell, ...(holes ?? [])], Z.zones + 0.01));
   }
   if (outlinePositions.length > 0) {
     const geo = new THREE.BufferGeometry();
@@ -83,7 +89,7 @@ export function buildAllowedGroup(constraints: ConstraintsResponse, theme: Theme
   for (const poly of constraints.allowedArea.polygons) {
     if (!poly.shell || poly.shell.length < 6) continue;
     shapes.push(shapeWithHoles(poly.shell, poly.holes ?? []));
-    outline.push(...ringOutlinePositions([poly.shell, ...(poly.holes ?? [])], Z.allowed + 0.01));
+    appendAll(outline, ringOutlinePositions([poly.shell, ...(poly.holes ?? [])], Z.allowed + 0.01));
   }
   if (shapes.length > 0) {
     const mesh = new THREE.Mesh(
