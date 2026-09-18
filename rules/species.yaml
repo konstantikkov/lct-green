@@ -1,0 +1,46 @@
+# Plant catalog. Crown/root parameters are HORTICULTURAL defaults (editable),
+# not regulatory values. regulatory_status stays "unknown" until the verified
+# invasive-species list (ППМ № 369-ПП) is loaded into INVASIVE_SPECIES_BLACKLIST.
+species:
+  - id: tree_linden
+    kind: TREE
+    display_name: "Small-leaved linden"
+    display_name_ru: "Липа мелколистная"
+    latin: "Tilia cordata"
+    parameters: { crown_radius_m: 3.5, mature_height_m: 20.0, root_zone_radius_m: 2.5 }
+  - id: tree_maple
+    kind: TREE
+    display_name: "Norway maple"
+    display_name_ru: "Клен остролистный"
+    latin: "Acer platanoides"
+    parameters: { crown_radius_m: 4.0, mature_height_m: 22.0, root_zone_radius_m: 2.5 }
+  - id: tree_rowan
+    kind: TREE
+    display_name: "Rowan"
+    display_name_ru: "Рябина обыкновенная"
+    latin: "Sorbus aucuparia"
+    parameters: { crown_radius_m: 2.5, mature_height_m: 10.0, root_zone_radius_m: 1.8 }
+  - id: tree_larch
+    kind: TREE
+    display_name: "Siberian larch"
+    display_name_ru: "Лиственница сибирская"
+    latin: "Larix sibirica"
+    parameters: { crown_radius_m: 3.0, mature_height_m: 25.0, root_zone_radius_m: 2.2 }
+  - id: shrub_lilac
+    kind: SHRUB
+    display_name: "Common lilac"
+    display_name_ru: "Сирень обыкновенная"
+    latin: "Syringa vulgaris"
+    parameters: { crown_radius_m: 1.5, mature_height_m: 4.0, root_zone_radius_m: 1.0 }
+  - id: shrub_cotoneaster
+    kind: SHRUB
+    display_name: "Shiny cotoneaster"
+    display_name_ru: "Кизильник блестящий"
+    latin: "Cotoneaster lucidus"
+    parameters: { crown_radius_m: 0.8, mature_height_m: 2.0, root_zone_radius_m: 0.6 }
+  - id: shrub_mockorange
+    kind: SHRUB
+    display_name: "Mock orange"
+    display_name_ru: "Чубушник венечный"
+    latin: "Philadelphus coronarius"
+    parameters: { crown_radius_m: 1.2, mature_height_m: 3.0, root_zone_radius_m: 0.8 }

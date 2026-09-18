@@ -214,3 +214,13 @@ logs/
 tmp/
 temp/
 scratch/
+
+# greenplan
+data/
+outputs/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.env
+nohup.out
