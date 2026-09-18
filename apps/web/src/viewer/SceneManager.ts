@@ -30,7 +30,7 @@ export interface SceneCallbacks {
 // 3D clear color matches the sky-dome horizon so extreme zoom-outs stay seamless.
 const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
   light: { "2d": 0xf6f7f5, "3d": 0xf6f2ea },
-  dark: { "2d": 0x0b0f14, "3d": 0xf6f2ea },
+  dark: { "2d": 0x0b0f14, "3d": 0x151c27 },
 };
 
 /** Owns the three.js scene; imperative API driven by React effects. */
@@ -264,6 +264,8 @@ export class SceneManager {
     this.setConstraints(this.constraints);
     this.setIteration(this.iteration);
     this.setChunks(this.chunks);
+    // the massing model is palette-baked — rebuild immediately when visible
+    if (this.mode === "3d") this.rebuild3d();
     this.invalidate();
   }
 
@@ -416,6 +418,7 @@ export class SceneManager {
         this.iteration?.placements ?? [],
         this.doc.extents,
         this.constraints?.allowedArea.polygons ?? [],
+        this.theme,
       );
       this.massing = build.group;
       this.pickMeshes3d = build.pickMeshes;

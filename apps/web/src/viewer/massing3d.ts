@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Category, EntityRender, LayerInfo, Placement, PolygonWithHoles } from "../api/types";
+import type { Theme } from "../theme";
 import { shapeWithHoles } from "./cadGeometry";
 
 /**
@@ -15,7 +16,57 @@ import { shapeWithHoles } from "./cadGeometry";
  */
 
 const VEG_INSTANCE_CAP = 4000;
-const HORIZON_COLOR = 0xf6f2ea;
+
+/** Day (light theme) vs dusk (dark theme) looks for the massing model. */
+interface MassingPalette {
+  horizon: number;                       // fog + far sky + renderer clear
+  sky: [string, string, string, string]; // gradient stops zenith → horizon
+  ground: [string, string];              // radial gradient inner → outer
+  hemi: { sky: number; ground: number; intensity: number };
+  sun: { color: number; intensity: number };
+  ribbons: { asphalt: number; sidewalk: number; curb: number };
+  allowedPatch: number;
+  wall: number;
+  roof: number;
+  pad: number;
+  edge: number;
+  edgeOpacity: number;
+  /** Extra HSL lightness for crowns so vegetation reads under dim light. */
+  crownLightnessShift: number;
+}
+
+export const MASSING_PALETTES: Record<Theme, MassingPalette> = {
+  light: {
+    horizon: 0xf6f2ea,
+    sky: ["#cfe0ee", "#e8eef0", "#f6f2ea", "#f6f2ea"],
+    ground: ["#f5f5ee", "#dfe4d8"],
+    hemi: { sky: 0xdfeaf4, ground: 0x9aa08b, intensity: 1.0 },
+    sun: { color: 0xffe9c9, intensity: 1.9 },
+    ribbons: { asphalt: 0xb9bdc1, sidewalk: 0xd6d9db, curb: 0xc6cacd },
+    allowedPatch: 0xdcead8,
+    wall: 0xf4f1ea,
+    roof: 0xfbfaf6,
+    pad: 0xe6e8e0,
+    edge: 0x51565c,
+    edgeOpacity: 0.22,
+    crownLightnessShift: 0,
+  },
+  dark: {
+    horizon: 0x151c27,
+    sky: ["#060b14", "#0c1420", "#151c27", "#151c27"],
+    ground: ["#212620", "#161a16"],
+    hemi: { sky: 0x2c3a52, ground: 0x11150f, intensity: 0.9 },
+    sun: { color: 0xa9c0e8, intensity: 1.15 },       // cool moonlight
+    ribbons: { asphalt: 0x363b42, sidewalk: 0x484e56, curb: 0x40454c },
+    allowedPatch: 0x1c2e20,
+    wall: 0x3a4049,
+    roof: 0x454c56,
+    pad: 0x24292f,
+    edge: 0x9db1c9,
+    edgeOpacity: 0.3,
+    crownLightnessShift: 0.05,
+  },
+};
 
 export interface Massing3DBuild {
   group: THREE.Group;
@@ -299,16 +350,16 @@ const EXISTING_VEG_HSL: Hsl = { h: 0.22, s: 0.3, l: 0.3 }; // dark olive
 // Sky / ground textures
 // ---------------------------------------------------------------------------
 
-function skyTexture(): THREE.CanvasTexture {
+function skyTexture(stops: MassingPalette["sky"]): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 2;
   canvas.height = 512;
   const ctx = canvas.getContext("2d")!;
   const grad = ctx.createLinearGradient(0, 0, 0, 512);
-  grad.addColorStop(0, "#cfe0ee");   // pale blue zenith
-  grad.addColorStop(0.5, "#e8eef0");
-  grad.addColorStop(0.62, "#f6f2ea"); // warm white horizon
-  grad.addColorStop(1, "#f6f2ea");
+  grad.addColorStop(0, stops[0]);    // zenith
+  grad.addColorStop(0.5, stops[1]);
+  grad.addColorStop(0.62, stops[2]); // horizon band
+  grad.addColorStop(1, stops[3]);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 2, 512);
   const tex = new THREE.CanvasTexture(canvas);
@@ -316,15 +367,15 @@ function skyTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function groundTexture(): THREE.CanvasTexture {
+function groundTexture(stops: MassingPalette["ground"]): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext("2d")!;
-  // Warm grey-green paper tint with a soft radial AO falloff.
+  // Grey-green tint with a soft radial AO falloff.
   const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.7);
-  grad.addColorStop(0, "#f5f5ee");
-  grad.addColorStop(1, "#dfe4d8");
+  grad.addColorStop(0, stops[0]);
+  grad.addColorStop(1, stops[1]);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
   const tex = new THREE.CanvasTexture(canvas);
@@ -346,12 +397,6 @@ const RIBBON_STYLE: Partial<Record<Category, { halfW: number; z: number; bucket:
   CURB: { halfW: 0.18, z: 0.12, bucket: "curb" },
 };
 
-const RIBBON_COLORS: Record<RibbonBucket, number> = {
-  asphalt: 0xb9bdc1,
-  sidewalk: 0xd6d9db,
-  curb: 0xc6cacd,
-};
-
 /** Deterministic building height: 6–24 m, bigger footprints taller. */
 function buildingHeight(id: string, areaM2: number): number {
   const h = hash32(id);
@@ -369,7 +414,9 @@ export function buildMassing3D(
   placements: Placement[],
   extents: { min: [number, number]; max: [number, number] },
   allowedPolygons: PolygonWithHoles[] = [],
+  theme: Theme = "light",
 ): Massing3DBuild {
+  const pal = MASSING_PALETTES[theme];
   const group = new THREE.Group();
   group.name = "massing3d";
   const pickMeshes: Massing3DBuild["pickMeshes"] = [];
@@ -387,13 +434,13 @@ export function buildMassing3D(
   const span = Math.max(w, h);
 
   // ---- sky + fog ----------------------------------------------------------
-  const fog = new THREE.Fog(HORIZON_COLOR, span * 1.6, span * 5.2);
+  const fog = new THREE.Fog(pal.horizon, span * 1.6, span * 5.2);
   const skyGeo = new THREE.SphereGeometry(1, 24, 16);
   skyGeo.rotateX(Math.PI / 2); // poles onto the z axis (zenith = +Z)
   const sky = new THREE.Mesh(
     skyGeo,
     new THREE.MeshBasicMaterial({
-      map: skyTexture(), side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false,
+      map: skyTexture(pal.sky), side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false,
     }),
   );
   sky.scale.setScalar(span * 4.5);
@@ -404,11 +451,11 @@ export function buildMassing3D(
   group.add(sky);
 
   // ---- lights + shadows ---------------------------------------------------
-  const hemi = new THREE.HemisphereLight(0xdfeaf4, 0x9aa08b, 1.0);
+  const hemi = new THREE.HemisphereLight(pal.hemi.sky, pal.hemi.ground, pal.hemi.intensity);
   hemi.position.set(0, 0, 1);
   group.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffe9c9, 1.9);
+  const sun = new THREE.DirectionalLight(pal.sun.color, pal.sun.intensity);
   const sunDist = Math.min(span, 600);
   sun.position.set(cx + sunDist * 0.5, cy - sunDist * 0.4, sunDist * 0.62); // ~45° warm sun
   sun.target.position.set(cx, cy, 0);
@@ -428,7 +475,7 @@ export function buildMassing3D(
   // ---- ground -------------------------------------------------------------
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(span * 4, span * 4),
-    new THREE.MeshLambertMaterial({ map: groundTexture() }),
+    new THREE.MeshLambertMaterial({ map: groundTexture(pal.ground) }),
   );
   ground.position.set(cx, cy, -0.05);
   ground.receiveShadow = true;
@@ -443,7 +490,7 @@ export function buildMassing3D(
   if (allowedGeo) {
     const mesh = new THREE.Mesh(
       allowedGeo,
-      new THREE.MeshLambertMaterial({ color: 0xdcead8, side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: pal.allowedPatch, side: THREE.DoubleSide }),
     );
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
@@ -495,7 +542,7 @@ export function buildMassing3D(
     }
   }
 
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0xf4f1ea, side: THREE.DoubleSide });
+  const wallMat = new THREE.MeshLambertMaterial({ color: pal.wall, side: THREE.DoubleSide });
   const solidGeo = mergeGeometries(extrudeGeos);
   if (solidGeo) {
     const mesh = new THREE.Mesh(solidGeo, wallMat);
@@ -519,7 +566,7 @@ export function buildMassing3D(
   if (roofGeo) {
     const mesh = new THREE.Mesh(
       roofGeo,
-      new THREE.MeshLambertMaterial({ color: 0xfbfaf6, side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: pal.roof, side: THREE.DoubleSide }),
     );
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
@@ -530,7 +577,7 @@ export function buildMassing3D(
   if (padGeo) {
     const mesh = new THREE.Mesh(
       padGeo,
-      new THREE.MeshLambertMaterial({ color: 0xe6e8e0, side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: pal.pad, side: THREE.DoubleSide }),
     );
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
@@ -542,7 +589,7 @@ export function buildMassing3D(
     geo.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
     const lines = new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: 0x51565c, transparent: true, opacity: 0.22 }),
+      new THREE.LineBasicMaterial({ color: pal.edge, transparent: true, opacity: pal.edgeOpacity }),
     );
     lines.frustumCulled = false;
     lines.raycast = () => {};
@@ -557,7 +604,7 @@ export function buildMassing3D(
     const normals = new Float32Array(positions.length);
     for (let i = 2; i < normals.length; i += 3) normals[i] = 1;
     geo.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: RIBBON_COLORS[bucket] }));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: pal.ribbons[bucket] }));
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     mesh.raycast = () => {};
@@ -633,6 +680,7 @@ export function buildMassing3D(
       m.compose(pos, q, scl);
       crowns.setMatrixAt(i, m);
       jitterColor(color, spec.crownHsl, seed, 5);
+      if (pal.crownLightnessShift) color.offsetHSL(0, 0, pal.crownLightnessShift);
       crowns.setColorAt(i, color);
 
       if (trunks && trunkH > 0) {
@@ -708,6 +756,7 @@ export function buildMassing3D(
       m.compose(pos, q, scl);
       blobs.setMatrixAt(i, m);
       jitterColor(color, EXISTING_VEG_HSL, seed, 5);
+      if (pal.crownLightnessShift) color.offsetHSL(0, 0, pal.crownLightnessShift);
       blobs.setColorAt(i, color);
     }
     blobs.instanceMatrix.needsUpdate = true;
