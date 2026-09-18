@@ -77,6 +77,9 @@ export class SceneManager {
   private pickMeshes3d: PlacementsBuild["pickMeshes"] = [];
   private massingDirty = true;
   private fog3d: THREE.Fog | null = null;
+  /** "Detailed" extras subgroup (CAD underlay, lanterns, fences). */
+  private detailGroup3d: THREE.Group | null = null;
+  private massingDetail = true;
 
   // source-data caches (for theme rebuilds / 3D rebuilds)
   private doc: ProjectDocument | null = null;
@@ -261,6 +264,14 @@ export class SceneManager {
     this.invalidate();
   }
 
+  /** Simple ⇄ Detailed 3D massing — pure visibility toggle, no rebuild. */
+  setMassingDetail(detailed: boolean) {
+    if (detailed === this.massingDetail) return;
+    this.massingDetail = detailed;
+    if (this.detailGroup3d) this.detailGroup3d.visible = detailed;
+    this.invalidate();
+  }
+
   setSelectedPlacement(p: Placement | null) {
     this.selectedPlacement = p;
     this.updateSelectionRing();
@@ -423,6 +434,7 @@ export class SceneManager {
     }
     this.pickMeshes3d = [];
     this.fog3d = null;
+    this.detailGroup3d = null;
     if (this.doc) {
       const build = buildMassing3D(
         this.doc.entities,
@@ -435,6 +447,8 @@ export class SceneManager {
       this.massing = build.group;
       this.pickMeshes3d = build.pickMeshes;
       this.fog3d = build.fog;
+      this.detailGroup3d = build.detailGroup;
+      if (this.detailGroup3d) this.detailGroup3d.visible = this.massingDetail;
       this.root3d.add(build.group);
     }
     if (this.mode === "3d") this.scene.fog = this.fog3d;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { EntityRender, LayerInfo } from "../api/types";
+import type { Category, EntityRender, LayerInfo } from "../api/types";
 import { CATEGORY_COLORS } from "../api/types";
 import type { Theme } from "../theme";
 
@@ -21,11 +21,15 @@ function inkTone(hex: string): string {
   return out;
 }
 
-export function layerColor(layer: LayerInfo, theme: Theme): string {
-  const cat = layer.classification.category;
+/** Theme-aware linework color for a category (bright in dark, ink in light). */
+export function categoryColor(cat: Category, theme: Theme): string {
   if (cat === "ANNOTATION" || cat === "UNKNOWN") return DIMMED[theme];
   const base = CATEGORY_COLORS[cat] ?? DIMMED.dark;
   return theme === "light" ? inkTone(base) : base;
+}
+
+export function layerColor(layer: LayerInfo, theme: Theme): string {
+  return categoryColor(layer.classification.category, theme);
 }
 
 /** Groups keyed by layer name; each group holds merged geometry for that layer. */

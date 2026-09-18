@@ -7,6 +7,17 @@ import type {
 
 export type ViewMode = "2d" | "3d";
 
+/** Persisted like the theme; "simple" hides the 3D detail layer. */
+export const MASSING_DETAIL_STORAGE_KEY = "greenplan.massingDetail";
+
+function readInitialMassingDetail(): boolean {
+  try {
+    return localStorage.getItem(MASSING_DETAIL_STORAGE_KEY) !== "simple";
+  } catch {
+    return true;
+  }
+}
+
 /** Mobile bottom-sheet tab ids (< md only). */
 export type MobileTab = "layers" | "constraints" | "generate" | "iterations" | "inspector";
 /** Mobile bottom-sheet snap states (< md only). */
@@ -41,6 +52,8 @@ export interface AppState {
   projectLoadingId: string | null;
 
   viewMode: ViewMode;
+  /** 3D massing: true = Detailed (CAD underlay, lanterns, fences), false = Simple. */
+  massingDetail: boolean;
 
   layerVisibility: Record<string, boolean>;
   overlays: OverlayState;
@@ -96,6 +109,7 @@ const initialState: AppState = {
   projectsError: null,
   projectLoadingId: null,
   viewMode: "2d",
+  massingDetail: readInitialMassingDetail(),
   layerVisibility: {},
   overlays: initialOverlays,
   chunks: null,

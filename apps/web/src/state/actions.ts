@@ -1,6 +1,9 @@
 import { api, ApiError, watchRun } from "../api/client";
 import type { Category, GenerateRequest, PipelineState, ProjectDocument } from "../api/types";
-import { getState, setState, type MobileTab, type Selection, type SheetSnap, type ViewMode } from "./store";
+import {
+  getState, setState, MASSING_DETAIL_STORAGE_KEY,
+  type MobileTab, type Selection, type SheetSnap, type ViewMode,
+} from "./store";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -157,6 +160,16 @@ export function newProject() {
 
 export function setViewMode(mode: ViewMode) {
   setState({ viewMode: mode });
+}
+
+/** Simple ⇄ Detailed 3D massing; persisted like the theme. */
+export function setMassingDetail(detailed: boolean) {
+  setState({ massingDetail: detailed });
+  try {
+    localStorage.setItem(MASSING_DETAIL_STORAGE_KEY, detailed ? "detailed" : "simple");
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
 }
 
 export async function overrideLayerCategory(layerName: string, category: Category) {

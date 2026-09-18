@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { SceneManager, type HoverHit } from "./SceneManager";
 import { hud } from "./hud";
 import { useApp, getState, type ViewMode } from "../state/store";
-import { select, setViewMode } from "../state/actions";
+import { select, setMassingDetail, setViewMode } from "../state/actions";
 import { getTheme, useTheme } from "../theme";
 
 function esc(s: string): string {
@@ -38,24 +38,44 @@ function tooltipHtml(hit: NonNullable<HoverHit>): string {
   );
 }
 
-function ModeToggle({ mode }: { mode: ViewMode }) {
-  const seg = (m: ViewMode, label: string) => (
+/** Segmented-control button; ≥32px touch target on mobile, compact on md+. */
+function Seg({ active, label, title, onClick }: {
+  active: boolean; label: string; title: string; onClick: () => void;
+}) {
+  return (
     <button
-      className={`h-6 px-2.5 text-2xs font-semibold transition-colors ${
-        mode === m
+      className={`h-8 min-w-8 px-2.5 text-2xs font-semibold transition-colors md:h-6 ${
+        active
           ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-800/70 dark:text-emerald-100"
           : "bg-ink-900 text-ink-400 hover:text-ink-100"
       }`}
-      onClick={() => setViewMode(m)}
-      title={m === "2d" ? "Orthographic plan view" : "3D massing view"}
+      onClick={onClick}
+      title={title}
     >
       {label}
     </button>
   );
+}
+
+function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
   return (
-    <div className="absolute right-2 top-2 z-10 flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
-      {seg("2d", "2D")}
-      {seg("3d", "3D")}
+    <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+      <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+        <Seg active={mode === "2d"} label="2D" title="Orthographic plan view"
+          onClick={() => setViewMode("2d")} />
+        <Seg active={mode === "3d"} label="3D" title="3D massing view"
+          onClick={() => setViewMode("3d")} />
+      </div>
+      {mode === "3d" && (
+        <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+          <Seg active={!detail} label="Simple"
+            title="Massing only: ground, roads, buildings, plantings"
+            onClick={() => setMassingDetail(false)} />
+          <Seg active={detail} label="Detailed"
+            title="Adds original CAD linework, lanterns and fences"
+            onClick={() => setMassingDetail(true)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -75,6 +95,7 @@ export function ViewerCanvas() {
   const layerVisibility = useApp((s) => s.layerVisibility);
   const selection = useApp((s) => s.selection);
   const viewMode = useApp((s) => s.viewMode);
+  const massingDetail = useApp((s) => s.massingDetail);
   const theme = useTheme();
 
   useEffect(() => {
@@ -129,6 +150,7 @@ export function ViewerCanvas() {
   useEffect(() => { mgrRef.current?.setLayerVisibility(layerVisibility); }, [layerVisibility]);
   useEffect(() => { mgrRef.current?.setTheme(theme); }, [theme]);
   useEffect(() => { mgrRef.current?.setMode(viewMode); }, [viewMode]);
+  useEffect(() => { mgrRef.current?.setMassingDetail(massingDetail); }, [massingDetail]);
   useEffect(() => {
     mgrRef.current?.setSelectedPlacement(selection?.type === "placement" ? selection.placement : null);
   }, [selection]);
@@ -136,7 +158,7 @@ export function ViewerCanvas() {
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
-      <ModeToggle mode={viewMode} />
+      <ViewerToggles mode={viewMode} detail={massingDetail} />
       <div
         ref={tooltipRef}
         style={{ display: "none" }}

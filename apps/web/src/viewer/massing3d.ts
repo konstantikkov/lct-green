@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Category, EntityRender, LayerInfo, Placement, PolygonWithHoles } from "../api/types";
 import type { Theme } from "../theme";
-import { shapeWithHoles } from "./cadGeometry";
+import { categoryColor, shapeWithHoles } from "./cadGeometry";
 
 /**
  * Stylized architectural massing model (z-up, meters):
@@ -16,6 +16,12 @@ import { shapeWithHoles } from "./cadGeometry";
  */
 
 const VEG_INSTANCE_CAP = 4000;
+const LANTERN_INSTANCE_CAP = 2000;
+
+/** z of the flat CAD-plan underlay, just above ribbons (max z 0.12). */
+const UNDERLAY_Z = 0.16;
+const FENCE_HEIGHT_M = 1.2;
+const LANTERN_POLE_H = 4.5;
 
 /** Day (light theme) vs dusk (dark theme) looks for the massing model. */
 interface MassingPalette {
@@ -54,16 +60,18 @@ export const MASSING_PALETTES: Record<Theme, MassingPalette> = {
   dark: {
     horizon: 0x151c27,
     sky: ["#060b14", "#0c1420", "#151c27", "#151c27"],
-    ground: ["#212620", "#161a16"],
-    hemi: { sky: 0x2c3a52, ground: 0x11150f, intensity: 0.9 },
-    sun: { color: 0xa9c0e8, intensity: 1.15 },       // cool moonlight
-    ribbons: { asphalt: 0x363b42, sidewalk: 0x484e56, curb: 0x40454c },
-    allowedPatch: 0x1c2e20,
-    wall: 0x3a4049,
-    roof: 0x454c56,
-    pad: 0x24292f,
-    edge: 0x9db1c9,
-    edgeOpacity: 0.3,
+    // Lifted well above the old near-black values so roads, pads and building
+    // edges separate from the ground instead of dissolving into it.
+    ground: ["#2e352e", "#222822"],
+    hemi: { sky: 0x2c3a52, ground: 0x11150f, intensity: 1.05 },
+    sun: { color: 0xa9c0e8, intensity: 1.35 },       // cool moonlight
+    ribbons: { asphalt: 0x4b525c, sidewalk: 0x616872, curb: 0x596069 },
+    allowedPatch: 0x27402c,
+    wall: 0x4a515c,
+    roof: 0x565e6a,
+    pad: 0x2e343b,
+    edge: 0xb8c9de,
+    edgeOpacity: 0.45,
     crownLightnessShift: 0.05,
   },
 };
@@ -74,6 +82,11 @@ export interface Massing3DBuild {
   pickMeshes: { mesh: THREE.InstancedMesh; placements: Placement[] }[];
   /** Applied to the scene while the 3D view is active. */
   fog: THREE.Fog;
+  /**
+   * "Detailed" extras (CAD underlay, lanterns, fences). Toggled via `.visible`
+   * by SceneManager without a rebuild; null when the document has none.
+   */
+  detailGroup: THREE.Group | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +255,31 @@ function appendRibbon(
       x0 + nx, y0 + ny, z, x1 - nx, y1 - ny, z, x0 - nx, y0 - ny, z,
     );
   }
+}
+
+/** Appends flat [x,y,...] as line-segment pairs at height z (p0-p1, p1-p2, ...). */
+function appendSegmentsAtZ(out: number[], flat: number[], closed: boolean, z: number): void {
+  const n = Math.floor(flat.length / 2);
+  if (n < 2) return;
+  for (let i = 0; i < n - 1; i++) {
+    out.push(flat[i * 2], flat[i * 2 + 1], z, flat[i * 2 + 2], flat[i * 2 + 3], z);
+  }
+  if (closed) {
+    out.push(flat[(n - 1) * 2], flat[(n - 1) * 2 + 1], z, flat[0], flat[1], z);
+  }
+}
+
+/** Centroid of a flat [x,y,...] vertex list, or the explicit position. */
+function entityAnchor(e: EntityRender): [number, number] | null {
+  if (e.position) return [e.position[0], e.position[1]];
+  const n = Math.floor(e.points.length / 2);
+  if (n === 0) return null;
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) {
+    sx += e.points[i * 2];
+    sy += e.points[i * 2 + 1];
+  }
+  return [sx / n, sy / n];
 }
 
 // ---------------------------------------------------------------------------
@@ -765,5 +803,154 @@ export function buildMassing3D(
     group.add(vegGroup);
   }
 
-  return { group, pickMeshes, fog };
+  // ---- "Detailed" layer: CAD underlay + lanterns + fences -------------------
+  // Everything below lives in one subgroup so SceneManager can toggle
+  // Simple ⇄ Detailed via `.visible` without rebuilding the model.
+  const detailGroup = new THREE.Group();
+  detailGroup.name = "detail3d";
+
+  // One pass over the document: bucket linework per category for the underlay,
+  // collect FENCE runs and LIGHTING lamp anchors.
+  const underlayByCat = new Map<Category, number[]>();
+  const fencePositions: number[] = [];
+  const fenceNormals: number[] = [];
+  const lamps: [number, number][] = [];
+
+  for (const e of entities) {
+    const cat = catByLayer.get(e.layer) ?? "UNKNOWN";
+    if (cat === "LIGHTING") {
+      const anchor = entityAnchor(e);
+      if (anchor) lamps.push(anchor);
+    }
+    // Text/point entities carry no linework — the underlay skips them.
+    if (e.kind !== "polyline" && e.kind !== "polygon") continue;
+    if (e.points.length < 4) continue;
+    const closed = e.kind === "polygon" || e.closed === true;
+
+    let seg = underlayByCat.get(cat);
+    if (!seg) underlayByCat.set(cat, (seg = []));
+    appendSegmentsAtZ(seg, e.points, closed, UNDERLAY_Z);
+
+    if (cat === "FENCE") {
+      appendWallSegments(fencePositions, fenceNormals, e.points, FENCE_HEIGHT_M);
+      if (closed) {
+        const n = Math.floor(e.points.length / 2);
+        appendWallSegments(
+          fencePositions, fenceNormals,
+          [e.points[(n - 1) * 2], e.points[(n - 1) * 2 + 1], e.points[0], e.points[1]],
+          FENCE_HEIGHT_M,
+        );
+      }
+    }
+  }
+
+  // CAD plan underlay: every source entity draped just above the ground, one
+  // merged LineSegments per category (≤ ~22 draw calls for any document size).
+  for (const [cat, positions] of underlayByCat) {
+    if (positions.length === 0) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const lines = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({
+        color: categoryColor(cat, theme),
+        transparent: true,
+        opacity: cat === "ANNOTATION" ? 0.25 : 0.55,
+        depthWrite: false,
+      }),
+    );
+    lines.frustumCulled = false;
+    lines.raycast = () => {};
+    detailGroup.add(lines);
+  }
+
+  // Fences as low walls (thin vertical ribbons, shared wall material).
+  if (fencePositions.length > 0) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(fencePositions, 3));
+    geo.setAttribute("normal", new THREE.Float32BufferAttribute(fenceNormals, 3));
+    const mesh = new THREE.Mesh(geo, wallMat);
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    mesh.raycast = () => {};
+    detailGroup.add(mesh);
+  }
+
+  // Lanterns: instanced pole + head; a soft additive light pool at night.
+  if (lamps.length > 0) {
+    const lampCount = Math.min(lamps.length, LANTERN_INSTANCE_CAP);
+    if (lampCount < lamps.length) {
+      console.info(`[massing3d] lanterns capped at ${lampCount} of ${lamps.length} instances`);
+    }
+    const lanternGroup = new THREE.Group();
+    lanternGroup.name = "lanterns3d";
+
+    const poleGeo = new THREE.CylinderGeometry(0.045, 0.07, LANTERN_POLE_H, 6, 1);
+    poleGeo.rotateX(Math.PI / 2); // +Y axis → +Z (z-up)
+    poleGeo.translate(0, 0, LANTERN_POLE_H / 2);
+    const poles = new THREE.InstancedMesh(
+      poleGeo,
+      new THREE.MeshLambertMaterial({ color: theme === "dark" ? 0x565d66 : 0x3c4148 }),
+      lampCount,
+    );
+    poles.castShadow = true;
+    poles.frustumCulled = false;
+    poles.raycast = () => {};
+
+    const headGeo = new THREE.SphereGeometry(0.22, 10, 8);
+    headGeo.translate(0, 0, LANTERN_POLE_H);
+    const heads = new THREE.InstancedMesh(
+      headGeo,
+      new THREE.MeshLambertMaterial({
+        color: 0xfff3d6,
+        emissive: 0xffe6a8, // warm glow — lamps read as "on" at night
+        emissiveIntensity: theme === "dark" ? 1.2 : 0.35,
+      }),
+      lampCount,
+    );
+    heads.frustumCulled = false;
+    heads.raycast = () => {};
+
+    // No real PointLights (too many) — fake pools of light on the ground.
+    let pools: THREE.InstancedMesh | null = null;
+    if (theme === "dark") {
+      pools = new THREE.InstancedMesh(
+        new THREE.CircleGeometry(3, 20),
+        new THREE.MeshBasicMaterial({
+          color: 0xffd98a,
+          transparent: true,
+          opacity: 0.1,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+        lampCount,
+      );
+      pools.frustumCulled = false;
+      pools.raycast = () => {};
+      pools.renderOrder = 1; // after opaque ground/ribbons for clean blending
+    }
+
+    for (let i = 0; i < lampCount; i++) {
+      m.makeTranslation(lamps[i][0], lamps[i][1], 0);
+      poles.setMatrixAt(i, m);
+      heads.setMatrixAt(i, m);
+      if (pools) {
+        m.makeTranslation(lamps[i][0], lamps[i][1], UNDERLAY_Z + 0.02);
+        pools.setMatrixAt(i, m);
+      }
+    }
+    poles.instanceMatrix.needsUpdate = true;
+    heads.instanceMatrix.needsUpdate = true;
+    lanternGroup.add(poles, heads);
+    if (pools) {
+      pools.instanceMatrix.needsUpdate = true;
+      lanternGroup.add(pools);
+    }
+    detailGroup.add(lanternGroup);
+  }
+
+  const hasDetail = detailGroup.children.length > 0;
+  if (hasDetail) group.add(detailGroup);
+
+  return { group, pickMeshes, fog, detailGroup: hasDetail ? detailGroup : null };
 }
