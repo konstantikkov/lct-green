@@ -31,22 +31,27 @@ cd /opt/greenplan
 python3 -m venv venv 2>/dev/null || true
 ./venv/bin/pip install -q -r apps/api/requirements.txt
 
-# swap (needed for LibreDWG compilation on small instances)
-if ! swapon --show | grep -q swapfile; then
-    sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
-    sudo mkswap /swapfile > /dev/null && sudo swapon /swapfile
-fi
-
-# LibreDWG dwg2dxf (compile once; ~10-20 min on a small instance)
+# LibreDWG dwg2dxf (compile once)
 if [ ! -x /opt/greenplan/libredwg/bin/dwg2dxf ]; then
     echo "building LibreDWG (one-time)..."
+    MEM_MB=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+    if [ "$MEM_MB" -lt 3000 ]; then
+        # low-memory boxes: swap + single-threaded, GC-thrifty compile
+        if ! swapon --show | grep -q swapfile; then
+            sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+            sudo mkswap /swapfile > /dev/null && sudo swapon /swapfile
+        fi
+        MAKE_ARGS='-j1 CFLAGS=-O1\ -g0\ --param\ ggc-min-expand=5\ --param\ ggc-min-heapsize=16384'
+    else
+        MAKE_ARGS="-j$(nproc)"
+    fi
     curl -sL -o /tmp/libredwg.tar.gz \
       https://github.com/LibreDWG/libredwg/releases/download/0.13.3/libredwg-0.13.3.tar.gz
     tar xzf /tmp/libredwg.tar.gz -C /tmp
     cd /tmp/libredwg-0.13.3
     ./configure --prefix=/opt/greenplan/libredwg --disable-bindings \
         --disable-python --disable-write --enable-release > /dev/null
-    make -j1 CFLAGS="-O1 -g0 --param ggc-min-expand=5 --param ggc-min-heapsize=16384" > /dev/null
+    eval make $MAKE_ARGS > /dev/null
     make install > /dev/null
     cd /opt/greenplan
 fi
