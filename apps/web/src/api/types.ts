@@ -42,7 +42,8 @@ export interface ProjectListItem {
   id: string;
   name: string;
   fileName: string;
-  createdAt: string;
+  /** ISO string per contract; current backend emits a unix timestamp (s). */
+  createdAt: string | number;
   state: PipelineState;
 }
 
@@ -149,9 +150,14 @@ export interface ExclusionZone {
   source: { document: string; clause: string | null; status: string };
 }
 
+export type AllowedBasis = "site_boundary" | "vegetation_evidence" | "extents_fallback";
+
 export interface ConstraintsResponse {
   siteBoundary: number[][] | null;
   siteBoundarySource: "detected" | "extents_fallback";
+  /** How the planting domain was derived (see API_CONTRACT.md).
+   *  Optional defensively: older cached constraint payloads omit it. */
+  allowedBasis?: AllowedBasis;
   exclusionZones: ExclusionZone[];
   allowedArea: { polygons: PolygonWithHoles[]; areaM2: number };
   repairLog: string[];

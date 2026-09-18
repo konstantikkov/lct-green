@@ -1,6 +1,6 @@
 import { api, ApiError, watchRun } from "../api/client";
-import type { Category, GenerateRequest } from "../api/types";
-import { getState, setState, type Selection } from "./store";
+import type { Category, GenerateRequest, PipelineState, ProjectDocument } from "../api/types";
+import { getState, setState, type Selection, type ViewMode } from "./store";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -27,34 +27,113 @@ export async function loadStaticData() {
   }
 }
 
+/** Resets all per-project state and installs `doc` as the active document. */
+function installDocument(doc: ProjectDocument) {
+  const layerVisibility: Record<string, boolean> = {};
+  for (const l of doc.layers) layerVisibility[l.name] = true;
+  setState({
+    document: doc,
+    layerVisibility,
+    pipelineState: doc.state,
+    uploading: false,
+    constraints: null,
+    iterations: [],
+    activeIteration: null,
+    selection: null,
+    explanation: null,
+    chunks: null,
+    run: null,
+    runError: null,
+  });
+  // Static data may have failed earlier if backend was down; retry now.
+  const s = getState();
+  if (!s.species || !s.rules) void loadStaticData();
+  if (!s.capabilities) void loadCapabilities();
+}
+
 export async function uploadFile(file: File) {
   setState({ uploading: true, uploadError: null });
   try {
     const doc = await api.uploadProject(file);
-    const layerVisibility: Record<string, boolean> = {};
-    for (const l of doc.layers) layerVisibility[l.name] = true;
-    setState({
-      document: doc,
-      layerVisibility,
-      pipelineState: doc.state,
-      uploading: false,
-      constraints: null,
-      iterations: [],
-      activeIteration: null,
-      selection: null,
-      explanation: null,
-      chunks: null,
-      run: null,
-      runError: null,
-    });
-    // Static data may have failed earlier if backend was down; retry now.
-    const s = getState();
-    if (!s.species || !s.rules) void loadStaticData();
-    if (!s.capabilities) void loadCapabilities();
+    installDocument(doc);
+    void loadProjects(); // keep the shared list fresh
   } catch (e) {
     const code = e instanceof ApiError ? e.code : null;
     setState({ uploading: false, uploadError: { code, message: errMsg(e) } });
   }
+}
+
+export async function loadProjects() {
+  try {
+    setState({ projects: await api.listProjects(), projectsError: null });
+  } catch (e) {
+    setState({ projectsError: errMsg(e) });
+  }
+}
+
+/** Pipeline states in which constraints have already been built server-side. */
+const CONSTRAINTS_READY: PipelineState[] = [
+  "BUILDING_CONSTRAINTS", "GENERATING_CANDIDATES", "OPTIMIZING",
+  "VALIDATING", "JUDGING", "RERUNNING", "COMPLETED",
+];
+
+/** Opens an existing project from the shared list. 404s are non-fatal. */
+export async function openProject(projectId: string) {
+  if (getState().projectLoadingId) return;
+  setState({ projectLoadingId: projectId, uploadError: null });
+  try {
+    const doc = await api.getDocument(projectId);
+    installDocument(doc);
+  } catch (e) {
+    const code = e instanceof ApiError ? e.code : null;
+    setState({ projectLoadingId: null, uploadError: { code, message: errMsg(e) } });
+    return;
+  }
+  // Constraints — only if the pipeline got that far; 404/errors are graceful.
+  const doc = getState().document;
+  if (doc && CONSTRAINTS_READY.includes(doc.state)) {
+    try {
+      setState({ constraints: await api.getConstraints(projectId) });
+    } catch {
+      /* not built / stale — user can rebuild from the panel */
+    }
+  }
+  // Iterations — may legitimately be empty or 404.
+  try {
+    const iterations = await api.getIterations(projectId);
+    if (getState().document?.projectId === projectId && iterations.length > 0) {
+      setState({ iterations });
+      const selected = iterations.find((i) => i.selected) ?? iterations[iterations.length - 1];
+      if (selected) await loadIteration(selected.iterationId);
+    }
+  } catch {
+    /* no runs yet — fine */
+  }
+  setState({ projectLoadingId: null });
+}
+
+/** Returns to the DropZone screen ("New project…"). */
+export function newProject() {
+  setState({
+    document: null,
+    uploadError: null,
+    pipelineState: null,
+    constraints: null,
+    constraintsError: null,
+    iterations: [],
+    activeIteration: null,
+    selection: null,
+    explanation: null,
+    chunks: null,
+    run: null,
+    runError: null,
+    layerVisibility: {},
+  });
+  void loadProjects();
+}
+
+export function setViewMode(mode: ViewMode) {
+  setState({ viewMode: mode });
 }
 
 export async function overrideLayerCategory(layerName: string, category: Category) {

@@ -1,13 +1,31 @@
 import * as THREE from "three";
 import type { EntityRender, LayerInfo } from "../api/types";
 import { CATEGORY_COLORS } from "../api/types";
+import type { Theme } from "../theme";
 
-const DIMMED = "#3d4654"; // ANNOTATION / UNKNOWN
+// ANNOTATION / UNKNOWN linework
+const DIMMED: Record<Theme, string> = { light: "#c8cdd4", dark: "#3d4654" };
 
-export function layerColor(layer: LayerInfo): string {
+/** Light-mode "ink on paper": category colors multiplied down to dark ink tones. */
+const inkToneCache = new Map<string, string>();
+function inkTone(hex: string): string {
+  let out = inkToneCache.get(hex);
+  if (!out) {
+    const c = new THREE.Color(hex);
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    c.setHSL(hsl.h, Math.min(hsl.s * 0.85, 0.75), Math.min(hsl.l * 0.5, 0.38));
+    out = `#${c.getHexString()}`;
+    inkToneCache.set(hex, out);
+  }
+  return out;
+}
+
+export function layerColor(layer: LayerInfo, theme: Theme): string {
   const cat = layer.classification.category;
-  if (cat === "ANNOTATION" || cat === "UNKNOWN") return DIMMED;
-  return CATEGORY_COLORS[cat] ?? DIMMED;
+  if (cat === "ANNOTATION" || cat === "UNKNOWN") return DIMMED[theme];
+  const base = CATEGORY_COLORS[cat] ?? DIMMED.dark;
+  return theme === "light" ? inkTone(base) : base;
 }
 
 /** Groups keyed by layer name; each group holds merged geometry for that layer. */
@@ -26,6 +44,7 @@ export interface CadLayerGroups {
 export function buildCadGroups(
   entities: EntityRender[],
   layers: LayerInfo[],
+  theme: Theme,
 ): CadLayerGroups {
   const root = new THREE.Group();
   root.name = "cad";
@@ -42,7 +61,7 @@ export function buildCadGroups(
 
   for (const [name, ents] of buckets) {
     const info = layerInfo.get(name);
-    const color = info ? layerColor(info) : DIMMED;
+    const color = info ? layerColor(info, theme) : DIMMED[theme];
     const isBuilding = info?.classification.category === "BUILDING";
 
     const group = new THREE.Group();
@@ -182,11 +201,16 @@ export function ringOutlinePositions(rings: number[][], z: number): number[] {
 }
 
 export function disposeObject(obj: THREE.Object3D) {
+  const disposeMat = (m: THREE.Material) => {
+    const map = (m as THREE.MeshBasicMaterial).map;
+    if (map) map.dispose();
+    m.dispose();
+  };
   obj.traverse((child) => {
     const anyChild = child as THREE.Mesh;
     if (anyChild.geometry) anyChild.geometry.dispose();
     const mat = anyChild.material as THREE.Material | THREE.Material[] | undefined;
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else if (mat) mat.dispose();
+    if (Array.isArray(mat)) mat.forEach(disposeMat);
+    else if (mat) disposeMat(mat);
   });
 }

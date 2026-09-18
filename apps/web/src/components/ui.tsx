@@ -38,7 +38,9 @@ export function Btn({
     "inline-flex items-center justify-center gap-1.5 border px-2.5 h-7 text-xs rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const styles = {
     default: "border-ink-600 bg-ink-800 text-ink-200 hover:bg-ink-700 hover:text-ink-100",
-    primary: "border-emerald-700 bg-emerald-900/60 text-emerald-200 hover:bg-emerald-800/60",
+    primary:
+      "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 " +
+      "dark:border-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200 dark:hover:bg-emerald-800/60",
     ghost: "border-transparent text-ink-300 hover:text-ink-100 hover:bg-ink-800",
   } as const;
   return (
@@ -58,10 +60,10 @@ export function Badge({
 }) {
   const tones = {
     grey: "border-ink-500 text-ink-300 bg-ink-800",
-    green: "border-emerald-700 text-emerald-300 bg-emerald-950/70",
-    amber: "border-amber-600 text-amber-300 bg-amber-950/60",
-    red: "border-red-700 text-red-300 bg-red-950/60",
-    blue: "border-sky-700 text-sky-300 bg-sky-950/60",
+    green: "border-emerald-300 text-emerald-800 bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:bg-emerald-950/70",
+    amber: "border-amber-300 text-amber-800 bg-amber-50 dark:border-amber-600 dark:text-amber-300 dark:bg-amber-950/60",
+    red: "border-red-300 text-red-800 bg-red-50 dark:border-red-700 dark:text-red-300 dark:bg-red-950/60",
+    blue: "border-sky-300 text-sky-800 bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:bg-sky-950/60",
   } as const;
   const cls = `inline-flex items-center border px-1 py-px rounded-sm text-2xs leading-4 whitespace-nowrap ${tones[tone]} ${onClick ? "cursor-pointer hover:brightness-125" : ""}`;
   return (
@@ -161,7 +163,7 @@ export function Dropdown({
     <div className="relative" ref={ref}>
       <span onClick={() => onOpenChange(!open)}>{trigger}</span>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 max-h-64 w-52 overflow-y-auto rounded-sm border border-ink-500 bg-ink-850 py-1 shadow-xl shadow-black/50">
+        <div className="absolute right-0 top-full z-50 mt-1 max-h-64 w-52 overflow-y-auto rounded-sm border border-ink-500 bg-ink-850 py-1 shadow-xl shadow-black/15 dark:shadow-black/50">
           {children}
         </div>
       )}

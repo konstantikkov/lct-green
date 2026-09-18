@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GreenPlan</title>
+    <script>
+      // Apply persisted theme before first paint (light is the default).
+      try {
+        if (localStorage.getItem("greenplan.theme") === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) { /* storage unavailable — stay light */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

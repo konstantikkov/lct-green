@@ -4,11 +4,18 @@ import type {
   LayerInfo, Placement, ProjectDocument,
 } from "../api/types";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
+import { buildMassing3D } from "./massing3d";
 import {
   buildAllowedGroup, buildChunkGridGroup, buildPlacementsGroup,
   buildRejectedGroup, buildZonesGroup, swapChild, Z, type PlacementsBuild,
 } from "./overlayGeometry";
-import type { OverlayState } from "../state/store";
+import type { OverlayState, ViewMode } from "../state/store";
+import type { Theme } from "../theme";
+
+export type HoverHit =
+  | { kind: "placement"; placement: Placement }
+  | { kind: "zone"; zone: ExclusionZone }
+  | null;
 
 export interface SceneCallbacks {
   onPickPlacement: (p: Placement) => void;
@@ -16,25 +23,39 @@ export interface SceneCallbacks {
   onPickNothing: () => void;
   onCursor: (worldX: number, worldY: number) => void;
   onZoom: (pxPerMeter: number) => void;
+  /** rAF-throttled hover; px/py are viewer-local pixels. */
+  onHover: (hit: HoverHit, px: number, py: number) => void;
 }
+
+const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
+  light: { "2d": 0xf6f7f5, "3d": 0xe9ecea },
+  dark: { "2d": 0x0b0f14, "3d": 0x10151b },
+};
 
 /** Owns the three.js scene; imperative API driven by React effects. */
 export class SceneManager {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.OrthographicCamera;
+  private camera3d: THREE.PerspectiveCamera;
   private canvas: HTMLCanvasElement;
   private cb: SceneCallbacks;
   private raycaster = new THREE.Raycaster();
 
-  // camera state (world units = meters)
+  private theme: Theme = "light";
+  private mode: ViewMode = "2d";
+
+  // 2D camera state (world units = meters)
   private cx = 0;
   private cy = 0;
   private halfH = 50; // half of visible height in meters
   private width = 2;
   private height = 2;
 
-  // slots
+  // 3D orbit state (z-up)
+  private orbit = { az: -Math.PI / 4, polar: 0.95, dist: 200, tx: 0, ty: 0, initialized: false };
+
+  // slots (2D plan)
   private slotRoot = new THREE.Group();
   private cadRoot: THREE.Object3D | null = null;
   private cadByLayer = new Map<string, THREE.Group>();
@@ -47,6 +68,19 @@ export class SceneManager {
   private pickMeshes: PlacementsBuild["pickMeshes"] = [];
   private zoneById = new Map<string, ExclusionZone>();
   private selectionRing: THREE.Mesh;
+  private selectedPlacement: Placement | null = null;
+
+  // 3D massing
+  private root3d = new THREE.Group();
+  private massing: THREE.Object3D | null = null;
+  private pickMeshes3d: PlacementsBuild["pickMeshes"] = [];
+  private massingDirty = true;
+
+  // source-data caches (for theme rebuilds / 3D rebuilds)
+  private doc: ProjectDocument | null = null;
+  private constraints: ConstraintsResponse | null = null;
+  private iteration: IterationDetail | null = null;
+  private chunks: ChunkInfo[] | null = null;
 
   private overlays: OverlayState | null = null;
   private layerVisibility: Record<string, boolean> = {};
@@ -59,24 +93,37 @@ export class SceneManager {
 
   // interaction
   private dragging = false;
+  private dragButton = 0;
   private panned = false;
   private lastPx = 0;
   private lastPy = 0;
   private downPx = 0;
   private downPy = 0;
 
-  constructor(canvas: HTMLCanvasElement, cb: SceneCallbacks) {
+  // hover (rAF-throttled)
+  private hoverPending = false;
+  private hoverPx = 0;
+  private hoverPy = 0;
+  private lastHoverKey: string | null = null;
+
+  constructor(canvas: HTMLCanvasElement, cb: SceneCallbacks, theme: Theme) {
     this.canvas = canvas;
     this.cb = cb;
+    this.theme = theme;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x0b0f14, 1);
+    this.renderer.setClearColor(CLEAR_COLORS[theme]["2d"], 1);
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
     this.camera.position.set(0, 0, 100);
     this.camera.lookAt(0, 0, 0);
 
+    this.camera3d = new THREE.PerspectiveCamera(50, 1, 0.5, 100000);
+    this.camera3d.up.set(0, 0, 1);
+
     this.scene.add(this.slotRoot);
+    this.root3d.visible = false;
+    this.scene.add(this.root3d);
 
     const ringGeo = new THREE.RingGeometry(1.05, 1.18, 40);
     this.selectionRing = new THREE.Mesh(
@@ -98,6 +145,7 @@ export class SceneManager {
   // ---------- public API ----------
 
   setDocument(doc: ProjectDocument | null) {
+    this.doc = doc;
     if (this.cadRoot) {
       this.slotRoot.remove(this.cadRoot);
       disposeObject(this.cadRoot);
@@ -106,7 +154,7 @@ export class SceneManager {
     this.cadByLayer.clear();
     this.vegLayers.clear();
     if (doc) {
-      const { root, byLayer } = buildCadGroups(doc.entities, doc.layers);
+      const { root, byLayer } = buildCadGroups(doc.entities, doc.layers, this.theme);
       this.cadRoot = root;
       this.cadByLayer = byLayer;
       for (const l of doc.layers) {
@@ -115,34 +163,43 @@ export class SceneManager {
       }
       this.slotRoot.add(root);
       this.extents = doc.extents;
+      this.orbit.initialized = false;
       this.fitToExtents();
+    } else {
+      this.extents = null;
     }
+    this.massingDirty = true;
+    if (this.mode === "3d") this.rebuild3d();
     this.applyVisibility();
     this.invalidate();
   }
 
   updateLayerInfo(layers: LayerInfo[]) {
     // Re-derive vegetation membership and colors after classification overrides.
+    if (this.doc) this.doc = { ...this.doc, layers };
     this.vegLayers.clear();
     for (const l of layers) {
       const cat = l.classification.category;
       if (cat === "EXISTING_TREE" || cat === "EXISTING_SHRUB") this.vegLayers.add(l.name);
       const group = this.cadByLayer.get(l.name);
       if (group) {
-        const color = new THREE.Color(layerColor(l));
+        const color = new THREE.Color(layerColor(l, this.theme));
         group.traverse((child) => {
           const mat = (child as THREE.Mesh).material as THREE.Material | undefined;
           if (mat && "color" in mat) (mat as THREE.MeshBasicMaterial).color.copy(color);
         });
       }
     }
+    this.massingDirty = true;
+    if (this.mode === "3d") this.rebuild3d();
     this.applyVisibility();
     this.invalidate();
   }
 
   setConstraints(c: ConstraintsResponse | null) {
-    this.zonesObj = swapChild(this.slotRoot, this.zonesObj, c ? buildZonesGroup(c.exclusionZones) : null);
-    this.allowedObj = swapChild(this.slotRoot, this.allowedObj, c ? buildAllowedGroup(c) : null);
+    this.constraints = c;
+    this.zonesObj = swapChild(this.slotRoot, this.zonesObj, c ? buildZonesGroup(c.exclusionZones, this.theme) : null);
+    this.allowedObj = swapChild(this.slotRoot, this.allowedObj, c ? buildAllowedGroup(c, this.theme) : null);
     this.zoneById.clear();
     if (c) for (const z of c.exclusionZones) this.zoneById.set(z.id, z);
     this.applyVisibility();
@@ -150,19 +207,23 @@ export class SceneManager {
   }
 
   setIteration(it: IterationDetail | null) {
-    const build = it ? buildPlacementsGroup(it.placements) : null;
+    this.iteration = it;
+    const build = it ? buildPlacementsGroup(it.placements, this.theme) : null;
     this.placementsObj = swapChild(this.slotRoot, this.placementsObj, build?.group ?? null);
     this.pickMeshes = build?.pickMeshes ?? [];
     this.rejectedObj = swapChild(
       this.slotRoot, this.rejectedObj,
-      it ? buildRejectedGroup(it.rejectedCandidates) : null,
+      it ? buildRejectedGroup(it.rejectedCandidates, this.theme) : null,
     );
+    this.massingDirty = true;
+    if (this.mode === "3d") this.rebuild3d();
     this.applyVisibility();
     this.invalidate();
   }
 
   setChunks(chunks: ChunkInfo[] | null) {
-    this.chunksObj = swapChild(this.slotRoot, this.chunksObj, chunks ? buildChunkGridGroup(chunks) : null);
+    this.chunks = chunks;
+    this.chunksObj = swapChild(this.slotRoot, this.chunksObj, chunks ? buildChunkGridGroup(chunks, this.theme) : null);
     this.applyVisibility();
     this.invalidate();
   }
@@ -180,18 +241,46 @@ export class SceneManager {
   }
 
   setSelectedPlacement(p: Placement | null) {
-    if (p) {
-      const r = Math.max(p.crownRadiusM, 0.15);
-      this.selectionRing.scale.set(r, r, 1);
-      this.selectionRing.position.set(p.position[0], p.position[1], Z.selection);
-      this.selectionRing.visible = true;
+    this.selectedPlacement = p;
+    this.updateSelectionRing();
+    this.invalidate();
+  }
+
+  /** Live theme switch: recolors CAD linework and rebuilds tinted overlays. */
+  setTheme(theme: Theme) {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.renderer.setClearColor(CLEAR_COLORS[theme][this.mode], 1);
+    if (this.doc) this.updateLayerInfo(this.doc.layers);
+    this.setConstraints(this.constraints);
+    this.setIteration(this.iteration);
+    this.setChunks(this.chunks);
+    this.invalidate();
+  }
+
+  setMode(mode: ViewMode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.renderer.setClearColor(CLEAR_COLORS[this.theme][mode], 1);
+    if (mode === "3d") {
+      if (this.massingDirty) this.rebuild3d();
+      if (!this.orbit.initialized) this.fit3d();
+      this.update3dCamera();
     } else {
-      this.selectionRing.visible = false;
+      this.updateCamera();
     }
+    this.slotRoot.visible = mode === "2d";
+    this.root3d.visible = mode === "3d";
+    this.updateSelectionRing();
+    this.applyVisibility();
     this.invalidate();
   }
 
   fitToExtents() {
+    if (this.mode === "3d") {
+      this.fit3d();
+      return;
+    }
     if (!this.extents) return;
     const [minX, minY] = this.extents.min;
     const [maxX, maxY] = this.extents.max;
@@ -213,6 +302,11 @@ export class SceneManager {
     this.setConstraints(null);
     this.setIteration(null);
     this.setChunks(null);
+    if (this.massing) {
+      this.root3d.remove(this.massing);
+      disposeObject(this.massing);
+      this.massing = null;
+    }
     this.selectionRing.geometry.dispose();
     (this.selectionRing.material as THREE.Material).dispose();
     this.renderer.dispose();
@@ -224,11 +318,19 @@ export class SceneManager {
     this.dirty = true;
   }
 
+  private activeCamera(): THREE.Camera {
+    return this.mode === "3d" ? this.camera3d : this.camera;
+  }
+
   private loop = () => {
     if (this.disposed) return;
+    if (this.hoverPending && !this.dragging) {
+      this.hoverPending = false;
+      this.processHover();
+    }
     if (this.dirty) {
       this.dirty = false;
-      this.renderer.render(this.scene, this.camera);
+      this.renderer.render(this.scene, this.activeCamera());
     }
     this.rafId = requestAnimationFrame(this.loop);
   };
@@ -241,6 +343,8 @@ export class SceneManager {
     this.width = w;
     this.height = h;
     this.renderer.setSize(w, h, false);
+    this.camera3d.aspect = w / h;
+    this.camera3d.updateProjectionMatrix();
     this.updateCamera();
   }
 
@@ -251,8 +355,76 @@ export class SceneManager {
     this.camera.top = this.cy + this.halfH;
     this.camera.bottom = this.cy - this.halfH;
     this.camera.updateProjectionMatrix();
-    this.cb.onZoom(this.height / (2 * this.halfH));
+    if (this.mode === "2d") this.cb.onZoom(this.height / (2 * this.halfH));
     this.invalidate();
+  }
+
+  private fit3d() {
+    if (!this.extents) return;
+    const [minX, minY] = this.extents.min;
+    const [maxX, maxY] = this.extents.max;
+    const w = Math.max(maxX - minX, 10);
+    const h = Math.max(maxY - minY, 10);
+    this.orbit.tx = (minX + maxX) / 2;
+    this.orbit.ty = (minY + maxY) / 2;
+    const radius = Math.hypot(w, h) * 0.55;
+    this.orbit.dist = radius / Math.tan((this.camera3d.fov * Math.PI) / 360);
+    this.orbit.az = -Math.PI / 4;
+    this.orbit.polar = 0.95;
+    this.orbit.initialized = true;
+    this.update3dCamera();
+  }
+
+  private update3dCamera() {
+    const { az, polar, dist, tx, ty } = this.orbit;
+    const sp = Math.sin(polar);
+    this.camera3d.position.set(
+      tx + dist * sp * Math.cos(az),
+      ty + dist * sp * Math.sin(az),
+      Math.max(dist * Math.cos(polar), 0.5),
+    );
+    this.camera3d.near = Math.max(dist / 500, 0.1);
+    this.camera3d.far = dist * 100;
+    this.camera3d.updateProjectionMatrix();
+    this.camera3d.lookAt(tx, ty, 0);
+    this.invalidate();
+  }
+
+  private rebuild3d() {
+    if (this.massing) {
+      this.root3d.remove(this.massing);
+      disposeObject(this.massing);
+      this.massing = null;
+    }
+    this.pickMeshes3d = [];
+    if (this.doc) {
+      const build = buildMassing3D(
+        this.doc.entities,
+        this.doc.layers,
+        this.iteration?.placements ?? [],
+        this.doc.extents,
+      );
+      this.massing = build.group;
+      this.pickMeshes3d = build.pickMeshes;
+      this.root3d.add(build.group);
+    }
+    this.massingDirty = false;
+    this.applyVisibility();
+    this.invalidate();
+  }
+
+  private updateSelectionRing() {
+    const p = this.selectedPlacement;
+    if (p) {
+      const r = Math.max(p.crownRadiusM, 0.15);
+      this.selectionRing.scale.set(r, r, 1);
+      // In 3D the ring lies flat on the ground under the tree.
+      const z = this.mode === "3d" ? 0.06 : Z.selection;
+      this.selectionRing.position.set(p.position[0], p.position[1], z);
+      this.selectionRing.visible = true;
+    } else {
+      this.selectionRing.visible = false;
+    }
   }
 
   private screenToWorld(px: number, py: number): [number, number] {
@@ -261,6 +433,17 @@ export class SceneManager {
       this.cx + (px - this.width / 2) * mPerPx,
       this.cy - (py - this.height / 2) * mPerPx,
     ];
+  }
+
+  /** Ray/ground-plane (z=0) intersection for 3D cursor readout. */
+  private groundPoint(px: number, py: number): [number, number] | null {
+    const ndc = new THREE.Vector2((px / this.width) * 2 - 1, -(py / this.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera3d);
+    const { origin, direction } = this.raycaster.ray;
+    if (Math.abs(direction.z) < 1e-8) return null;
+    const t = -origin.z / direction.z;
+    if (t < 0) return null;
+    return [origin.x + direction.x * t, origin.y + direction.y * t];
   }
 
   private applyVisibility() {
@@ -281,72 +464,131 @@ export class SceneManager {
         if (child.name === "shrubs") child.visible = o?.shrubs !== false;
       }
     }
-  }
-
-  private pickAt(px: number, py: number): { placement?: Placement; zone?: ExclusionZone } | null {
-    const ndc = new THREE.Vector2((px / this.width) * 2 - 1, -(py / this.height) * 2 + 1);
-    this.raycaster.setFromCamera(ndc, this.camera);
-
-    // Placements first (drawn on top).
-    if (this.placementsObj?.visible) {
-      for (const { mesh, placements } of this.pickMeshes) {
-        if (!mesh.parent?.visible) continue;
-        const hits = this.raycaster.intersectObject(mesh, false);
-        if (hits.length > 0 && hits[0].instanceId != null) {
-          return { placement: placements[hits[0].instanceId] };
-        }
+    if (this.massing) {
+      for (const child of this.massing.children) {
+        if (child.name === "trees3d") child.visible = o?.trees !== false;
+        if (child.name === "shrubs3d") child.visible = o?.shrubs !== false;
+        if (child.name === "existingVeg3d") child.visible = o?.existingVegetation !== false;
       }
     }
-    if (this.zonesObj?.visible) {
+  }
+
+  private pickAt(px: number, py: number): HoverHit {
+    const ndc = new THREE.Vector2((px / this.width) * 2 - 1, -(py / this.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.activeCamera());
+
+    // Placements first (drawn on top).
+    const meshes = this.mode === "3d" ? this.pickMeshes3d : this.pickMeshes;
+    for (const { mesh, placements } of meshes) {
+      if (!mesh.parent?.visible || !mesh.visible) continue;
+      const hits = this.raycaster.intersectObject(mesh, false);
+      if (hits.length > 0 && hits[0].instanceId != null) {
+        return { kind: "placement", placement: placements[hits[0].instanceId] };
+      }
+    }
+    if (this.mode === "2d" && this.zonesObj?.visible) {
       const hits = this.raycaster.intersectObject(this.zonesObj, true);
       for (const hit of hits) {
         const id = hit.object.userData.zoneId as string | undefined;
         if (id) {
           const zone = this.zoneById.get(id);
-          if (zone) return { zone };
+          if (zone) return { kind: "zone", zone };
         }
       }
     }
     return null;
   }
 
+  private processHover() {
+    const hit = this.pickAt(this.hoverPx, this.hoverPy);
+    this.canvas.style.cursor = hit ? "pointer" : "default";
+    const key = hit == null
+      ? null
+      : hit.kind === "placement" ? `p:${hit.placement.id}` : `z:${hit.zone.id}`;
+    // Always report position so the tooltip follows the cursor; the consumer
+    // writes straight to the DOM, so this stays cheap.
+    if (key !== null || this.lastHoverKey !== null) {
+      this.cb.onHover(hit, this.hoverPx, this.hoverPy);
+    }
+    this.lastHoverKey = key;
+  }
+
+  private clearHover() {
+    if (this.lastHoverKey !== null) {
+      this.lastHoverKey = null;
+      this.cb.onHover(null, 0, 0);
+    }
+    this.hoverPending = false;
+  }
+
   private bindEvents() {
     const c = this.canvas;
+    c.addEventListener("contextmenu", (e) => e.preventDefault());
+
     c.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 && e.button !== 1) return;
+      if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       this.dragging = true;
+      this.dragButton = e.button;
       this.panned = false;
       this.lastPx = this.downPx = e.clientX;
       this.lastPy = this.downPy = e.clientY;
       c.setPointerCapture(e.pointerId);
+      this.clearHover();
     });
 
     c.addEventListener("pointermove", (e) => {
       const rect = c.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      const [wx, wy] = this.screenToWorld(px, py);
-      this.cb.onCursor(wx, wy);
+
+      if (this.mode === "2d") {
+        const [wx, wy] = this.screenToWorld(px, py);
+        this.cb.onCursor(wx, wy);
+      } else {
+        const gp = this.groundPoint(px, py);
+        if (gp) this.cb.onCursor(gp[0], gp[1]);
+      }
 
       if (this.dragging) {
-        // 3px dead zone distinguishes click (pick) from pan.
+        // 3px dead zone distinguishes click (pick) from drag.
         if (!this.panned) {
           this.panned = Math.hypot(e.clientX - this.downPx, e.clientY - this.downPy) >= 3;
         }
         if (this.panned) {
           const dx = e.clientX - this.lastPx;
           const dy = e.clientY - this.lastPy;
-          const mPerPx = (2 * this.halfH) / this.height;
-          this.cx -= dx * mPerPx;
-          this.cy += dy * mPerPx;
-          this.updateCamera();
+          if (this.mode === "2d") {
+            const mPerPx = (2 * this.halfH) / this.height;
+            this.cx -= dx * mPerPx;
+            this.cy += dy * mPerPx;
+            this.updateCamera();
+          } else if (this.dragButton === 0) {
+            // orbit
+            this.orbit.az -= dx * 0.005;
+            this.orbit.polar = Math.min(Math.max(this.orbit.polar - dy * 0.005, 0.08), 1.5);
+            this.update3dCamera();
+          } else {
+            // right/middle drag — pan on ground plane
+            const { az, dist } = this.orbit;
+            const s = dist * 0.0011;
+            const fx = -Math.cos(az), fy = -Math.sin(az); // camera forward on ground
+            const rx = fy, ry = -fx;                       // camera right on ground
+            this.orbit.tx += (-rx * dx + fx * dy) * s;
+            this.orbit.ty += (-ry * dx + fy * dy) * s;
+            this.update3dCamera();
+          }
         }
         this.lastPx = e.clientX;
         this.lastPy = e.clientY;
       } else {
-        const hit = this.pickAt(px, py);
-        c.style.cursor = hit ? "pointer" : "default";
+        this.hoverPx = px;
+        this.hoverPy = py;
+        this.hoverPending = true; // resolved on the next animation frame
       }
+    });
+
+    c.addEventListener("pointerleave", () => {
+      if (!this.dragging) this.clearHover();
     });
 
     c.addEventListener("pointerup", (e) => {
@@ -356,25 +598,30 @@ export class SceneManager {
       if (!this.panned && e.button === 0) {
         const rect = c.getBoundingClientRect();
         const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
-        if (hit?.placement) this.cb.onPickPlacement(hit.placement);
-        else if (hit?.zone) this.cb.onPickZone(hit.zone.id);
+        if (hit?.kind === "placement") this.cb.onPickPlacement(hit.placement);
+        else if (hit?.kind === "zone") this.cb.onPickZone(hit.zone.id);
         else this.cb.onPickNothing();
       }
     });
 
     c.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const rect = c.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
-      const [wx, wy] = this.screenToWorld(px, py);
       const factor = Math.pow(1.0015, e.deltaY);
-      this.halfH = Math.min(Math.max(this.halfH * factor, 0.05), 1e6);
-      // keep the world point under the cursor fixed
-      const mPerPx = (2 * this.halfH) / this.height;
-      this.cx = wx - (px - this.width / 2) * mPerPx;
-      this.cy = wy + (py - this.height / 2) * mPerPx;
-      this.updateCamera();
+      if (this.mode === "2d") {
+        const rect = c.getBoundingClientRect();
+        const px = e.clientX - rect.left;
+        const py = e.clientY - rect.top;
+        const [wx, wy] = this.screenToWorld(px, py);
+        this.halfH = Math.min(Math.max(this.halfH * factor, 0.05), 1e6);
+        // keep the world point under the cursor fixed
+        const mPerPx = (2 * this.halfH) / this.height;
+        this.cx = wx - (px - this.width / 2) * mPerPx;
+        this.cy = wy + (py - this.height / 2) * mPerPx;
+        this.updateCamera();
+      } else {
+        this.orbit.dist = Math.min(Math.max(this.orbit.dist * factor, 2), 1e6);
+        this.update3dCamera();
+      }
     }, { passive: false });
 
     window.addEventListener("keydown", this.onKeyDown);

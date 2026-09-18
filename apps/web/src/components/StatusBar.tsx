@@ -34,7 +34,7 @@ export function StatusBar() {
       <span className="text-ink-400">
         {doc ? `${doc.entityCount.toLocaleString()} entities` : "—"}
       </span>
-      <span className={`flex-1 truncate text-right ${runError ? "text-red-400" : "text-ink-400"}`}>
+      <span className={`flex-1 truncate text-right ${runError ? "text-red-600 dark:text-red-400" : "text-ink-400"}`}>
         {stageMsg}
       </span>
     </footer>

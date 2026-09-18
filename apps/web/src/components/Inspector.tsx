@@ -25,7 +25,7 @@ function ChecksList({ explanation }: { explanation: Explanation }) {
       {explanation.checks.map((c, i) => (
         <div key={i} className="border border-ink-700 bg-ink-900/60 p-1.5">
           <div className="flex items-center gap-1.5">
-            <span className={c.result === "passed" ? "text-emerald-400" : "text-ink-500"}>
+            <span className={c.result === "passed" ? "text-emerald-600 dark:text-emerald-400" : "text-ink-500"}>
               {c.result === "passed" ? "✓" : "–"}
             </span>
             <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink-200" title={c.ruleId}>
@@ -106,7 +106,7 @@ function PlacementInspector({ placement }: { placement: Placement }) {
         {loading && (
           <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> loading explanation…</div>
         )}
-        {error && <div className="text-2xs text-red-400">{error}</div>}
+        {error && <div className="text-2xs text-red-600 dark:text-red-400">{error}</div>}
         {explanation && (
           <>
             <p className="mb-2 text-2xs leading-relaxed text-ink-300">{explanation.summary}</p>
@@ -149,7 +149,7 @@ function ZoneInspector({ zone }: { zone: ExclusionZone }) {
             <>
               <div className="mt-1 text-ink-400">{rule.source.title}</div>
               {rule.assumption && zone.effectiveSource === "assumption" && (
-                <div className="mt-1 border-t border-ink-700 pt-1 text-amber-300/90">
+                <div className="mt-1 border-t border-ink-700 pt-1 text-amber-700 dark:text-amber-300/90">
                   {rule.assumption.note}
                 </div>
               )}

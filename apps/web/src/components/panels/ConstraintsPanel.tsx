@@ -1,7 +1,41 @@
-import type { RegulatoryRule } from "../../api/types";
+import type { AllowedBasis, RegulatoryRule } from "../../api/types";
 import { buildConstraints, select } from "../../state/actions";
 import { useApp } from "../../state/store";
 import { Badge, Btn, Section, Spinner } from "../ui";
+
+const BASIS_INFO: Record<AllowedBasis, { tone: "green" | "blue" | "amber"; label: string; explanation: string }> = {
+  site_boundary: {
+    tone: "green",
+    label: "Site boundary",
+    explanation: "Planting domain derived from a closed site boundary found on a boundary layer.",
+  },
+  vegetation_evidence: {
+    tone: "blue",
+    label: "Vegetation zones",
+    explanation:
+      "Derived from existing vegetation — topo map has no closed site boundary, so the domain is zones around existing vegetation symbols (infill planting).",
+  },
+  extents_fallback: {
+    tone: "amber",
+    label: "Whole drawing extents",
+    explanation: "Nothing better found — check layer classification.",
+  },
+};
+
+function BasisChip({ basis }: { basis: AllowedBasis }) {
+  const info = BASIS_INFO[basis] ?? BASIS_INFO.extents_fallback;
+  return (
+    <div className="mt-2">
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="text-2xs uppercase tracking-wider text-ink-500">Planting domain</span>
+        <Badge tone={info.tone} title={basis}>
+          {info.tone === "amber" ? "⚠ " : ""}{info.label}
+        </Badge>
+      </div>
+      <p className="text-2xs leading-relaxed text-ink-400">{info.explanation}</p>
+    </div>
+  );
+}
 
 function RuleRow({ rule }: { rule: RegulatoryRule }) {
   const inactive = rule.effectiveSource === "inactive" || !rule.enabled;
@@ -32,7 +66,7 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
         <span className="truncate" title={rule.source.title}>
           {rule.source.document}{rule.source.clause ? ` · ${rule.source.clause}` : ""}
         </span>
-        <span className={rule.severity === "hard" ? "text-red-400/80" : "text-ink-500"}>
+        <span className={rule.severity === "hard" ? "text-red-600/80 dark:text-red-400/80" : "text-ink-500"}>
           {rule.severity}
         </span>
       </div>
@@ -63,8 +97,10 @@ export function ConstraintsPanel() {
       </Btn>
 
       {error && (
-        <div className="mt-2 border border-red-800 bg-red-950/50 p-1.5 text-2xs text-red-300">{error}</div>
+        <div className="mt-2 border border-red-300 bg-red-50 p-1.5 text-2xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">{error}</div>
       )}
+
+      {constraints?.allowedBasis && <BasisChip basis={constraints.allowedBasis} />}
 
       {constraints && (
         <div className="mt-2 space-y-1 font-mono text-2xs text-ink-300">
@@ -78,7 +114,7 @@ export function ConstraintsPanel() {
           </div>
           <div className="flex justify-between">
             <span className="text-ink-400">site boundary</span>
-            <span className={constraints.siteBoundarySource === "extents_fallback" ? "text-amber-400" : ""}>
+            <span className={constraints.siteBoundarySource === "extents_fallback" ? "text-amber-600 dark:text-amber-400" : ""}>
               {constraints.siteBoundarySource}
             </span>
           </div>

@@ -7,7 +7,7 @@ import { ConstraintsPanel } from "./components/panels/ConstraintsPanel";
 import { GeneratePanel } from "./components/panels/GeneratePanel";
 import { IterationsPanel } from "./components/panels/IterationsPanel";
 import { LayersPanel } from "./components/panels/LayersPanel";
-import { loadCapabilities, loadStaticData } from "./state/actions";
+import { loadCapabilities, loadProjects, loadStaticData } from "./state/actions";
 import { useApp } from "./state/store";
 import { ViewerCanvas } from "./viewer/ViewerCanvas";
 
@@ -17,6 +17,7 @@ export default function App() {
   useEffect(() => {
     void loadCapabilities();
     void loadStaticData();
+    void loadProjects();
   }, []);
 
   return (

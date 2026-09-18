@@ -1,22 +1,23 @@
 /** @type {import('tailwindcss').Config} */
+
+/**
+ * The `ink` scale is a semantic neutral ramp driven by CSS variables
+ * (see index.css): ink-950 = app background … ink-100 = primary text.
+ * Light theme is the default; `.dark` on <html> flips the ramp.
+ * Colored accents (emerald/amber/red/sky) use explicit `dark:` variants.
+ */
+const ink = {};
+for (const step of [100, 200, 300, 400, 500, 600, 700, 800, 850, 900, 950]) {
+  ink[step] = `rgb(var(--ink-${step}) / <alpha-value>)`;
+}
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        ink: {
-          950: "#0b0f14",
-          900: "#0f141b",
-          850: "#131a22",
-          800: "#161e28",
-          700: "#1c2531",
-          600: "#26303c",
-          500: "#3d4654",
-          400: "#5b6675",
-          300: "#8b95a5",
-          200: "#b6bfcc",
-          100: "#dde3ec",
-        },
+        ink,
         accent: "#22c55e",
       },
       fontFamily: {

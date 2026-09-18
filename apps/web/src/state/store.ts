@@ -2,8 +2,10 @@ import { useSyncExternalStore } from "react";
 import type {
   Capabilities, ChunkInfo, ConstraintsResponse, ExclusionZone, Explanation,
   IterationDetail, IterationSummary, Placement, PipelineState, ProjectDocument,
-  RegulatoryRule, RunStatus, SpeciesInfo,
+  ProjectListItem, RegulatoryRule, RunStatus, SpeciesInfo,
 } from "../api/types";
+
+export type ViewMode = "2d" | "3d";
 
 export type Selection =
   | { type: "placement"; placement: Placement }
@@ -26,6 +28,14 @@ export interface AppState {
   document: ProjectDocument | null;
   uploading: boolean;
   uploadError: { code: string | null; message: string } | null;
+
+  /** Shared project list (no auth — all projects are common). */
+  projects: ProjectListItem[] | null;
+  projectsError: string | null;
+  /** Project id currently being opened from the list. */
+  projectLoadingId: string | null;
+
+  viewMode: ViewMode;
 
   layerVisibility: Record<string, boolean>;
   overlays: OverlayState;
@@ -73,6 +83,10 @@ const initialState: AppState = {
   document: null,
   uploading: false,
   uploadError: null,
+  projects: null,
+  projectsError: null,
+  projectLoadingId: null,
+  viewMode: "2d",
   layerVisibility: {},
   overlays: initialOverlays,
   chunks: null,

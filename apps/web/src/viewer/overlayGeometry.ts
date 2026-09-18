@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import type { ChunkInfo, ConstraintsResponse, ExclusionZone, Placement } from "../api/types";
 import { mergeShapeGeometries, ringOutlinePositions, shapeWithHoles, disposeObject } from "./cadGeometry";
+import { makeShrubSymbolTexture, makeTreeSymbolTexture, SYMBOL_PLANE_HALF } from "./plantSymbols";
+import type { Theme } from "../theme";
 
 // Z stacking (ortho top-down): cad=0, allowed=0.1, zones=0.2, chunks=0.3,
 // rejected=0.35, placements=0.4..0.5, selection=0.6
@@ -11,23 +13,40 @@ export const Z = {
   rejected: 0.35,
   shrubs: 0.4,
   trees: 0.45,
-  rings: 0.5,
   selection: 0.6,
 } as const;
 
-const ZONE_COLOR = 0xef4444;
-const ALLOWED_COLOR = 0x22c55e;
-const TREE_COLOR = 0x16a34a;
-const TREE_RING_COLOR = 0x4ade80;
-const SHRUB_COLOR = 0x65a30d;
-const SHRUB_RING_COLOR = 0xa3e635;
+interface OverlayPalette {
+  zone: number;
+  zoneFillOpacity: number;
+  zoneLineOpacity: number;
+  allowed: number;
+  allowedFillOpacity: number;
+  allowedLineOpacity: number;
+  rejected: number;
+  chunkGrid: number;
+}
+
+const PALETTES: Record<Theme, OverlayPalette> = {
+  light: {
+    zone: 0xdc2626, zoneFillOpacity: 0.09, zoneLineOpacity: 0.4,
+    allowed: 0x16a34a, allowedFillOpacity: 0.1, allowedLineOpacity: 0.45,
+    rejected: 0x8a93a0, chunkGrid: 0xaab2bc,
+  },
+  dark: {
+    zone: 0xef4444, zoneFillOpacity: 0.12, zoneLineOpacity: 0.55,
+    allowed: 0x22c55e, allowedFillOpacity: 0.1, allowedLineOpacity: 0.5,
+    rejected: 0x64748b, chunkGrid: 0x475569,
+  },
+};
 
 /** One pickable mesh per exclusion zone (userData.zoneId set). */
-export function buildZonesGroup(zones: ExclusionZone[]): THREE.Group {
+export function buildZonesGroup(zones: ExclusionZone[], theme: Theme): THREE.Group {
+  const pal = PALETTES[theme];
   const group = new THREE.Group();
   group.name = "zones";
   const fillMat = new THREE.MeshBasicMaterial({
-    color: ZONE_COLOR, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide,
+    color: pal.zone, transparent: true, opacity: pal.zoneFillOpacity, depthWrite: false, side: THREE.DoubleSide,
   });
   const outlinePositions: number[] = [];
   for (const zone of zones) {
@@ -46,7 +65,7 @@ export function buildZonesGroup(zones: ExclusionZone[]): THREE.Group {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(outlinePositions, 3));
     const line = new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: ZONE_COLOR, transparent: true, opacity: 0.55 }),
+      new THREE.LineBasicMaterial({ color: pal.zone, transparent: true, opacity: pal.zoneLineOpacity }),
     );
     line.frustumCulled = false;
     line.raycast = () => {}; // outline not pickable
@@ -55,7 +74,8 @@ export function buildZonesGroup(zones: ExclusionZone[]): THREE.Group {
   return group;
 }
 
-export function buildAllowedGroup(constraints: ConstraintsResponse): THREE.Group {
+export function buildAllowedGroup(constraints: ConstraintsResponse, theme: Theme): THREE.Group {
+  const pal = PALETTES[theme];
   const group = new THREE.Group();
   group.name = "allowed";
   const shapes: THREE.Shape[] = [];
@@ -69,7 +89,7 @@ export function buildAllowedGroup(constraints: ConstraintsResponse): THREE.Group
     const mesh = new THREE.Mesh(
       mergeShapeGeometries(shapes, Z.allowed),
       new THREE.MeshBasicMaterial({
-        color: ALLOWED_COLOR, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide,
+        color: pal.allowed, transparent: true, opacity: pal.allowedFillOpacity, depthWrite: false, side: THREE.DoubleSide,
       }),
     );
     mesh.frustumCulled = false;
@@ -79,7 +99,7 @@ export function buildAllowedGroup(constraints: ConstraintsResponse): THREE.Group
     geo.setAttribute("position", new THREE.Float32BufferAttribute(outline, 3));
     const line = new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: ALLOWED_COLOR, transparent: true, opacity: 0.5 }),
+      new THREE.LineBasicMaterial({ color: pal.allowed, transparent: true, opacity: pal.allowedLineOpacity }),
     );
     line.frustumCulled = false;
     group.add(line);
@@ -93,58 +113,52 @@ export interface PlacementsBuild {
   pickMeshes: { mesh: THREE.InstancedMesh; placements: Placement[] }[];
 }
 
-/** Crown circles as InstancedMesh (fill + brighter ring), split TREE/SHRUB. */
-export function buildPlacementsGroup(placements: Placement[]): PlacementsBuild {
+/**
+ * CAD-style plant glyphs: canvas textures on instanced planes, scaled to
+ * crownRadiusM per instance. Trees = scalloped-crown symbol, shrubs = double
+ * circle. instanceId raycast picking preserved (one InstancedMesh per kind).
+ */
+export function buildPlacementsGroup(placements: Placement[], theme: Theme): PlacementsBuild {
   const group = new THREE.Group();
   group.name = "placements";
   const trees = placements.filter((p) => p.kind === "TREE");
   const shrubs = placements.filter((p) => p.kind !== "TREE");
   const pickMeshes: PlacementsBuild["pickMeshes"] = [];
 
-  const make = (
-    list: Placement[], fill: number, ring: number, zFill: number, name: string,
-  ) => {
-    if (list.length === 0) return;
+  const make = (list: Placement[], tex: THREE.CanvasTexture, z: number, name: string) => {
+    if (list.length === 0) {
+      tex.dispose();
+      return;
+    }
     const sub = new THREE.Group();
     sub.name = name;
-    const circleGeo = new THREE.CircleGeometry(1, 28);
-    const fillMesh = new THREE.InstancedMesh(
-      circleGeo,
-      new THREE.MeshBasicMaterial({ color: fill, transparent: true, opacity: 0.35, depthWrite: false }),
-      list.length,
-    );
-    const ringGeo = new THREE.RingGeometry(0.92, 1, 28);
-    const ringMesh = new THREE.InstancedMesh(
-      ringGeo,
-      new THREE.MeshBasicMaterial({ color: ring, transparent: true, opacity: 0.9, depthWrite: false }),
-      list.length,
-    );
-    ringMesh.raycast = () => {}; // pick via fill only
+    const half = SYMBOL_PLANE_HALF;
+    const geo = new THREE.PlaneGeometry(half * 2, half * 2);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, alphaTest: 0.02, depthWrite: false,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
     const m = new THREE.Matrix4();
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
       const r = Math.max(p.crownRadiusM, 0.15);
       m.makeScale(r, r, 1);
-      m.setPosition(p.position[0], p.position[1], zFill);
-      fillMesh.setMatrixAt(i, m);
-      m.setPosition(p.position[0], p.position[1], Z.rings);
-      ringMesh.setMatrixAt(i, m);
+      m.setPosition(p.position[0], p.position[1], z);
+      mesh.setMatrixAt(i, m);
     }
-    fillMesh.instanceMatrix.needsUpdate = true;
-    ringMesh.instanceMatrix.needsUpdate = true;
-    fillMesh.frustumCulled = false;
-    ringMesh.frustumCulled = false;
-    sub.add(fillMesh, ringMesh);
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.frustumCulled = false;
+    sub.add(mesh);
     group.add(sub);
-    pickMeshes.push({ mesh: fillMesh, placements: list });
+    pickMeshes.push({ mesh, placements: list });
   };
 
-  make(trees, TREE_COLOR, TREE_RING_COLOR, Z.trees, "trees");
-  make(shrubs, SHRUB_COLOR, SHRUB_RING_COLOR, Z.shrubs, "shrubs");
+  make(trees, makeTreeSymbolTexture(theme), Z.trees, "trees");
+  make(shrubs, makeShrubSymbolTexture(theme), Z.shrubs, "shrubs");
   return { group, pickMeshes };
 }
 
-export function buildRejectedGroup(candidates: [number, number][]): THREE.Group {
+export function buildRejectedGroup(candidates: [number, number][], theme: Theme): THREE.Group {
   const group = new THREE.Group();
   group.name = "rejected";
   if (candidates.length > 0) {
@@ -155,7 +169,7 @@ export function buildRejectedGroup(candidates: [number, number][]): THREE.Group 
     const pts = new THREE.Points(
       geo,
       new THREE.PointsMaterial({
-        color: 0x64748b, size: 3, sizeAttenuation: false, transparent: true, opacity: 0.4,
+        color: PALETTES[theme].rejected, size: 3, sizeAttenuation: false, transparent: true, opacity: 0.4,
       }),
     );
     pts.frustumCulled = false;
@@ -164,7 +178,7 @@ export function buildRejectedGroup(candidates: [number, number][]): THREE.Group 
   return group;
 }
 
-export function buildChunkGridGroup(chunks: ChunkInfo[]): THREE.Group {
+export function buildChunkGridGroup(chunks: ChunkInfo[], theme: Theme): THREE.Group {
   const group = new THREE.Group();
   group.name = "chunks";
   const positions: number[] = [];
@@ -182,7 +196,7 @@ export function buildChunkGridGroup(chunks: ChunkInfo[]): THREE.Group {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     const line = new THREE.LineSegments(
       geo,
-      new THREE.LineBasicMaterial({ color: 0x475569, transparent: true, opacity: 0.5 }),
+      new THREE.LineBasicMaterial({ color: PALETTES[theme].chunkGrid, transparent: true, opacity: 0.5 }),
     );
     line.frustumCulled = false;
     group.add(line);

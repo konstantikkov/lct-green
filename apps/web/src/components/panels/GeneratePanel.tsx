@@ -28,15 +28,15 @@ function StageChecklist() {
       {run.stages.map((st, i) => (
         <div key={i} className="flex items-center gap-1.5 text-2xs">
           <span className="w-3.5 text-center">
-            {st.status === "done" && <span className="text-emerald-400">✓</span>}
+            {st.status === "done" && <span className="text-emerald-600 dark:text-emerald-400">✓</span>}
             {st.status === "active" && <Spinner className="h-2.5 w-2.5" />}
-            {st.status === "error" && <span className="text-red-400">✕</span>}
+            {st.status === "error" && <span className="text-red-600 dark:text-red-400">✕</span>}
             {st.status === "pending" && <span className="text-ink-600">·</span>}
           </span>
           <span className={
             st.status === "active" ? "text-ink-100"
             : st.status === "done" ? "text-ink-300"
-            : st.status === "error" ? "text-red-300"
+            : st.status === "error" ? "text-red-700 dark:text-red-300"
             : "text-ink-500"
           }>
             {STAGE_LABELS[st.stage] ?? st.stage}
@@ -110,7 +110,7 @@ export function GeneratePanel() {
       {!species && !speciesError && (
         <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> loading species…</div>
       )}
-      {speciesError && <div className="text-2xs text-red-400">species: {speciesError}</div>}
+      {speciesError && <div className="text-2xs text-red-600 dark:text-red-400">species: {speciesError}</div>}
       {species && (
         <div className="max-h-40 space-y-0.5 overflow-y-auto pr-1">
           {species.map((sp) => (
@@ -124,13 +124,13 @@ export function GeneratePanel() {
                 onChange={() => toggleSpecies(sp.id)}
                 className="h-3 w-3 accent-emerald-600"
               />
-              <span className={sp.kind === "TREE" ? "text-emerald-400" : "text-lime-400"}>
+              <span className={sp.kind === "TREE" ? "text-emerald-600 dark:text-emerald-400" : "text-lime-600 dark:text-lime-400"}>
                 {sp.kind === "TREE" ? "◉" : "◎"}
               </span>
               <span className="min-w-0 flex-1 truncate" title={sp.displayNameRu}>{sp.displayName}</span>
               <span className="font-mono text-2xs text-ink-500">r{sp.parameters.crownRadiusM}</span>
               {sp.regulatoryStatus === "unknown" && (
-                <span className="text-2xs text-amber-400" title="Regulatory status unknown">?</span>
+                <span className="text-2xs text-amber-600 dark:text-amber-400" title="Regulatory status unknown">?</span>
               )}
             </label>
           ))}
@@ -188,7 +188,7 @@ export function GeneratePanel() {
       </Btn>
 
       {runError && (
-        <div className="mt-2 border border-red-800 bg-red-950/50 p-1.5 text-2xs text-red-300">{runError}</div>
+        <div className="mt-2 border border-red-300 bg-red-50 p-1.5 text-2xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">{runError}</div>
       )}
       <StageChecklist />
     </Section>

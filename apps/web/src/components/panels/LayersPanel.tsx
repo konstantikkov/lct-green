@@ -31,7 +31,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
         title="Toggle visibility"
       />
       <span
-        className="h-2.5 w-2.5 shrink-0 rounded-[2px] border border-black/40"
+        className="h-2.5 w-2.5 shrink-0 rounded-[2px] border border-black/20 dark:border-black/40"
         style={{ background: CATEGORY_COLORS[c.category] ?? layer.color }}
       />
       <span className="min-w-0 flex-1 truncate text-xs text-ink-200" title={layer.name}>
@@ -39,7 +39,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
       </span>
       <span className="shrink-0 font-mono text-2xs text-ink-500">{layer.entityCount}</span>
       {c.requiresReview && (
-        <span className="shrink-0 text-2xs text-amber-400" title="Classification requires review">⚠</span>
+        <span className="shrink-0 text-2xs text-amber-600 dark:text-amber-400" title="Classification requires review">⚠</span>
       )}
       <Dropdown
         open={menuOpen}
@@ -58,7 +58,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
           <button
             key={cat}
             className={`flex w-full items-center gap-2 px-2 py-1 text-left text-2xs hover:bg-ink-700 ${
-              cat === c.category ? "text-emerald-300" : "text-ink-200"
+              cat === c.category ? "text-emerald-700 dark:text-emerald-300" : "text-ink-200"
             }`}
             onClick={() => {
               setMenuOpen(false);

@@ -2,6 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Semantic neutral ramp (R G B triplets consumed by tailwind.config.js).
+   ink-950 = app background … ink-100 = primary text. */
+:root {
+  --ink-950: 242 243 245;
+  --ink-900: 255 255 255;
+  --ink-850: 248 249 250;
+  --ink-800: 241 243 245;
+  --ink-700: 232 235 238;
+  --ink-600: 224 227 232;
+  --ink-500: 153 161 172;
+  --ink-400: 106 116 130;
+  --ink-300: 78 87 99;
+  --ink-200: 52 60 71;
+  --ink-100: 22 27 34;
+  --scrollbar-thumb: #d3d7dd;
+  --scrollbar-thumb-hover: #b9bfc8;
+  color-scheme: light;
+}
+
+.dark {
+  --ink-950: 11 15 20;
+  --ink-900: 15 20 27;
+  --ink-850: 19 26 34;
+  --ink-800: 22 30 40;
+  --ink-700: 28 37 49;
+  --ink-600: 38 48 60;
+  --ink-500: 61 70 84;
+  --ink-400: 91 102 117;
+  --ink-300: 139 149 165;
+  --ink-200: 182 191 204;
+  --ink-100: 221 227 236;
+  --scrollbar-thumb: #26303c;
+  --scrollbar-thumb-hover: #3d4654;
+  color-scheme: dark;
+}
+
 html, body, #root {
   height: 100%;
   overflow: hidden;
@@ -19,13 +55,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26303c;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d4654;
-}
-
-select, input {
-  color-scheme: dark;
+  background: var(--scrollbar-thumb-hover);
 }

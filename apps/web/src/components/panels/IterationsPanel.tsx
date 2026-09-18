@@ -12,7 +12,7 @@ function JudgeDetails({ it }: { it: IterationSummary }) {
     <div className="space-y-1.5 border-l border-ink-600 py-1 pl-2 text-2xs">
       <p className="text-ink-300">{j.reasoningSummary}</p>
       {j.issues.length > 0 && (
-        <ul className="list-inside list-disc text-amber-300/90">
+        <ul className="list-inside list-disc text-amber-700/90 dark:text-amber-300/90">
           {j.issues.map((iss, i) => <li key={i}>{iss}</li>)}
         </ul>
       )}
@@ -26,7 +26,7 @@ function JudgeDetails({ it }: { it: IterationSummary }) {
                 <span className="text-ink-400">{param}</span>
                 <span className="text-ink-500">{old != null ? String(old) : "—"}</span>
                 <span className="text-ink-600">→</span>
-                <span className="text-emerald-300">{next != null ? String(next) : "—"}</span>
+                <span className="text-emerald-700 dark:text-emerald-300">{next != null ? String(next) : "—"}</span>
               </div>
             );
           })}
@@ -60,7 +60,7 @@ function IterationRow({ it }: { it: IterationSummary }) {
           {it.metrics.treeCount}t/{it.metrics.shrubCount}s
         </span>
         <span
-          className={`font-mono text-2xs ${it.metrics.hardViolations > 0 ? "text-red-400" : "text-ink-500"}`}
+          className={`font-mono text-2xs ${it.metrics.hardViolations > 0 ? "text-red-600 dark:text-red-400" : "text-ink-500"}`}
           title="hard violations"
         >
           {it.metrics.hardViolations}v
