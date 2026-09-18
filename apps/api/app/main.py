@@ -172,6 +172,10 @@ async def create_project(file: UploadFile = File(...)):
     rt = pipeline.put_runtime(pid, doc)
     pipeline.ensure_chunks(rt)
     store.save_json(pid, "document", doc.model_dump())
+    try:
+        store.save_file_blob(pid, "source_dxf", Path(dxf_path))
+    except Exception:
+        pass  # durability extra; disk copy remains authoritative
     store.update_project(pid, state="UPLOADED")
     return _document_response(pid, doc, "UPLOADED")
 
@@ -431,8 +435,12 @@ def export_dxf(pid: str):
                   for p in rec["placements"]]
     stem = Path(proj["file_name"]).stem
     out = config.OUTPUT_DIR / f"{stem}_greening.dxf"
+    src_dxf = Path(proj["dxf_path"])
+    if not src_dxf.exists():  # e.g. server disk replaced — restore from DB blob
+        if not store.restore_file_blob(pid, "source_dxf", src_dxf):
+            _err(409, "SOURCE_MISSING", "Original DXF unavailable for export.")
     dxf_export.export_greening_dxf(
-        Path(proj["dxf_path"]), out, placements,
+        src_dxf, out, placements,
         constraints.allowed_area, constraints.exclusion_zones,
         rt.doc.unitsScaleToMeters, rec["index"], registry.version)
     return FileResponse(out, filename=out.name, media_type="application/dxf")

@@ -14,6 +14,10 @@ RULES_FILE = Path(os.environ.get("GREENPLAN_RULES_FILE", REPO_ROOT / "rules" / "
 SPECIES_FILE = Path(os.environ.get("GREENPLAN_SPECIES_FILE", REPO_ROOT / "rules" / "species.yaml"))
 FIXTURES_DIR = REPO_ROOT / "fixtures"
 
+# Persistence: empty → SQLite + local JSON; postgresql://... → Postgres (Neon,
+# AWS managed DB, ...) with gzip blobs + local disk cache.
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
 # DWG conversion
 DWG_CONVERTER = os.environ.get("DWG_CONVERTER", "auto")  # auto | oda | libredwg | none
 ODA_FILE_CONVERTER_PATH = os.environ.get("ODA_FILE_CONVERTER_PATH", "")
