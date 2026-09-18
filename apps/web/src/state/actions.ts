@@ -1,9 +1,32 @@
 import { api, ApiError, watchRun } from "../api/client";
 import type { Category, GenerateRequest, PipelineState, ProjectDocument } from "../api/types";
-import { getState, setState, type Selection, type ViewMode } from "./store";
+import { getState, setState, type MobileTab, type Selection, type SheetSnap, type ViewMode } from "./store";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** Matches Tailwind's `md` breakpoint — the bottom sheet exists below it. */
+const mobileMq = typeof window !== "undefined" && "matchMedia" in window
+  ? window.matchMedia("(max-width: 767px)")
+  : null;
+
+export function isMobile(): boolean {
+  return mobileMq?.matches ?? false;
+}
+
+export function setMobileTab(tab: MobileTab) {
+  setState({ mobileTab: tab });
+}
+
+export function setSheetSnap(snap: SheetSnap) {
+  setState({ sheetSnap: snap });
+}
+
+/** Raises the sheet to at least `half` (never lowers from `full`). */
+function raiseSheet(tab: MobileTab) {
+  const snap = getState().sheetSnap;
+  setState({ mobileTab: tab, sheetSnap: snap === "full" ? "full" : "half" });
 }
 
 export async function loadCapabilities() {
@@ -193,6 +216,8 @@ export async function startGeneration(req: GenerateRequest) {
   const doc = getState().document;
   if (!doc) return;
   setState({ runActive: true, runError: null, run: null });
+  // On mobile, surface run progress in the sheet's Generate tab.
+  if (isMobile()) raiseSheet("generate");
   try {
     const { runId } = await api.generate(doc.projectId, req);
     const final = await watchRun(doc.projectId, runId, (run) => {
@@ -236,6 +261,8 @@ export async function loadIteration(iterationId: string) {
 
 export function select(selection: Selection) {
   setState({ selection, explanation: null, explanationError: null });
+  // On mobile, picking something in the viewer opens the Inspector tab.
+  if (selection && isMobile()) raiseSheet("inspector");
   if (selection?.type === "placement") void loadExplanation(selection.placement.id);
 }
 

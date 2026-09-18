@@ -135,14 +135,14 @@ export function ViewerCanvas() {
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
-      <canvas ref={canvasRef} className="block h-full w-full" />
+      <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <ModeToggle mode={viewMode} />
       <div
         ref={tooltipRef}
         style={{ display: "none" }}
         className="pointer-events-none absolute z-20 min-w-[160px] max-w-[260px] rounded-sm border border-ink-600 bg-ink-900/95 px-2 py-1.5 text-2xs text-ink-200 shadow-lg shadow-black/10 dark:shadow-black/40"
       />
-      <div className="pointer-events-none absolute bottom-2 right-2 font-mono text-2xs text-ink-500">
+      <div className="pointer-events-none absolute bottom-2 right-2 hidden font-mono text-2xs text-ink-500 md:block">
         {viewMode === "2d"
           ? "F — fit · drag — pan · wheel — zoom"
           : "F — fit · drag — orbit · right-drag — pan · wheel — dolly"}

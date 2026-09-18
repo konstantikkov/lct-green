@@ -28,7 +28,7 @@ export function StatusBar() {
         : "";
 
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-ink-600 bg-ink-900 px-3 font-mono text-2xs text-ink-300">
+    <footer className="hidden h-7 shrink-0 items-center gap-4 border-t border-ink-600 bg-ink-900 px-3 font-mono text-2xs text-ink-300 md:flex">
       <span ref={coordsRef} className="w-56">X — m   Y — m</span>
       <span ref={zoomRef} className="w-24 text-ink-400" />
       <span className="text-ink-400">

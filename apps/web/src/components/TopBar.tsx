@@ -87,6 +87,86 @@ function ProjectMenu() {
   );
 }
 
+/** Mobile-only "⋯" menu: exports + project switcher live here below `md`. */
+function MobileOverflowMenu() {
+  const doc = useApp((s) => s.document);
+  const projects = useApp((s) => s.projects);
+  const loadingId = useApp((s) => s.projectLoadingId);
+  const hasIterations = useApp((s) => s.iterations.length > 0);
+  const [open, setOpen] = useState(false);
+  const canExport = doc != null && hasIterations;
+
+  return (
+    <div className="md:hidden">
+      <Dropdown
+        open={open}
+        onOpenChange={setOpen}
+        trigger={
+          <button
+            className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
+            title="More actions"
+          >
+            ⋯
+          </button>
+        }
+      >
+        <button
+          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={!canExport}
+          onClick={() => {
+            setOpen(false);
+            if (doc) window.open(api.exportDxfUrl(doc.projectId), "_blank");
+          }}
+        >
+          Export DXF
+        </button>
+        <button
+          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={!canExport}
+          onClick={() => {
+            setOpen(false);
+            if (doc) window.open(api.exportReportUrl(doc.projectId), "_blank");
+          }}
+        >
+          Export report
+        </button>
+        <div className="my-1 border-t border-ink-600" />
+        <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Projects</div>
+        {(projects ?? []).map((p) => (
+          <button
+            key={p.id}
+            className={`flex w-full items-center gap-1.5 px-2 py-2 text-left text-xs hover:bg-ink-700 ${
+              doc && p.id === doc.projectId ? "text-emerald-700 dark:text-emerald-300" : "text-ink-200"
+            }`}
+            onClick={() => {
+              setOpen(false);
+              if (p.id !== doc?.projectId) void openProject(p.id);
+            }}
+          >
+            <span className="min-w-0 flex-1 truncate">{p.name}</span>
+            {loadingId === p.id && <Spinner className="h-2.5 w-2.5" />}
+            <span className="shrink-0 font-mono text-2xs text-ink-500">{p.state}</span>
+          </button>
+        ))}
+        {projects != null && projects.length === 0 && (
+          <div className="px-2 py-1 text-2xs text-ink-500">no saved projects</div>
+        )}
+        <div className="mt-1 border-t border-ink-600 pt-1">
+          <button
+            className="w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700"
+            onClick={() => {
+              setOpen(false);
+              newProject();
+            }}
+          >
+            + New project…
+          </button>
+        </div>
+      </Dropdown>
+    </div>
+  );
+}
+
 export function TopBar() {
   const doc = useApp((s) => s.document);
   const pipelineState = useApp((s) => s.pipelineState);
@@ -100,15 +180,21 @@ export function TopBar() {
         <span className="text-sm font-semibold tracking-tight text-ink-100">
           Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
         </span>
-        <span className="text-2xs uppercase tracking-widest text-ink-500">CAD greening</span>
+        <span className="hidden text-2xs uppercase tracking-widest text-ink-500 md:inline">CAD greening</span>
       </div>
 
       <div className="h-5 w-px bg-ink-600" />
 
-      <ProjectMenu />
+      {/* Desktop: full project switcher; mobile: just the truncated file name. */}
+      <div className="hidden min-w-0 md:block">
+        <ProjectMenu />
+      </div>
+      <span className="min-w-0 max-w-[34vw] truncate text-xs text-ink-100 md:hidden">
+        {doc ? doc.fileName : <span className="text-ink-500">no file loaded</span>}
+      </span>
 
       {doc && (
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div className="hidden min-w-0 items-center gap-2.5 md:flex">
           <span className="font-mono text-2xs text-ink-400">{doc.format}</span>
           <span className="font-mono text-2xs text-ink-400">{doc.cadVersion}</span>
           <span className="font-mono text-2xs text-ink-400">units: {doc.units}</span>
@@ -127,20 +213,24 @@ export function TopBar() {
         </Badge>
       )}
 
-      <Btn
-        disabled={!doc || !hasIterations}
-        onClick={() => doc && window.open(api.exportDxfUrl(doc.projectId), "_blank")}
-        title={hasIterations ? "Download DXF with generated plantings" : "Generate a plan first"}
-      >
-        Export DXF
-      </Btn>
-      <Btn
-        disabled={!doc || !hasIterations}
-        onClick={() => doc && window.open(api.exportReportUrl(doc.projectId), "_blank")}
-        title={hasIterations ? "Download JSON report" : "Generate a plan first"}
-      >
-        Export report
-      </Btn>
+      <div className="hidden items-center gap-3 md:flex">
+        <Btn
+          disabled={!doc || !hasIterations}
+          onClick={() => doc && window.open(api.exportDxfUrl(doc.projectId), "_blank")}
+          title={hasIterations ? "Download DXF with generated plantings" : "Generate a plan first"}
+        >
+          Export DXF
+        </Btn>
+        <Btn
+          disabled={!doc || !hasIterations}
+          onClick={() => doc && window.open(api.exportReportUrl(doc.projectId), "_blank")}
+          title={hasIterations ? "Download JSON report" : "Generate a plan first"}
+        >
+          Export report
+        </Btn>
+      </div>
+
+      <MobileOverflowMenu />
 
       <button
         className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"

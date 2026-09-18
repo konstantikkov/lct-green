@@ -7,6 +7,11 @@ import type {
 
 export type ViewMode = "2d" | "3d";
 
+/** Mobile bottom-sheet tab ids (< md only). */
+export type MobileTab = "layers" | "constraints" | "generate" | "iterations" | "inspector";
+/** Mobile bottom-sheet snap states (< md only). */
+export type SheetSnap = "peek" | "half" | "full";
+
 export type Selection =
   | { type: "placement"; placement: Placement }
   | { type: "zone"; zone: ExclusionZone }
@@ -65,6 +70,10 @@ export interface AppState {
 
   /** Overall pipeline chip in the top bar. */
   pipelineState: PipelineState | null;
+
+  /** Mobile-only UI (bottom sheet); inert on desktop. */
+  mobileTab: MobileTab;
+  sheetSnap: SheetSnap;
 }
 
 export const initialOverlays: OverlayState = {
@@ -108,6 +117,8 @@ const initialState: AppState = {
   explanationLoading: false,
   explanationError: null,
   pipelineState: null,
+  mobileTab: "layers",
+  sheetSnap: "peek",
 };
 
 let state: AppState = initialState;

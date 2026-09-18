@@ -36,7 +36,28 @@ function RecentProjects() {
       <div className="border-b border-ink-600 px-2 py-1.5 text-2xs font-semibold uppercase tracking-wider text-ink-400">
         Recent projects — shared
       </div>
-      <div className="max-h-56 overflow-y-auto">
+      {/* Mobile: tappable list with large touch targets. */}
+      <div className="max-h-72 overflow-y-auto md:hidden">
+        {projects.map((p) => (
+          <button
+            key={p.id}
+            className="flex w-full items-center gap-2 border-t border-ink-700/60 px-3 py-3 text-left first:border-t-0 active:bg-ink-800"
+            onClick={() => void openProject(p.id)}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs text-ink-100">{p.name}</div>
+              <div className="truncate font-mono text-2xs text-ink-400">
+                {p.fileName} · {formatDate(p.createdAt)}
+              </div>
+            </div>
+            {loadingId === p.id
+              ? <Spinner className="h-2.5 w-2.5 shrink-0" />
+              : <Badge tone={stateTone(p.state)}>{p.state}</Badge>}
+          </button>
+        ))}
+      </div>
+      {/* Desktop: dense table. */}
+      <div className="hidden max-h-56 overflow-y-auto md:block">
         <table className="w-full text-left">
           <thead>
             <tr className="text-2xs uppercase tracking-wider text-ink-500">
@@ -109,7 +130,8 @@ export function DropZone() {
           <div className="font-mono text-2xs uppercase tracking-widest text-ink-500">
             GreenPlan · site plan intake
           </div>
-          <div className="text-center text-lg text-ink-100">Drop DWG / DXF</div>
+          <div className="hidden text-center text-lg text-ink-100 md:block">Drop DWG / DXF</div>
+          <div className="text-center text-lg text-ink-100 md:hidden">Upload a site plan</div>
           <div className="text-center text-xs text-ink-400">
             The plan is parsed, layers are classified and normalized to meters.
           </div>
@@ -123,9 +145,20 @@ export function DropZone() {
               <Spinner /> Opening project…
             </div>
           ) : (
-            <Btn variant="primary" onClick={() => inputRef.current?.click()}>
-              Choose file…
-            </Btn>
+            <>
+              <div className="hidden md:block">
+                <Btn variant="primary" onClick={() => inputRef.current?.click()}>
+                  Choose file…
+                </Btn>
+              </div>
+              <Btn
+                variant="primary"
+                className="h-11 w-full max-w-xs text-sm md:hidden"
+                onClick={() => inputRef.current?.click()}
+              >
+                Choose DWG / DXF file
+              </Btn>
+            </>
           )}
           <input
             ref={inputRef}

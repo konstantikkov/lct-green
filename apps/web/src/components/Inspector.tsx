@@ -161,12 +161,31 @@ function ZoneInspector({ zone }: { zone: ExclusionZone }) {
   );
 }
 
+/** Selection details only — reused by the mobile bottom sheet's Inspector tab. */
+export function InspectorContent() {
+  const selection = useApp((s) => s.selection);
+  if (!selection) {
+    return (
+      <div className="p-3 text-xs text-ink-500">
+        Tap a tree or an exclusion zone in the viewer to inspect it.
+      </div>
+    );
+  }
+  return (
+    <div className="p-2">
+      {selection.type === "placement"
+        ? <PlacementInspector placement={selection.placement} />
+        : <ZoneInspector zone={selection.zone} />}
+    </div>
+  );
+}
+
 export function Inspector() {
   const selection = useApp((s) => s.selection);
   if (!selection) return null;
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900">
+    <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-600 px-2">
         <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Inspector</span>
         <button

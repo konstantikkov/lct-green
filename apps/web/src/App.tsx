@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { BottomSheet } from "./components/BottomSheet";
 import { DropZone } from "./components/DropZone";
 import { Inspector } from "./components/Inspector";
 import { StatusBar } from "./components/StatusBar";
@@ -25,19 +26,26 @@ export default function App() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         {doc && (
-          <aside className="flex w-[280px] shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900">
+          <aside className="hidden w-[280px] shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900 md:flex">
             <LayersPanel />
             <ConstraintsPanel />
             <GeneratePanel />
             <IterationsPanel />
           </aside>
         )}
-        <main className="min-w-0 flex-1 bg-ink-950">
+        <main
+          className={`min-w-0 flex-1 bg-ink-950 ${
+            // On mobile the fixed bottom sheet covers the bottom of the screen;
+            // pad the canvas so its visible area ends at the sheet's peek edge.
+            doc ? "pb-[calc(56px_+_env(safe-area-inset-bottom))] md:pb-0" : ""
+          }`}
+        >
           {doc ? <ViewerCanvas /> : <DropZone />}
         </main>
         <Inspector />
       </div>
       <StatusBar />
+      {doc && <BottomSheet />}
     </div>
   );
 }

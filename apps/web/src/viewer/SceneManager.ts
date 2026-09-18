@@ -108,6 +108,15 @@ export class SceneManager {
   private hoverPy = 0;
   private lastHoverKey: string | null = null;
 
+  // touch interaction (pointerType === "touch"; mouse path is untouched)
+  private touchPoints = new Map<number, { x: number; y: number }>();
+  private touchMode: "none" | "drag" | "pinch" = "none";
+  private tapCandidate = false;
+  private touchDownTime = 0;
+  private pinchDist = 1;
+  private pinchMidX = 0;
+  private pinchMidY = 0;
+
   constructor(canvas: HTMLCanvasElement, cb: SceneCallbacks, theme: Theme) {
     this.canvas = canvas;
     this.cb = cb;
@@ -127,6 +136,9 @@ export class SceneManager {
 
     this.camera3d = new THREE.PerspectiveCamera(50, 1, 0.5, 100000);
     this.camera3d.up.set(0, 0, 1);
+
+    // Pointer events handle panning/pinching themselves — never the browser.
+    canvas.style.touchAction = "none";
 
     this.scene.add(this.slotRoot);
     this.root3d.visible = false;
@@ -544,6 +556,10 @@ export class SceneManager {
     c.addEventListener("contextmenu", (e) => e.preventDefault());
 
     c.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") {
+        this.onTouchDown(e);
+        return;
+      }
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       this.dragging = true;
       this.dragButton = e.button;
@@ -555,6 +571,10 @@ export class SceneManager {
     });
 
     c.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "touch") {
+        this.onTouchMove(e);
+        return;
+      }
       const rect = c.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
@@ -609,7 +629,20 @@ export class SceneManager {
       if (!this.dragging) this.clearHover();
     });
 
+    c.addEventListener("pointercancel", (e) => {
+      if (e.pointerType === "touch") {
+        this.onTouchUp(e, true);
+      } else if (this.dragging) {
+        this.dragging = false;
+        if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+      }
+    });
+
     c.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "touch") {
+        this.onTouchUp(e, false);
+        return;
+      }
       if (!this.dragging) return;
       this.dragging = false;
       c.releasePointerCapture(e.pointerId);
@@ -643,6 +676,135 @@ export class SceneManager {
     }, { passive: false });
 
     window.addEventListener("keydown", this.onKeyDown);
+  }
+
+  // ---------- touch (pointerType === "touch") ----------
+  // 2D: one-finger drag = pan, pinch = zoom to midpoint, tap = pick.
+  // 3D: one-finger drag = orbit, pinch = dolly, two-finger drag = pan, tap = pick.
+  // No hover on touch — selection happens via tap only.
+
+  private onTouchDown(e: PointerEvent) {
+    this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    this.canvas.setPointerCapture(e.pointerId);
+    this.clearHover();
+    if (this.touchPoints.size === 1) {
+      this.touchMode = "drag";
+      this.tapCandidate = true;
+      this.touchDownTime = performance.now();
+      this.lastPx = this.downPx = e.clientX;
+      this.lastPy = this.downPy = e.clientY;
+    } else if (this.touchPoints.size === 2) {
+      this.touchMode = "pinch";
+      this.tapCandidate = false;
+      this.updatePinchBase();
+    } else {
+      this.tapCandidate = false;
+    }
+  }
+
+  /** Re-anchors pinch distance/midpoint from the current two touch points. */
+  private updatePinchBase() {
+    const pts = [...this.touchPoints.values()];
+    if (pts.length < 2) return;
+    this.pinchDist = Math.max(Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), 1);
+    this.pinchMidX = (pts[0].x + pts[1].x) / 2;
+    this.pinchMidY = (pts[0].y + pts[1].y) / 2;
+  }
+
+  private onTouchMove(e: PointerEvent) {
+    const pt = this.touchPoints.get(e.pointerId);
+    if (!pt) return;
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+
+    if (this.touchMode === "pinch" && this.touchPoints.size >= 2) {
+      const pts = [...this.touchPoints.values()];
+      const dist = Math.max(Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), 1);
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      const scale = this.pinchDist / dist; // > 1 → zoom out
+      const rect = this.canvas.getBoundingClientRect();
+      if (this.mode === "2d") {
+        // The world point under the previous midpoint stays under the current
+        // midpoint — this yields pinch-zoom + two-finger pan in one formula.
+        const [wx, wy] = this.screenToWorld(this.pinchMidX - rect.left, this.pinchMidY - rect.top);
+        this.halfH = Math.min(Math.max(this.halfH * scale, 0.05), 1e6);
+        const mPerPx = (2 * this.halfH) / this.height;
+        const px = midX - rect.left;
+        const py = midY - rect.top;
+        this.cx = wx - (px - this.width / 2) * mPerPx;
+        this.cy = wy + (py - this.height / 2) * mPerPx;
+        this.updateCamera();
+      } else {
+        // dolly + two-finger pan on the ground plane
+        this.orbit.dist = Math.min(Math.max(this.orbit.dist * scale, 2), 1e6);
+        const dx = midX - this.pinchMidX;
+        const dy = midY - this.pinchMidY;
+        const { az, dist } = this.orbit;
+        const s = dist * 0.0011;
+        const fx = -Math.cos(az), fy = -Math.sin(az);
+        const rx = fy, ry = -fx;
+        this.orbit.tx += (-rx * dx + fx * dy) * s;
+        this.orbit.ty += (-ry * dx + fy * dy) * s;
+        this.update3dCamera();
+      }
+      this.pinchDist = dist;
+      this.pinchMidX = midX;
+      this.pinchMidY = midY;
+      return;
+    }
+
+    if (this.touchMode === "drag") {
+      // 8px dead zone distinguishes tap (pick) from drag.
+      if (this.tapCandidate &&
+          Math.hypot(e.clientX - this.downPx, e.clientY - this.downPy) >= 8) {
+        this.tapCandidate = false;
+      }
+      if (!this.tapCandidate) {
+        const dx = e.clientX - this.lastPx;
+        const dy = e.clientY - this.lastPy;
+        if (this.mode === "2d") {
+          const mPerPx = (2 * this.halfH) / this.height;
+          this.cx -= dx * mPerPx;
+          this.cy += dy * mPerPx;
+          this.updateCamera();
+        } else {
+          this.orbit.az -= dx * 0.005;
+          this.orbit.polar = Math.min(Math.max(this.orbit.polar - dy * 0.005, 0.08), 1.5);
+          this.update3dCamera();
+        }
+      }
+      this.lastPx = e.clientX;
+      this.lastPy = e.clientY;
+    }
+  }
+
+  private onTouchUp(e: PointerEvent, cancelled: boolean) {
+    if (!this.touchPoints.delete(e.pointerId)) return;
+    if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+
+    if (this.touchPoints.size === 0) {
+      const isTap = !cancelled && this.touchMode === "drag" && this.tapCandidate &&
+        performance.now() - this.touchDownTime < 250;
+      this.touchMode = "none";
+      this.tapCandidate = false;
+      if (isTap) {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
+        if (hit?.kind === "placement") this.cb.onPickPlacement(hit.placement);
+        else if (hit?.kind === "zone") this.cb.onPickZone(hit.zone.id);
+        else this.cb.onPickNothing();
+      }
+    } else if (this.touchPoints.size === 1) {
+      // pinch ended with one finger still down — continue as a plain drag
+      this.touchMode = "drag";
+      this.tapCandidate = false;
+      const rest = [...this.touchPoints.values()][0];
+      this.lastPx = rest.x;
+      this.lastPy = rest.y;
+    } else {
+      this.updatePinchBase();
+    }
   }
 
   private onKeyDown = (e: KeyboardEvent) => {

@@ -99,6 +99,9 @@ server {
     root /opt/greenplan/web;
     index index.html;
 
+    location = /manifest.webmanifest {
+        default_type application/manifest+json;
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
         proxy_buffering off;
