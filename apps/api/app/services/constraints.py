@@ -56,6 +56,8 @@ class ConstraintResult:
     allowed_area: BaseGeometry
     inactive_rules: list[dict]
     repair_log: list[str]
+    planting_domain: BaseGeometry | None = None
+    allowed_basis: str = "site_minus_exclusions"
 
     def to_api(self) -> dict:
         site = polygon_to_rings(self.site_boundary) if self.site_boundary else []
@@ -64,11 +66,56 @@ class ConstraintResult:
         return {
             "siteBoundary": [r["shell"] for r in site] or None,
             "siteBoundarySource": self.site_boundary_source,
+            "allowedBasis": self.allowed_basis,
             "exclusionZones": [z.to_api() for z in self.exclusion_zones],
             "allowedArea": {"polygons": allowed, "areaM2": round(area, 1)},
             "repairLog": self.repair_log,
             "inactiveRules": self.inactive_rules,
         }
+
+
+def detect_planting_domain(doc: CadDocument, idx: GeometryIndex, site: Polygon | None,
+                           site_src: str, repair_log: list[str]):
+    """Planting domain and its provenance.
+
+    On drawings with a real (closed) site boundary the domain is that site.
+    Topographic maps often have NO closed areas at all (boundaries drawn as
+    exploded dash linetypes) — planting across the full extents is nonsense
+    (trees end up on roads). There we derive vegetation zones from evidence:
+    the union of buffers around existing-vegetation symbols, morphologically
+    tightened to drop lone outliers. Basis is always reported to the UI.
+    """
+    import re as _re
+    if site_src == "detected":
+        return site, "site_boundary"
+
+    evidence = []
+    for cat in ("EXISTING_TREE", "EXISTING_SHRUB", "GREEN_AREA"):
+        for eid in idx.by_category.get(cat, []):
+            e = idx.entity_meta[eid]
+            # boundary linetypes ('граница растительности') are lines, not vegetation
+            if _re.search(r"границ", e.layer, _re.IGNORECASE):
+                continue
+            evidence.append(idx.by_entity[eid].centroid)
+
+    if len(evidence) < 30:
+        repair_log.append(
+            "planting domain: no site boundary and little vegetation evidence — "
+            "using drawing extents (review layer classification!)")
+        return site, "extents_fallback"
+
+    r = 12.0
+    mask = unary_union([p.buffer(r, resolution=6) for p in evidence])
+    mask = mask.buffer(-r * 0.45).buffer(r * 0.35).simplify(0.5)
+    if site is not None:
+        mask = mask.intersection(site)
+    if not mask.is_valid:
+        mask = mask.buffer(0)
+        repair_log.append("repaired vegetation-evidence mask (buffer(0))")
+    repair_log.append(
+        f"planting domain derived from {len(evidence)} vegetation-evidence symbols "
+        f"(existing trees/shrubs/green glyphs), r={r} m")
+    return mask, "vegetation_evidence"
 
 
 def _obstacle_categories_present(rule_obstacles: list[str], idx: GeometryIndex) -> list[str]:
@@ -151,7 +198,8 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                              "reason": "rule disabled" if not rule.enabled else
                                        "missing_source_data — assumption disabled"})
 
-    # allowed area = site − object footprints − exclusion buffers
+    # allowed area = planting domain − object footprints − exclusion buffers
+    domain, basis = detect_planting_domain(doc, idx, site, site_src, repair_log)
     subtract: list[BaseGeometry] = []
     for cat in FOOTPRINT_CATEGORIES:
         for eid in idx.by_category.get(cat, []):
@@ -162,13 +210,13 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                 subtract.append(g.buffer(0.3))  # linear footprint gets nominal width
     subtract.extend(z.geometry for z in zones)
 
-    allowed: BaseGeometry = site if site else Polygon()
-    if subtract and site:
+    allowed: BaseGeometry = domain if domain is not None else Polygon()
+    if subtract and not allowed.is_empty:
         union = unary_union(subtract)
         if not union.is_valid:
             union = union.buffer(0)
             repair_log.append("repaired exclusion union (buffer(0))")
-        allowed = site.difference(union)
+        allowed = allowed.difference(union)
         if not allowed.is_valid:
             allowed = allowed.buffer(0)
             repair_log.append("repaired allowed area (buffer(0))")
@@ -182,4 +230,5 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
         site_boundary=site, site_boundary_source=site_src,
         exclusion_zones=zones, allowed_area=allowed,
         inactive_rules=inactive, repair_log=repair_log,
+        planting_domain=domain, allowed_basis=basis,
     )

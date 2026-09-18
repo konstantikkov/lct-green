@@ -130,6 +130,12 @@ interface RegulatoryRule {
 interface ConstraintsResponse {
   siteBoundary: number[][] | null;       // array of rings, each flat [x,y,...]
   siteBoundarySource: "detected" | "extents_fallback";
+  // how the planting domain was derived:
+  //   site_boundary        — closed site boundary found on a boundary layer
+  //   vegetation_evidence  — topo map with no closed areas: domain = zones around
+  //                          existing vegetation symbols (infill planting)
+  //   extents_fallback     — nothing better found; review layer classification
+  allowedBasis: "site_boundary" | "vegetation_evidence" | "extents_fallback";
   exclusionZones: ExclusionZone[];
   allowedArea: { polygons: PolygonWithHoles[]; areaM2: number };
   repairLog: string[];

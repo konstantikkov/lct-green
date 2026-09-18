@@ -56,6 +56,14 @@ if [ ! -x /opt/greenplan/libredwg/bin/dwg2dxf ]; then
     cd /opt/greenplan
 fi
 
+# runtime env (survives redeploys; edit /opt/greenplan/api.env to change LLM etc.)
+if [ ! -f /opt/greenplan/api.env ]; then
+cat > /opt/greenplan/api.env <<'ENV'
+LOCAL_LLM_ENABLED=false
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8080
+ENV
+fi
+
 # systemd service
 sudo tee /etc/systemd/system/greenplan-api.service > /dev/null <<'UNIT'
 [Unit]
@@ -66,11 +74,11 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/opt/greenplan/apps/api
 Environment=LIBREDWG_DWG2DXF_PATH=/opt/greenplan/libredwg/bin/dwg2dxf
-Environment=LOCAL_LLM_ENABLED=false
 Environment=GREENPLAN_DATA_DIR=/opt/greenplan/data
 Environment=GREENPLAN_OUTPUT_DIR=/opt/greenplan/outputs
 Environment=GREENPLAN_RULES_FILE=/opt/greenplan/rules/regulations.yaml
 Environment=GREENPLAN_SPECIES_FILE=/opt/greenplan/rules/species.yaml
+EnvironmentFile=-/opt/greenplan/api.env
 ExecStart=/opt/greenplan/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 

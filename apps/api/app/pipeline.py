@@ -239,7 +239,11 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             from shapely.prepared import prep
             allowed_prepared = prep(allowed) if not allowed.is_empty else None
             allowed_m2 = sum(p.area for p in allowed_polys)
-            site_domain = constraints.site_boundary or allowed
+            # sample slightly beyond the allowed area (into exclusion buffers) so
+            # rejected candidates are real and visible, but never the whole map
+            base_domain = constraints.planting_domain if constraints.planting_domain is not None else allowed
+            site_domain = base_domain.buffer(6.0).intersection(
+                constraints.site_boundary) if constraints.site_boundary is not None else base_domain.buffer(6.0)
 
             for sp in selection:
                 kind = sp["kind"]
