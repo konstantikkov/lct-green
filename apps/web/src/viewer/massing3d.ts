@@ -876,8 +876,48 @@ export function buildMassing3D(
     detailGroup.add(mesh);
   }
 
-  // Lanterns: instanced pole + head; a soft additive light pool at night.
+  // A physical lantern is usually drawn as several exploded CAD entities
+  // (pole segments, arcs, the head circle) — one anchor per entity would plant
+  // a bundle of poles per lamp. Cluster anchors within 2 m into single lamps
+  // (deterministic: sorted sweep + spatial hash, first anchor wins).
+  const clusteredLamps: [number, number][] = [];
   if (lamps.length > 0) {
+    const MERGE_R2 = 4.0; // (2 m)²
+    const CELL = 2.0;
+    const grid = new Map<string, number[]>();
+    const sorted = [...lamps].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (const [x, y] of sorted) {
+      const cx = Math.floor(x / CELL);
+      const cy = Math.floor(y / CELL);
+      let merged = false;
+      for (let i = cx - 1; i <= cx + 1 && !merged; i++) {
+        for (let j = cy - 1; j <= cy + 1 && !merged; j++) {
+          const bucket = grid.get(i + ":" + j);
+          if (!bucket) continue;
+          for (const k of bucket) {
+            const p = clusteredLamps[k];
+            const dx = p[0] - x;
+            const dy = p[1] - y;
+            if (dx * dx + dy * dy < MERGE_R2) {
+              merged = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!merged) {
+        const key = cx + ":" + cy;
+        let bucket = grid.get(key);
+        if (!bucket) grid.set(key, (bucket = []));
+        bucket.push(clusteredLamps.length);
+        clusteredLamps.push([x, y]);
+      }
+    }
+  }
+
+  // Lanterns: instanced pole + head; a soft additive light pool at night.
+  if (clusteredLamps.length > 0) {
+    const lamps = clusteredLamps;
     const lampCount = Math.min(lamps.length, LANTERN_INSTANCE_CAP);
     if (lampCount < lamps.length) {
       console.info(`[massing3d] lanterns capped at ${lampCount} of ${lamps.length} instances`);
