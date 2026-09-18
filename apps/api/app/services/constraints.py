@@ -167,7 +167,11 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                 if not eids:
                     continue
                 if len(eids) > _MERGE_THRESHOLD:
-                    merged = unary_union([idx.by_entity[eid] for eid in eids]).buffer(dist)
+                    # buffer per-entity at low arc resolution, then union:
+                    # buffering an already-unioned complex geometry explodes
+                    # memory on drawings with thousands of vegetation symbols
+                    merged = unary_union([idx.by_entity[eid].buffer(dist, resolution=4)
+                                          for eid in eids]).simplify(0.05)
                     zone_seq += 1
                     zones.append(ExclusionZone(
                         id=f"excl_{zone_seq}", ruleId=rule.id,
@@ -182,7 +186,7 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                             id=f"excl_{zone_seq}", ruleId=rule.id, generatedFrom=eid,
                             sourceLayer=idx.entity_meta[eid].layer, obstacleCategory=cat,
                             distanceM=dist, effectiveSource=rule.effective_source,
-                            geometry=g.buffer(dist), source=src))
+                            geometry=g.buffer(dist, resolution=6), source=src))
 
     # rules that never produced zones because they are inactive for other reasons
     for rule in registry.rules:
@@ -220,8 +224,8 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
         if not allowed.is_valid:
             allowed = allowed.buffer(0)
             repair_log.append("repaired allowed area (buffer(0))")
-    # drop slivers narrower than ~1 m
-    allowed = allowed.buffer(-0.5).buffer(0.5)
+    # drop slivers narrower than ~1 m (low-res buffers + simplify keep memory sane)
+    allowed = allowed.simplify(0.05).buffer(-0.5, resolution=4).buffer(0.5, resolution=4)
     if not allowed.is_valid:
         allowed = allowed.buffer(0)
         repair_log.append("repaired allowed area after sliver removal")

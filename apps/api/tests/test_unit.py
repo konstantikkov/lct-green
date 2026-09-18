@@ -228,3 +228,20 @@ def test_species_catalog():
     kinds = {s["kind"] for s in species}
     assert kinds == {"TREE", "SHRUB"}
     assert all(s["parameters"]["crownRadiusM"] > 0 for s in species)
+
+
+# ---- malformed DXF repair -----------------------------------------------------
+
+def test_dxf_sanitizer_joins_stray_lines(tmp_path):
+    """LibreDWG sometimes emits string values containing raw newlines; the
+    sanitizer must re-join them so the code/value alternation is restored."""
+    from app.services.dxf_parser import _sanitize_dxf
+    bad = tmp_path / "bad.dxf"
+    bad.write_bytes(b"0\nSECTION\n2\nHEADER\n9\n$STYLE\n3\nPDF\nISOCPEUR\n0\nENDSEC\n0\nEOF\n")
+    fixed = tmp_path / "fixed.dxf"
+    joined = _sanitize_dxf(bad, fixed)
+    assert joined == 1
+    lines = fixed.read_bytes().split(b"\n")
+    codes = lines[0::2]
+    assert all(c.strip().lstrip(b"-").isdigit() for c in codes if c.strip())
+    assert b"PDF ISOCPEUR" in fixed.read_bytes()

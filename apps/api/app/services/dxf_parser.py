@@ -137,9 +137,60 @@ def _iter_entities(msp) -> Iterator:
         yield e
 
 
+def _sanitize_dxf(src: Path, dst: Path) -> int:
+    """Repair DXF files whose string values contain raw newlines (seen in
+    LibreDWG output for some MTEXT/STYLE data). DXF is strictly alternating
+    code/value lines; a non-integer line in code position is a continuation
+    of the previous value — re-join it. Returns number of joined lines."""
+    data = src.read_bytes()
+    lines = data.split(b"\n")
+    out: list[bytes] = []
+    expect_code = True
+    fixes = 0
+    for ln in lines:
+        s = ln.strip()
+        if expect_code:
+            if not s:
+                continue  # stray blank line in code position (e.g. trailing newline)
+            try:
+                int(s)
+            except ValueError:
+                if out:
+                    out[-1] = out[-1].rstrip(b"\r") + b" " + ln
+                    fixes += 1
+                    continue
+            out.append(ln)
+            expect_code = False
+        else:
+            out.append(ln)
+            expect_code = True
+    dst.write_bytes(b"\n".join(out))
+    return fixes
+
+
+def _read_dxf(path: Path, log: list[str]):
+    from ezdxf.lldxf.const import DXFStructureError
+    try:
+        return ezdxf.readfile(str(path))
+    except DXFStructureError as first_err:
+        fixed = path.with_suffix(".repaired.dxf")
+        fixes = _sanitize_dxf(path, fixed)
+        log.append(f"DXF structure error ({str(first_err)[:120]}); "
+                   f"sanitized {fixes} malformed line(s) and retried")
+        try:
+            return ezdxf.readfile(str(fixed))
+        except DXFStructureError:
+            from ezdxf import recover
+            doc, auditor = recover.readfile(str(fixed))
+            log.append(f"loaded via ezdxf.recover ({len(auditor.errors)} issues fixed)")
+            return doc
+
+
 def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str = "DXF",
               conversion_log: list[str] | None = None) -> CadDocument:
-    doc = ezdxf.readfile(str(path))
+    _log = list(conversion_log or [])
+    conversion_log = _log
+    doc = _read_dxf(path, conversion_log)
     msp = doc.modelspace()
 
     header = doc.header
@@ -155,7 +206,7 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
         if t == "INSERT":
             block_name = e.dxf.name
             ins = e.dxf.insert
-            raw_entities.append((e, "insert_point", {"position": (ins.x, ins.y)}, block_name))
+            raw_entities.append((e, "insert_point", ("point", {"position": (ins.x, ins.y)}), block_name))
             count = 0
             try:
                 for ve in e.virtual_entities():
