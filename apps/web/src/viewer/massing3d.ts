@@ -282,6 +282,46 @@ function entityAnchor(e: EntityRender): [number, number] | null {
   return [sx / n, sy / n];
 }
 
+/**
+ * Solid thin box strips for fences (walls with a top cap and end caps).
+ * Plain vertical quads read as hollow paper strips from above; boxes don't.
+ */
+function appendFenceBoxes(
+  positions: number[], normals: number[],
+  flat: number[], height: number, halfW = 0.06,
+): void {
+  const n = Math.floor(flat.length / 2);
+  const quad = (
+    ax: number, ay: number, az: number, bx: number, by: number, bz: number,
+    cx2: number, cy2: number, cz: number, dx2: number, dy2: number, dz: number,
+    nx: number, ny: number, nz: number,
+  ) => {
+    positions.push(ax, ay, az, bx, by, bz, cx2, cy2, cz, ax, ay, az, cx2, cy2, cz, dx2, dy2, dz);
+    for (let k = 0; k < 6; k++) normals.push(nx, ny, nz);
+  };
+  for (let i = 0; i < n - 1; i++) {
+    const x1 = flat[i * 2], y1 = flat[i * 2 + 1];
+    const x2 = flat[(i + 1) * 2], y2 = flat[(i + 1) * 2 + 1];
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) continue;
+    const nx = (-dy / len) * halfW, ny = (dx / len) * halfW;
+    // two long sides
+    quad(x1 + nx, y1 + ny, 0, x2 + nx, y2 + ny, 0, x2 + nx, y2 + ny, height,
+         x1 + nx, y1 + ny, height, -dy / len, dx / len, 0);
+    quad(x2 - nx, y2 - ny, 0, x1 - nx, y1 - ny, 0, x1 - nx, y1 - ny, height,
+         x2 - nx, y2 - ny, height, dy / len, -dx / len, 0);
+    // top cap
+    quad(x1 + nx, y1 + ny, height, x2 + nx, y2 + ny, height,
+         x2 - nx, y2 - ny, height, x1 - nx, y1 - ny, height, 0, 0, 1);
+    // end caps (cheap; dash-exploded fences have many open ends)
+    quad(x1 - nx, y1 - ny, 0, x1 + nx, y1 + ny, 0, x1 + nx, y1 + ny, height,
+         x1 - nx, y1 - ny, height, -dx / len, -dy / len, 0);
+    quad(x2 + nx, y2 + ny, 0, x2 - nx, y2 - ny, 0, x2 - nx, y2 - ny, height,
+         x2 + nx, y2 + ny, height, dx / len, dy / len, 0);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Crown geometry authoring — unit footprint radius 1 in XY, base at z ≈ 0
 // ---------------------------------------------------------------------------
@@ -814,13 +854,18 @@ export function buildMassing3D(
   const underlayByCat = new Map<Category, number[]>();
   const fencePositions: number[] = [];
   const fenceNormals: number[] = [];
-  const lamps: [number, number][] = [];
+  // Lamp symbols explode into several entities; the head CIRCLE marks the true
+  // pole position, while leader/flag lines can reach onto the roadway. Circles
+  // are primary anchors; everything else only merges into (or, lacking any
+  // circle nearby, substitutes for) them.
+  const lampsPrimary: [number, number][] = [];
+  const lampsSecondary: [number, number][] = [];
 
   for (const e of entities) {
     const cat = catByLayer.get(e.layer) ?? "UNKNOWN";
     if (cat === "LIGHTING") {
       const anchor = entityAnchor(e);
-      if (anchor) lamps.push(anchor);
+      if (anchor) (e.radius != null ? lampsPrimary : lampsSecondary).push(anchor);
     }
     // Text/point entities carry no linework — the underlay skips them.
     if (e.kind !== "polyline" && e.kind !== "polygon") continue;
@@ -832,10 +877,10 @@ export function buildMassing3D(
     appendSegmentsAtZ(seg, e.points, closed, UNDERLAY_Z);
 
     if (cat === "FENCE") {
-      appendWallSegments(fencePositions, fenceNormals, e.points, FENCE_HEIGHT_M);
+      appendFenceBoxes(fencePositions, fenceNormals, e.points, FENCE_HEIGHT_M);
       if (closed) {
         const n = Math.floor(e.points.length / 2);
-        appendWallSegments(
+        appendFenceBoxes(
           fencePositions, fenceNormals,
           [e.points[(n - 1) * 2], e.points[(n - 1) * 2 + 1], e.points[0], e.points[1]],
           FENCE_HEIGHT_M,
@@ -876,43 +921,41 @@ export function buildMassing3D(
     detailGroup.add(mesh);
   }
 
-  // A physical lantern is usually drawn as several exploded CAD entities
-  // (pole segments, arcs, the head circle) — one anchor per entity would plant
-  // a bundle of poles per lamp. Cluster anchors within 2 m into single lamps
-  // (deterministic: sorted sweep + spatial hash, first anchor wins).
+  // A physical lantern is usually drawn as several exploded CAD entities —
+  // one anchor per entity would plant a bundle of poles per lamp. Two-phase
+  // deterministic clustering (sorted sweep + spatial hash): head circles seed
+  // lamps at their exact positions; remaining fragments (pole lines, leader
+  // lines reaching onto the roadway) merge into a nearby lamp within 3.5 m
+  // and only create one themselves when no circle exists for that symbol.
   const clusteredLamps: [number, number][] = [];
-  if (lamps.length > 0) {
-    const MERGE_R2 = 4.0; // (2 m)²
-    const CELL = 2.0;
+  {
+    const CELL = 4.0;
     const grid = new Map<string, number[]>();
-    const sorted = [...lamps].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    for (const [x, y] of sorted) {
+    const tryPlace = (x: number, y: number, mergeR: number): void => {
+      const r2 = mergeR * mergeR;
       const cx = Math.floor(x / CELL);
       const cy = Math.floor(y / CELL);
-      let merged = false;
-      for (let i = cx - 1; i <= cx + 1 && !merged; i++) {
-        for (let j = cy - 1; j <= cy + 1 && !merged; j++) {
+      for (let i = cx - 1; i <= cx + 1; i++) {
+        for (let j = cy - 1; j <= cy + 1; j++) {
           const bucket = grid.get(i + ":" + j);
           if (!bucket) continue;
           for (const k of bucket) {
             const p = clusteredLamps[k];
             const dx = p[0] - x;
             const dy = p[1] - y;
-            if (dx * dx + dy * dy < MERGE_R2) {
-              merged = true;
-              break;
-            }
+            if (dx * dx + dy * dy < r2) return; // merged into existing lamp
           }
         }
       }
-      if (!merged) {
-        const key = cx + ":" + cy;
-        let bucket = grid.get(key);
-        if (!bucket) grid.set(key, (bucket = []));
-        bucket.push(clusteredLamps.length);
-        clusteredLamps.push([x, y]);
-      }
-    }
+      const key = cx + ":" + cy;
+      let bucket = grid.get(key);
+      if (!bucket) grid.set(key, (bucket = []));
+      bucket.push(clusteredLamps.length);
+      clusteredLamps.push([x, y]);
+    };
+    const byXY = (a: [number, number], b: [number, number]) => a[0] - b[0] || a[1] - b[1];
+    for (const [x, y] of [...lampsPrimary].sort(byXY)) tryPlace(x, y, 2.0);
+    for (const [x, y] of [...lampsSecondary].sort(byXY)) tryPlace(x, y, 3.5);
   }
 
   // Lanterns: instanced pole + head; a soft additive light pool at night.
