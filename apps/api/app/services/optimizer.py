@@ -145,6 +145,21 @@ def optimize(cands: list[Candidate], plant: PlantSpec, params: OptimizerParams,
         region_fill[k] = region_fill.get(k, 0) + 1
 
     spacing2 = plant.spacingM ** 2
+
+    # candidates violating spacing to pre-existing same-kind points (existing
+    # vegetation and already-placed plantings of other species) are invalid picks
+    if existing_points and valid:
+        ex = np.asarray(existing_points, dtype=np.float64)
+        pts_arr = np.asarray([(c.x, c.y) for c in valid], dtype=np.float64)
+        keep = np.ones(len(valid), dtype=bool)
+        for i in range(0, len(valid), 2000):
+            chunk = pts_arr[i:i + 2000]
+            d2 = ((chunk[:, None, :] - ex[None, :, :]) ** 2).sum(axis=2)
+            keep[i:i + 2000] = (d2 >= spacing2).all(axis=1)
+        valid = [c for c, k in zip(valid, keep) if k]
+        if not valid:
+            return []
+
     remaining = list(valid)
 
     while remaining and len(chosen) < target:

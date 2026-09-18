@@ -217,8 +217,10 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
         oracle = DistanceOracle(idx, constraints.site_boundary)
         rule_oracle = RuleDistanceOracle(idx)
 
-        existing_pts = [(g.centroid.x, g.centroid.y)
-                        for _, g in idx.geoms_for(["EXISTING_TREE", "EXISTING_SHRUB"])]
+        existing_by_kind = {
+            "TREE": [(g.centroid.x, g.centroid.y) for _, g in idx.geoms_for(["EXISTING_TREE"])],
+            "SHRUB": [(g.centroid.x, g.centroid.y) for _, g in idx.geoms_for(["EXISTING_SHRUB"])],
+        }
 
         iterations: list[dict] = []
         selected_idx: int | None = None
@@ -276,13 +278,18 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 spec = PlantSpec(speciesId=sp["id"], kind=kind,
                                  crownRadiusM=sp["parameters"]["crownRadiusM"],
                                  spacingM=spacing)
+                n_kind = sum(1 for s in selection if s["kind"] == kind)
                 if params.targetCount:
-                    n_kind = sum(1 for s in selection if s["kind"] == kind)
                     target_per_species = max(1, params.targetCount // max(1, n_kind))
                 else:
-                    target_per_species = auto_target(allowed_m2, spacing, valid_n)
+                    target_per_species = max(1, auto_target(allowed_m2, spacing, valid_n)
+                                             // max(1, n_kind))
                 p2 = OptimizerParams(**{**params.__dict__, "targetCount": target_per_species})
-                chosen = optimize(cands, spec, p2, existing_pts + placements_pts, it_seed,
+                # same-kind spacing applies against existing vegetation AND
+                # already-placed plantings of the same kind (other species)
+                kind_pts = existing_by_kind.get(kind, []) + [
+                    (p.x, p.y) for p in all_placements if p.kind == kind]
+                chosen = optimize(cands, spec, p2, kind_pts, it_seed,
                                   progress=lambda n: _set_stage(
                                       run_id, "OPTIMIZING", "active",
                                       f"{len(all_placements) + n} placements"))

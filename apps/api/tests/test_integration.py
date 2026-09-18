@@ -137,3 +137,30 @@ def test_real_dwg_conversion(tmp_path):
     classification.classify_document(doc)
     cats = {l.classification.category for l in doc.layers}
     assert cats - {"UNKNOWN"}, "at least some layers should classify"
+
+
+def test_cross_species_tree_spacing():
+    """Trees of different species must respect TREE_TREE_MIN_SPACING between
+    each other (regression: species were only spaced within themselves)."""
+    doc, idx, registry, cons, placements, _ = _run_pipeline()
+    from shapely.prepared import prep
+    from shapely.geometry import Point
+    from app.services.candidates import DistanceOracle, generate_candidates
+    oracle = DistanceOracle(idx, cons.site_boundary)
+    rule_oracle = RuleDistanceOracle(idx)
+    cands2 = generate_candidates(cons.site_boundary, oracle, 5.0, seed=99)
+    prepared = prep(cons.allowed_area)
+    for c in cands2:
+        if not prepared.contains(Point(c.x, c.y)):
+            c.valid = False
+    hard_filter_candidates(cands2, "TREE", registry, rule_oracle)
+    params = OptimizerParams.for_strategy("balanced")
+    params.targetCount = 30
+    spec2 = PlantSpec(speciesId="tree_maple", kind="TREE", crownRadiusM=4.0, spacingM=5.0)
+    chosen2 = optimize(cands2, spec2, params, [(p.x, p.y) for p in placements], seed=99)
+    both = placements + [Placement(id=f"m{i}", kind="TREE", speciesId="tree_maple",
+                                   x=c.x, y=c.y, crownRadiusM=4.0) for i, c in enumerate(chosen2)]
+    report = validate_plan(both, idx, registry, cons.site_boundary, cons.allowed_area)
+    spacing_viol = [v for v in report["hardViolations"] if v["ruleId"] == "TREE_TREE_MIN_SPACING"]
+    assert chosen2, "second species should still find spots"
+    assert not spacing_viol, spacing_viol[:3]
