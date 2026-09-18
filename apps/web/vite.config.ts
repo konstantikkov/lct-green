@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: null,
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
         name: "GreenPlan",

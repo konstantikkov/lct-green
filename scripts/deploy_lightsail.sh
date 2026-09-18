@@ -99,8 +99,16 @@ server {
     root /opt/greenplan/web;
     index index.html;
 
+    # PWA: shell files must revalidate; hashed assets are immutable
+    location ~ ^/(sw\.js|registerSW\.js|index\.html)$ {
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
     location = /manifest.webmanifest {
         default_type application/manifest+json;
+        add_header Cache-Control "no-cache, must-revalidate";
     }
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
