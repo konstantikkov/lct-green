@@ -1,0 +1,24 @@
+{
+  "updated": "phase-0 baseline",
+  "suites": {
+    "backend_pytest": {
+      "path": "apps/api/tests",
+      "count": 35,
+      "status": "pass",
+      "areas": ["parsing", "units", "classification", "rules", "geometry",
+                "candidates", "validator", "pipeline", "roundtrip", "real-dwg",
+                "sanitizer", "cross-species-spacing"]
+    },
+    "frontend_build": {
+      "path": "apps/web",
+      "count": 1,
+      "status": "pass",
+      "areas": ["tsc strict + vite build"]
+    },
+    "playwright_e2e": { "path": "tests/e2e", "count": 0, "status": "planned" },
+    "geometry_export_checks": { "path": "tests/export", "count": 0, "status": "planned" },
+    "evals_deterministic": { "path": "evals", "count": 0, "status": "planned" },
+    "evals_judge_benchmark": { "path": "evals/judge", "count": 0, "status": "planned" },
+    "evals_regulations": { "path": "evals/regulations", "count": 0, "status": "planned" }
+  }
+}
