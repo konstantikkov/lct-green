@@ -1,15 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import type { PipelineState } from "../api/types";
-import { openProject, uploadFile } from "../state/actions";
+import { openExample, openProject, uploadFile } from "../state/actions";
 import { useApp } from "../state/store";
-import { Badge, Btn, Spinner } from "./ui";
-
-function stateTone(s: PipelineState): "grey" | "green" | "amber" | "red" {
-  if (s === "COMPLETED") return "green";
-  if (s === "FAILED") return "red";
-  if (s === "UPLOADED" || s === "CLASSIFYING" || s === "PARSING") return "grey";
-  return "amber";
-}
+import { Btn, Spinner } from "./ui";
 
 function formatDate(v: string | number): string {
   // Contract says ISO string; current backend emits unix seconds — accept both.
@@ -23,6 +15,7 @@ function formatDate(v: string | number): string {
   });
 }
 
+/** Quiet secondary list — rendered only when projects exist. */
 function RecentProjects() {
   const projects = useApp((s) => s.projects);
   const projectsError = useApp((s) => s.projectsError);
@@ -32,67 +25,33 @@ function RecentProjects() {
   if (!projects || projects.length === 0) return null;
 
   return (
-    <div className="w-full border border-ink-600 bg-ink-900">
-      <div className="border-b border-ink-600 px-2 py-1.5 text-2xs font-semibold uppercase tracking-wider text-ink-400">
-        Recent projects — shared
+    <div className="w-full" data-testid="recent-projects">
+      <div className="mb-1 px-1 text-2xs uppercase tracking-wider text-ink-500">
+        Recent projects
       </div>
-      {/* Mobile: tappable list with large touch targets. */}
-      <div className="max-h-72 overflow-y-auto md:hidden">
+      <div className="max-h-56 overflow-y-auto">
         {projects.map((p) => (
           <button
             key={p.id}
-            className="flex w-full items-center gap-2 border-t border-ink-700/60 px-3 py-3 text-left first:border-t-0 active:bg-ink-800"
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left hover:bg-ink-850 md:py-1.5"
             onClick={() => void openProject(p.id)}
+            title={`${p.fileName} — open project`}
           >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs text-ink-100">{p.name}</div>
-              <div className="truncate font-mono text-2xs text-ink-400">
-                {p.fileName} · {formatDate(p.createdAt)}
-              </div>
-            </div>
-            {loadingId === p.id
-              ? <Spinner className="h-2.5 w-2.5 shrink-0" />
-              : <Badge tone={stateTone(p.state)}>{p.state}</Badge>}
+            <span className="min-w-0 flex-1 truncate text-xs text-ink-300">{p.name}</span>
+            <span className="shrink-0 font-mono text-2xs text-ink-500">{formatDate(p.createdAt)}</span>
+            {loadingId === p.id && <Spinner className="h-2.5 w-2.5 shrink-0" />}
           </button>
         ))}
-      </div>
-      {/* Desktop: dense table. */}
-      <div className="hidden max-h-56 overflow-y-auto md:block">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-2xs uppercase tracking-wider text-ink-500">
-              <th className="px-2 py-1 font-medium">Name</th>
-              <th className="px-2 py-1 font-medium">File</th>
-              <th className="px-2 py-1 font-medium">Created</th>
-              <th className="px-2 py-1 text-right font-medium">State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {projects.map((p) => (
-              <tr
-                key={p.id}
-                className="cursor-pointer border-t border-ink-700/60 text-xs text-ink-200 hover:bg-ink-800"
-                onClick={() => void openProject(p.id)}
-                title="Open project"
-              >
-                <td className="max-w-[160px] truncate px-2 py-1.5">{p.name}</td>
-                <td className="max-w-[140px] truncate px-2 py-1.5 font-mono text-2xs text-ink-400">{p.fileName}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 font-mono text-2xs text-ink-400">{formatDate(p.createdAt)}</td>
-                <td className="px-2 py-1.5 text-right">
-                  {loadingId === p.id
-                    ? <Spinner className="h-2.5 w-2.5" />
-                    : <Badge tone={stateTone(p.state)}>{p.state}</Badge>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );
 }
 
-export function DropZone() {
+/**
+ * Near-blank landing screen: wordmark, tagline, drop zone, [Open example].
+ * No panels, no status-bar clutter, no export buttons at this stage.
+ */
+export function EmptyState() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const uploading = useApp((s) => s.uploading);
@@ -106,9 +65,11 @@ export function DropZone() {
   }, []);
 
   const converterMissing = uploadError?.code === "DWG_CONVERTER_UNAVAILABLE";
+  const busy = uploading || openingProject;
 
   return (
     <div
+      data-testid="empty-state"
       className={`flex h-full w-full overflow-y-auto transition-colors ${
         dragOver ? "bg-ink-850" : "bg-ink-950"
       }`}
@@ -121,44 +82,42 @@ export function DropZone() {
       }}
     >
       {/* m-auto centers when content fits and keeps the top reachable when it scrolls */}
-      <div className="m-auto flex w-full max-w-lg flex-col gap-3 px-4 py-6">
+      <div className="m-auto flex w-full max-w-md flex-col items-center gap-6 px-4 py-10">
+        <div className="text-center">
+          <div className="text-3xl font-semibold tracking-tight text-ink-100">
+            Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
+          </div>
+          <div className="mt-2 text-sm leading-relaxed text-ink-400">
+            Автоматическое размещение озеленения по нормативным ограничениям
+          </div>
+        </div>
+
         <div
-          className={`flex w-full flex-col items-center gap-4 border border-dashed px-8 py-10 ${
+          className={`flex w-full flex-col items-center gap-3 rounded-sm border border-dashed px-8 py-8 ${
             dragOver ? "border-emerald-600" : "border-ink-500"
           }`}
         >
-          <div className="font-mono text-2xs uppercase tracking-widest text-ink-500">
-            GreenPlan · site plan intake
-          </div>
-          <div className="hidden text-center text-lg text-ink-100 md:block">Drop DWG / DXF</div>
-          <div className="text-center text-lg text-ink-100 md:hidden">Upload a site plan</div>
-          <div className="text-center text-xs text-ink-400">
-            The plan is parsed, layers are classified and normalized to meters.
-          </div>
+          <div className="text-center text-base text-ink-200">Drop DWG / DXF</div>
 
-          {uploading ? (
-            <div className="flex items-center gap-2 text-xs text-ink-300">
-              <Spinner /> Uploading and parsing…
-            </div>
-          ) : openingProject ? (
-            <div className="flex items-center gap-2 text-xs text-ink-300">
-              <Spinner /> Opening project…
+          {busy ? (
+            <div className="flex items-center gap-2 py-1 text-xs text-ink-300">
+              <Spinner /> {uploading ? "Uploading and parsing…" : "Opening project…"}
             </div>
           ) : (
-            <>
-              <div className="hidden md:block">
-                <Btn variant="primary" onClick={() => inputRef.current?.click()}>
-                  Choose file…
-                </Btn>
-              </div>
-              <Btn
-                variant="primary"
-                className="h-11 w-full max-w-xs text-sm md:hidden"
-                onClick={() => inputRef.current?.click()}
-              >
-                Choose DWG / DXF file
+            <div className="flex items-center gap-2">
+              <Btn variant="primary" onClick={() => inputRef.current?.click()}>
+                Choose file…
               </Btn>
-            </>
+              <Btn
+                variant="ghost"
+                className="text-ink-400"
+                onClick={() => void openExample()}
+                title="Load the bundled example site plan"
+                data-testid="open-example"
+              >
+                Open example
+              </Btn>
+            </div>
           )}
           <input
             ref={inputRef}

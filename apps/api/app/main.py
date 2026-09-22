@@ -23,11 +23,13 @@ from .services.geometry import as_polygon_list
 from .services.llm import LocalLLM, capabilities as llm_capabilities
 from .services.rules import load_registry, load_species, save_override
 from .services.validator import Placement, RuleDistanceOracle
+from .regulations.router import router as regulations_router
 
 app = FastAPI(title="GreenPlan API", version=config.ALGORITHM_VERSION)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
+app.include_router(regulations_router)
 
 
 @app.on_event("startup")

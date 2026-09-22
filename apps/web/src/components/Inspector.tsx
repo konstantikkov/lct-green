@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { ExclusionZone, Explanation, Placement } from "../api/types";
+import { isDebug } from "../debug";
 import { select } from "../state/actions";
-import { useApp } from "../state/store";
+import { useApp, type Selection } from "../state/store";
 import { Badge, KV, Spinner } from "./ui";
 
 const DISTANCE_LABELS: Record<string, string> = {
@@ -161,6 +163,49 @@ function ZoneInspector({ zone }: { zone: ExclusionZone }) {
   );
 }
 
+/** Debug-only tab: pretty-printed raw JSON of the selected object. */
+function RawInspector({ selection }: { selection: NonNullable<Selection> }) {
+  const explanation = useApp((s) => s.explanation);
+  const raw = selection.type === "placement"
+    ? { placement: selection.placement, explanation }
+    : { zone: selection.zone };
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-2xs leading-relaxed text-ink-300">
+      {JSON.stringify(raw, null, 2)}
+    </pre>
+  );
+}
+
+function SelectionBody({ selection }: { selection: NonNullable<Selection> }) {
+  const [tab, setTab] = useState<"details" | "raw">("details");
+  return (
+    <>
+      {isDebug && (
+        <div className="mb-2 flex gap-1">
+          {(["details", "raw"] as const).map((t) => (
+            <button
+              key={t}
+              className={`rounded-sm border px-1.5 py-0.5 text-2xs uppercase tracking-wider ${
+                tab === t
+                  ? "border-ink-500 bg-ink-800 text-ink-100"
+                  : "border-transparent text-ink-500 hover:text-ink-300"
+              }`}
+              onClick={() => setTab(t)}
+            >
+              {t === "details" ? "Details" : "Raw JSON"}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === "raw" && isDebug
+        ? <RawInspector selection={selection} />
+        : selection.type === "placement"
+          ? <PlacementInspector placement={selection.placement} />
+          : <ZoneInspector zone={selection.zone} />}
+    </>
+  );
+}
+
 /** Selection details only — reused by the mobile bottom sheet's Inspector tab. */
 export function InspectorContent() {
   const selection = useApp((s) => s.selection);
@@ -173,9 +218,7 @@ export function InspectorContent() {
   }
   return (
     <div className="p-2">
-      {selection.type === "placement"
-        ? <PlacementInspector placement={selection.placement} />
-        : <ZoneInspector zone={selection.zone} />}
+      <SelectionBody selection={selection} />
     </div>
   );
 }
@@ -185,7 +228,7 @@ export function Inspector() {
   if (!selection) return null;
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex">
+    <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-600 px-2">
         <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Inspector</span>
         <button
@@ -197,9 +240,7 @@ export function Inspector() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
-        {selection.type === "placement"
-          ? <PlacementInspector placement={selection.placement} />
-          : <ZoneInspector zone={selection.zone} />}
+        <SelectionBody selection={selection} />
       </div>
     </aside>
   );

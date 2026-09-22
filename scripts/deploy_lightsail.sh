@@ -12,7 +12,7 @@ echo "==> packaging backend"
 TAR=/tmp/greenplan_api.tar.gz
 tar czf "$TAR" -C "$REPO_DIR" \
     apps/api/app apps/api/scripts apps/api/tests apps/api/requirements.txt \
-    rules fixtures/synthetic_site.dxf
+    rules prompts fixtures/synthetic_site.dxf
 
 echo "==> uploading"
 scp -i "$PEM" -o UserKnownHostsFile=/tmp/known_hosts "$TAR" "$TARGET":/tmp/

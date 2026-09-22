@@ -2,10 +2,28 @@ import { useSyncExternalStore } from "react";
 import type {
   Capabilities, ChunkInfo, ConstraintsResponse, ExclusionZone, Explanation,
   IterationDetail, IterationSummary, Placement, PipelineState, ProjectDocument,
-  ProjectListItem, RegulatoryRule, RunStatus, SpeciesInfo,
+  ProjectListItem, RegDocument, RegulatoryRule, RuleCandidate,
+  RuleCandidateStatus, RunStatus, SpeciesInfo, Strategy,
 } from "../api/types";
 
 export type ViewMode = "2d" | "3d";
+
+/** Progressive-disclosure stage, derived from state (never stored). */
+export type Stage = "empty" | "imported" | "generated";
+
+/** Top-level views. PLAN is the default workflow; the rest are secondary. */
+export type NavView = "plan" | "regulations" | "runs" | "quality";
+
+/** Generation options shared by the TopBar button and the Generate panel. */
+export interface GenOptions {
+  /** null = "all species" (catalog may not be loaded yet). */
+  speciesIds: string[] | null;
+  strategy: Strategy;
+  targetCount: string;   // raw input; "" = Auto
+  seed: string;          // advanced
+  maxIterations: string; // advanced
+  useLlmJudge: boolean;  // advanced
+}
 
 /** Persisted like the theme; "simple" hides the 3D detail layer. */
 export const MASSING_DETAIL_STORAGE_KEY = "greenplan.massingDetail";
@@ -87,6 +105,37 @@ export interface AppState {
   /** Mobile-only UI (bottom sheet); inert on desktop. */
   mobileTab: MobileTab;
   sheetSnap: SheetSnap;
+
+  /** Top-level view (PLAN / REGULATIONS / RUNS / QUALITY). */
+  nav: NavView;
+  /** Shared generation options (TopBar button + Generate panel). */
+  genOptions: GenOptions;
+
+  // --- Regulations feature (WS4) ---
+  regDocs: RegDocument[] | null;
+  regDocsError: string | null;
+  regUploadBusy: boolean;
+  /** Non-fatal notices, e.g. 409 LLM_UNAVAILABLE on extract. */
+  regNotice: string | null;
+  regSelectedDocId: string | null;
+  /** Document id with a running extraction poll. */
+  regExtractingDocId: string | null;
+  regCandidates: RuleCandidate[] | null;
+  regCandidatesLoading: boolean;
+  regFilter: RuleCandidateStatus | "ALL";
+  regSelectedCandidateId: string | null;
+  /** Candidate id with an in-flight verify/review/activate call. */
+  regBusyCandidateId: string | null;
+}
+
+/** empty (no project) → imported (doc loaded) → generated (≥1 iteration). */
+export function stageOf(s: AppState): Stage {
+  if (!s.document) return "empty";
+  return s.iterations.length > 0 ? "generated" : "imported";
+}
+
+export function useStage(): Stage {
+  return useApp(stageOf);
 }
 
 export const initialOverlays: OverlayState = {
@@ -133,6 +182,26 @@ const initialState: AppState = {
   pipelineState: null,
   mobileTab: "layers",
   sheetSnap: "peek",
+  nav: "plan",
+  genOptions: {
+    speciesIds: null,
+    strategy: "balanced",
+    targetCount: "",
+    seed: "42",
+    maxIterations: "3",
+    useLlmJudge: true,
+  },
+  regDocs: null,
+  regDocsError: null,
+  regUploadBusy: false,
+  regNotice: null,
+  regSelectedDocId: null,
+  regExtractingDocId: null,
+  regCandidates: null,
+  regCandidatesLoading: false,
+  regFilter: "ALL",
+  regSelectedCandidateId: null,
+  regBusyCandidateId: null,
 };
 
 let state: AppState = initialState;

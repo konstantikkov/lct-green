@@ -186,6 +186,45 @@ Uploads are untrusted: extension + magic-byte validation, size limit, random
 server-side filenames, converter/parser timeouts, subprocess without shell,
 no user-controlled paths in commands.
 
+
+## Iteration 2 — three reasoning layers, evals, regulations ingestion
+
+The product now separates three reasoning layers explicitly:
+
+1. **Deterministic compliance engine** — geometry, buffers, spacing, allowed
+   zones, DXF re-validation. Final authority; no LLM can override it.
+2. **Local production Judge** (`prompts/judge/v*.md`, versioned) — runs ONLY on
+   deterministically valid plans (hard violations are repaired deterministically
+   first). Answers one question: *is another optimizer iteration likely to give a
+   materially better plan?* Output is a strict schema (ACCEPT / RERUN /
+   MANUAL_REVIEW) with evidence IDs referencing packet diagnostics (quadrants,
+   clusters, underused zones); parameter changes are whitelist+range+max-delta
+   clamped in code. No LLM-invented quality scores — UI numbers come from
+   deterministic components.
+3. **Offline GPT evaluator** (`evals/`, `OPENAI_EVAL_MODEL`, desired `gpt-6`) —
+   dev/CI only. Missing key/model raises an explicit capability error; no silent
+   fallback. Pairwise A/B comparisons run both orders; disagreement ⇒ INCONCLUSIVE.
+
+**Evals** (`make eval`): 10-case golden dataset (generated deterministically),
+241 Level-A checks incl. export→re-parse→re-validate hard constraints, judge
+benchmark (mock + live modes), results in `eval-results/<ts>/results.json`.
+
+**Regulations** (`/api/regulations` + REGULATIONS view): upload PDF/DOCX →
+hierarchy with stable fragment ids → LLM rule candidates with exact provenance →
+deterministic numeric-literal gate (value+unit must appear in the source
+fragment) → second-pass verifier → human review → VERIFIED→ACTIVE rules merge
+into the constraint engine as `REG_*` with full citations. Documents are data:
+prompt-injection cannot alter statuses. Extraction benchmark:
+`python3 evals/regulations/score.py --mock`.
+
+**Progressive disclosure UI**: near-blank empty state → semantic layer groups
+(raw CAD layers one click deeper) → single review interrupt for uncertain
+layers → overlay legend instead of rule tables → Generate with Advanced
+settings collapsed → post-generation Quality review card → PLAN / REGULATIONS /
+RUNS / QUALITY navigation. Debug info behind `?debug=1`.
+Playwright specs: `tests/playwright/` (run with `PW_BASE_URL=... npx playwright test`;
+executed on the deployment host — screenshots at 1366/1440/1920).
+
 ## Limitations (explicit)
 
 * **Assumed distances.** All demo buffer distances are unverified assumptions

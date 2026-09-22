@@ -19,7 +19,8 @@ from .services import chunking, classification
 from .services.candidates import DistanceOracle, generate_candidates
 from .services.constraints import ConstraintResult, build_constraints
 from .services.geometry import GeometryIndex, as_polygon_list, build_geometry_index
-from .services.judge import judge_iteration
+from .services.judge import judge_iteration, should_select_rerun
+from .services.judge_packet import build_judge_packet
 from .services.llm import LocalLLM
 from .services.optimizer import (OptimizerParams, PlantSpec, auto_target,
                                  hard_filter_candidates, optimize)
@@ -144,6 +145,31 @@ def get_run_status(run_id: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Deterministic repair — judge precondition
+# ---------------------------------------------------------------------------
+
+def deterministic_repair(placements: list[Placement], idx: GeometryIndex,
+                         registry: RuleRegistry, site_boundary, allowed_area,
+                         validation: dict, max_passes: int = 3
+                         ) -> tuple[list[Placement], dict, dict]:
+    """Removes placements named in hardViolations and revalidates, up to
+    `max_passes` times or until valid. The judge runs only on valid plans;
+    this is the deterministic path back to validity — never the LLM's job.
+
+    Returns (placements, validation, {"removed": n, "passes": k})."""
+    removed = 0
+    passes = 0
+    while validation["hardViolations"] and passes < max_passes:
+        bad = {v["plantingId"] for v in validation["hardViolations"]}
+        before = len(placements)
+        placements = [p for p in placements if p.id not in bad]
+        removed += before - len(placements)
+        passes += 1
+        validation = validate_plan(placements, idx, registry, site_boundary, allowed_area)
+    return placements, validation, {"removed": removed, "passes": passes}
+
+
+# ---------------------------------------------------------------------------
 # Generation run
 # ---------------------------------------------------------------------------
 
@@ -222,6 +248,12 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             "SHRUB": [(g.centroid.x, g.centroid.y) for _, g in idx.geoms_for(["EXISTING_SHRUB"])],
         }
 
+        # classification uncertainty surfaced to the judge (deterministic list)
+        uncertain_layers = [
+            {"name": l.name, "category": l.classification.category,
+             "confidence": l.classification.confidence}
+            for l in rt.doc.layers if l.classification.requiresReview]
+
         iterations: list[dict] = []
         selected_idx: int | None = None
 
@@ -229,6 +261,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             t0 = time.time()
             _reset_stages(run_id, it)
             it_seed = seed + it  # deterministic per-iteration seed
+            it_min_spacing: float | None = None  # cluster-link scale for diagnostics
 
             # --- candidates ---
             _set_stage(run_id, "GENERATING_CANDIDATES", "active")
@@ -252,6 +285,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 spacing_rule = next((r for r in registry.rules_for(kind, {"min_spacing"})
                                      if r.effective_distance_m), None)
                 spacing = spacing_rule.effective_distance_m if spacing_rule else (5.0 if kind == "TREE" else 1.0)
+                it_min_spacing = spacing if it_min_spacing is None else min(it_min_spacing, spacing)
                 # sample across the whole site so exclusion-zone rejections are
                 # real (and visible); shrubs use a coarser sampling radius
                 sampling_spacing = max(spacing, 2.0 if kind == "SHRUB" else spacing)
@@ -322,20 +356,37 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             _set_stage(run_id, "VALIDATING", "active")
             validation = validate_plan(all_placements, idx, registry,
                                        constraints.site_boundary, allowed)
+            # precondition for the judge: valid plans only. Hard violations are
+            # repaired deterministically (drop violators, revalidate, ≤3 passes).
+            repair_info = None
+            if validation["hardViolations"]:
+                all_placements, validation, repair_info = deterministic_repair(
+                    all_placements, idx, registry, constraints.site_boundary,
+                    allowed, validation)
             _set_stage(run_id, "VALIDATING", "done",
-                       f"{len(validation['hardViolations'])} hard violations")
+                       f"{len(validation['hardViolations'])} hard violations"
+                       + (f" (repair removed {repair_info['removed']})" if repair_info else ""))
 
-            # --- judge ---
+            # --- judge (only on deterministically valid plans) ---
             _set_stage(run_id, "JUDGING", "active")
             judge_report = None
-            if use_judge:
-                judge_report = asyncio.run(judge_iteration(
-                    llm, strategy, params, validation["metrics"], validation,
-                    constraint_summary, chunking.chunks_llm_summary(chunks, max_chunks=8),
-                    it, max_iter))
+            judge_skipped = None
+            if not validation["valid"]:
+                judge_skipped = "hard_violations"
+            elif use_judge:
+                prev_metrics = iterations[-1]["metrics"] if iterations else None
+                packet = build_judge_packet(
+                    objective=strategy, iteration=it, max_iterations=max_iter,
+                    params=params, validation=validation, allowed_area=allowed,
+                    placements=all_placements,
+                    spacing_m=it_min_spacing or 5.0,
+                    classification_uncertainty=uncertain_layers,
+                    previous_metrics=prev_metrics)
+                judge_report = asyncio.run(judge_iteration(llm, packet, it, max_iter))
             _set_stage(run_id, "JUDGING", "done",
                        (judge_report or {}).get("decision", "skipped"))
 
+            decision = (judge_report or {}).get("decision", "ACCEPT")
             iteration_id = f"{run_id}_it{it}"
             iter_record = {
                 "iterationId": iteration_id, "index": it, "runId": run_id,
@@ -343,6 +394,9 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 "parameters": params.to_api(), "seed": it_seed,
                 "metrics": {**validation["metrics"]},
                 "judge": judge_report,
+                "judgeSkipped": judge_skipped,
+                "deterministicRepair": repair_info,
+                "needsManualReview": decision == "MANUAL_REVIEW",
                 "runtimeMs": int((time.time() - t0) * 1000),
                 "placements": [p.to_api() for p in all_placements],
                 "rejectedCandidates": rejected_pts[:4000],
@@ -355,28 +409,33 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                     "rulesetVersion": registry.version,
                     "llmModel": (judge_report or {}).get("llmModel"),
                     "judgeMode": (judge_report or {}).get("mode"),
+                    "judgePromptVersion": (judge_report or {}).get("promptVersion"),
+                    "judgeInputHash": (judge_report or {}).get("judgeInputHash"),
                 },
             }
             iterations.append(iter_record)
             store.save_json(pid, f"iteration_{run_id}_{it}", iter_record)
 
-            # selection: compliance not worse AND objective better
-            def obj(rec):
-                m = rec["metrics"]
-                return m["coverageScore"] * 0.5 + m["distributionScore"] * 0.5
+            # retention rule: a rerun replaces the selection ONLY if it is valid,
+            # the objective improves ≥ 0.02 and no component drops > 0.05.
             if selected_idx is None:
                 selected_idx = 0
             else:
                 cur = iterations[selected_idx]
-                if (len(iter_record["validation"]["hardViolations"]) <=
-                        len(cur["validation"]["hardViolations"]) and obj(iter_record) > obj(cur)):
+                if should_select_rerun(cur["metrics"], cur["validation"]["valid"],
+                                       iter_record["metrics"],
+                                       iter_record["validation"]["valid"]):
                     selected_idx = it
 
-            decision = (judge_report or {}).get("decision", "ACCEPT")
+            if decision == "MANUAL_REVIEW":
+                # abstention is terminal: flag for a human, never rerun
+                _set_stage(run_id, "JUDGING", "done", "MANUAL_REVIEW — human look needed")
+                break
             if decision != "RERUN" or it + 1 >= max_iter:
                 break
 
-            # apply safe parameter changes and rerun
+            # apply safe parameter changes (already whitelist/range/delta-clamped
+            # by the judge post-validation) and rerun
             _set_stage(run_id, "JUDGING", "done", "RERUN requested")
             changes = (judge_report or {}).get("recommendedParameterChanges") or {}
             for k, v in changes.items():

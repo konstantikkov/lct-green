@@ -1,8 +1,8 @@
 import { api, ApiError, watchRun } from "../api/client";
-import type { Category, GenerateRequest, PipelineState, ProjectDocument } from "../api/types";
+import type { Category, GenerateRequest, PlantKind, ProjectDocument } from "../api/types";
 import {
   getState, setState, MASSING_DETAIL_STORAGE_KEY,
-  type MobileTab, type Selection, type SheetSnap, type ViewMode,
+  type GenOptions, type MobileTab, type NavView, type Selection, type SheetSnap, type ViewMode,
 } from "./store";
 
 function errMsg(e: unknown): string {
@@ -63,6 +63,7 @@ function installDocument(doc: ProjectDocument) {
     pipelineState: doc.state,
     uploading: false,
     constraints: null,
+    constraintsError: null,
     iterations: [],
     activeIteration: null,
     selection: null,
@@ -70,11 +71,16 @@ function installDocument(doc: ProjectDocument) {
     chunks: null,
     run: null,
     runError: null,
+    nav: "plan",
   });
   // Static data may have failed earlier if backend was down; retry now.
   const s = getState();
   if (!s.species || !s.rules) void loadStaticData();
   if (!s.capabilities) void loadCapabilities();
+  // Progressive disclosure: constraint zones are fetched automatically after
+  // the document loads (GET /constraints computes on demand) — the sidebar
+  // shows a quiet "Building constraint zones…" line meanwhile.
+  void buildConstraints();
 }
 
 export async function uploadFile(file: File) {
@@ -97,32 +103,17 @@ export async function loadProjects() {
   }
 }
 
-/** Pipeline states in which constraints have already been built server-side. */
-const CONSTRAINTS_READY: PipelineState[] = [
-  "BUILDING_CONSTRAINTS", "GENERATING_CANDIDATES", "OPTIMIZING",
-  "VALIDATING", "JUDGING", "RERUNNING", "COMPLETED",
-];
-
 /** Opens an existing project from the shared list. 404s are non-fatal. */
 export async function openProject(projectId: string) {
   if (getState().projectLoadingId) return;
   setState({ projectLoadingId: projectId, uploadError: null });
   try {
     const doc = await api.getDocument(projectId);
-    installDocument(doc);
+    installDocument(doc); // auto-fetches constraints
   } catch (e) {
     const code = e instanceof ApiError ? e.code : null;
     setState({ projectLoadingId: null, uploadError: { code, message: errMsg(e) } });
     return;
-  }
-  // Constraints — only if the pipeline got that far; 404/errors are graceful.
-  const doc = getState().document;
-  if (doc && CONSTRAINTS_READY.includes(doc.state)) {
-    try {
-      setState({ constraints: await api.getConstraints(projectId) });
-    } catch {
-      /* not built / stale — user can rebuild from the panel */
-    }
   }
   // Iterations — may legitimately be empty or 404.
   try {
@@ -138,10 +129,11 @@ export async function openProject(projectId: string) {
   setState({ projectLoadingId: null });
 }
 
-/** Returns to the DropZone screen ("New project…"). */
+/** Returns to the empty-state screen ("New project…"). */
 export function newProject() {
   setState({
     document: null,
+    nav: "plan",
     uploadError: null,
     pipelineState: null,
     constraints: null,
@@ -185,6 +177,8 @@ export async function overrideLayerCategory(layerName: string, category: Categor
       // Contract: classification override invalidates cached constraints.
       constraints: null,
     });
+    // Rebuild automatically so the overlays stay in sync without a button hunt.
+    void buildConstraints();
   } catch (e) {
     setState({ constraintsError: `Layer override failed: ${errMsg(e)}` });
   }
@@ -195,6 +189,59 @@ export function toggleLayerVisibility(layerName: string) {
   setState({
     layerVisibility: { ...s.layerVisibility, [layerName]: !s.layerVisibility[layerName] },
   });
+}
+
+/** Sets visibility for a whole semantic group of CAD layers at once. */
+export function setLayersVisibility(layerNames: string[], visible: boolean) {
+  const s = getState();
+  const next = { ...s.layerVisibility };
+  for (const name of layerNames) next[name] = visible;
+  setState({ layerVisibility: next });
+}
+
+export function setNav(nav: NavView) {
+  setState({ nav });
+}
+
+export function setGenOptions(patch: Partial<GenOptions>) {
+  const s = getState();
+  setState({ genOptions: { ...s.genOptions, ...patch } });
+}
+
+/** Builds a GenerateRequest from shared options and starts the run. */
+export function generateNow() {
+  const s = getState();
+  if (!s.document || s.runActive) return;
+  const opts = s.genOptions;
+  const allIds = (s.species ?? []).map((sp) => sp.id);
+  const speciesIds = opts.speciesIds ?? allIds;
+  const chosen = (s.species ?? []).filter((sp) => speciesIds.includes(sp.id));
+  const plantKinds = [...new Set(chosen.map((sp) => sp.kind))] as PlantKind[];
+  const tc = opts.targetCount.trim() === "" ? null : Number(opts.targetCount);
+  void startGeneration({
+    plantKinds: plantKinds.length > 0 ? plantKinds : ["TREE"],
+    speciesIds,
+    strategy: opts.strategy,
+    targetCount: tc != null && Number.isFinite(tc) ? tc : null,
+    seed: Number.isFinite(Number(opts.seed)) ? Number(opts.seed) : 42,
+    maxIterations: Math.max(1, Number(opts.maxIterations) || 3),
+    useLlmJudge: opts.useLlmJudge,
+  });
+}
+
+/** Loads the bundled example drawing and uploads it as a new project. */
+export async function openExample() {
+  if (getState().uploading) return;
+  setState({ uploading: true, uploadError: null });
+  try {
+    const res = await fetch("/example/synthetic_site.dxf");
+    if (!res.ok) throw new Error(`example fetch failed (HTTP ${res.status})`);
+    const blob = await res.blob();
+    const file = new File([blob], "synthetic_site.dxf", { type: "application/dxf" });
+    await uploadFile(file);
+  } catch (e) {
+    setState({ uploading: false, uploadError: { code: null, message: errMsg(e) } });
+  }
 }
 
 export function setOverlay(key: keyof ReturnType<typeof getState>["overlays"], value: boolean) {

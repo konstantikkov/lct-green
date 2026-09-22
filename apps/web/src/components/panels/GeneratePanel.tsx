@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import type { PlantKind, RunStage, Strategy } from "../../api/types";
-import { startGeneration } from "../../state/actions";
+import { useState } from "react";
+import type { RunStage, Strategy } from "../../api/types";
+import { isDebug } from "../../debug";
+import { generateNow, setGenOptions, setOverlay } from "../../state/actions";
 import { useApp } from "../../state/store";
 import { Btn, Checkbox, Section, Select, Spinner, TextInput } from "../ui";
 
@@ -16,7 +17,7 @@ const STAGE_LABELS: Partial<Record<RunStage["stage"], string>> = {
   OPTIMIZING: "Optimizing",
   VALIDATING: "Validating",
   BUILDING_CONSTRAINTS: "Building constraints",
-  JUDGING: "LLM judge",
+  JUDGING: "Quality review",
   RERUNNING: "Re-running",
 };
 
@@ -51,57 +52,92 @@ function StageChecklist() {
   );
 }
 
+/** Seed, iterations, judge toggle and debug overlays live behind this fold. */
+function AdvancedSettings() {
+  const [open, setOpen] = useState(false);
+  const opts = useApp((s) => s.genOptions);
+  const capabilities = useApp((s) => s.capabilities);
+  const overlays = useApp((s) => s.overlays);
+
+  return (
+    <div className="mt-2">
+      <button
+        data-testid="advanced-toggle"
+        className="flex w-full items-center gap-1 text-2xs text-ink-400 hover:text-ink-200"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="inline-block w-3">{open ? "▾" : "▸"}</span>
+        Advanced settings
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5 border-l border-ink-700 pl-2.5">
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+            <label className="text-2xs text-ink-400">
+              Seed
+              <TextInput value={opts.seed} onChange={(v) => setGenOptions({ seed: v })} className="mt-0.5" />
+            </label>
+            <label className="text-2xs text-ink-400">
+              Max iterations
+              <TextInput value={opts.maxIterations} onChange={(v) => setGenOptions({ maxIterations: v })} className="mt-0.5" />
+            </label>
+          </div>
+          <Checkbox
+            checked={opts.useLlmJudge}
+            onChange={(v) => setGenOptions({ useLlmJudge: v })}
+            label={
+              <span>
+                LLM judge
+                {capabilities && (!capabilities.localLlm.enabled || !capabilities.localLlm.reachable) && (
+                  <span className="ml-1 text-ink-500" title="Local LLM unreachable — heuristic fallback will be used">
+                    (fallback)
+                  </span>
+                )}
+              </span>
+            }
+          />
+          <div className="border-t border-ink-700/70 pt-1.5">
+            <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Debug overlays</div>
+            <div className="space-y-1">
+              <Checkbox
+                checked={overlays.rejectedCandidates}
+                onChange={(v) => setOverlay("rejectedCandidates", v)}
+                label="Rejected candidates"
+              />
+              {isDebug && (
+                <Checkbox
+                  checked={overlays.chunkGrid}
+                  onChange={(v) => setOverlay("chunkGrid", v)}
+                  label="Chunk grid"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GeneratePanel() {
   const doc = useApp((s) => s.document);
   const species = useApp((s) => s.species);
   const speciesError = useApp((s) => s.speciesError);
-  const capabilities = useApp((s) => s.capabilities);
   const runActive = useApp((s) => s.runActive);
   const runError = useApp((s) => s.runError);
+  const opts = useApp((s) => s.genOptions);
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [strategy, setStrategy] = useState<Strategy>("balanced");
-  const [targetCount, setTargetCount] = useState("");
-  const [seed, setSeed] = useState("42");
-  const [maxIterations, setMaxIterations] = useState("3");
-  const [useLlmJudge, setUseLlmJudge] = useState(true);
-
-  // Preselect all species when the catalog first loads (demo-friendly default).
-  useEffect(() => {
-    if (species && species.length > 0) {
-      setSelected(new Set(species.map((sp) => sp.id)));
-    }
-  }, [species]);
-
-  const chosen = useMemo(
-    () => (species ?? []).filter((sp) => selected.has(sp.id)),
-    [species, selected],
-  );
   if (!doc) return null;
 
-  const plantKinds = [...new Set(chosen.map((sp) => sp.kind))] as PlantKind[];
-  const canGenerate = chosen.length > 0 && !runActive;
+  // null = "all species" until the user narrows the selection.
+  const allIds = (species ?? []).map((sp) => sp.id);
+  const selected = new Set(opts.speciesIds ?? allIds);
+  const canGenerate = selected.size > 0 && !runActive;
 
   const toggleSpecies = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const submit = () => {
-    const tc = targetCount.trim() === "" ? null : Number(targetCount);
-    void startGeneration({
-      plantKinds: plantKinds.length > 0 ? plantKinds : ["TREE"],
-      speciesIds: chosen.map((sp) => sp.id),
-      strategy,
-      targetCount: tc != null && Number.isFinite(tc) ? tc : null,
-      seed: Number.isFinite(Number(seed)) ? Number(seed) : 42,
-      maxIterations: Math.max(1, Number(maxIterations) || 3),
-      useLlmJudge,
-    });
+    const next = new Set(opts.speciesIds ?? allIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setGenOptions({ speciesIds: [...next] });
   };
 
   return (
@@ -138,51 +174,34 @@ export function GeneratePanel() {
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5">
-        <label className="col-span-2 text-2xs text-ink-400">
+        <label className="text-2xs text-ink-400">
           Strategy
           <Select
-            value={strategy}
-            onChange={(v) => setStrategy(v as Strategy)}
+            value={opts.strategy}
+            onChange={(v) => setGenOptions({ strategy: v as Strategy })}
             options={STRATEGIES}
             className="mt-0.5"
           />
         </label>
         <label className="text-2xs text-ink-400">
           Target count
-          <TextInput value={targetCount} onChange={setTargetCount} placeholder="Auto" className="mt-0.5" />
-        </label>
-        <label className="text-2xs text-ink-400">
-          Seed
-          <TextInput value={seed} onChange={setSeed} className="mt-0.5" />
-        </label>
-        <label className="text-2xs text-ink-400">
-          Max iterations
-          <TextInput value={maxIterations} onChange={setMaxIterations} className="mt-0.5" />
-        </label>
-        <div className="flex items-end pb-1">
-          <Checkbox
-            checked={useLlmJudge}
-            onChange={setUseLlmJudge}
-            label={
-              <span>
-                LLM judge
-                {capabilities && (!capabilities.localLlm.enabled || !capabilities.localLlm.reachable) && (
-                  <span className="ml-1 text-ink-500" title="Local LLM unreachable — heuristic fallback will be used">
-                    (fallback)
-                  </span>
-                )}
-              </span>
-            }
+          <TextInput
+            value={opts.targetCount}
+            onChange={(v) => setGenOptions({ targetCount: v })}
+            placeholder="Auto"
+            className="mt-0.5"
           />
-        </div>
+        </label>
       </div>
+
+      <AdvancedSettings />
 
       <Btn
         variant="primary"
         className="mt-2.5 h-8 w-full text-[13px]"
         disabled={!canGenerate}
-        onClick={submit}
-        title={chosen.length === 0 ? "Select at least one species" : undefined}
+        onClick={() => generateNow()}
+        title={selected.size === 0 ? "Select at least one species" : undefined}
       >
         {runActive ? <><Spinner /> Generating…</> : "Generate planting plan"}
       </Btn>

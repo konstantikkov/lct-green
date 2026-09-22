@@ -1,5 +1,57 @@
 # API Contract — Green Placement MVP
 
+## Regulations feature (WS4) — /api/regulations
+
+```ts
+type DocStatus = "UPLOADED" | "PARSED" | "EXTRACTED" | "FAILED";
+type RuleCandidateStatus = "EXTRACTED" | "NEEDS_REVIEW" | "VERIFIED" | "ACTIVE" | "DEPRECATED" | "REJECTED";
+
+interface RegDocument {
+  id: string; fileName: string; title: string | null; documentNumber: string | null;
+  jurisdiction: string | null; publicationDate: string | null; effectiveDate: string | null;
+  version: string; fileHash: string; status: DocStatus; uploadedAt: number;
+  pageCount: number | null; fragmentCount: number; candidateCounts: Record<RuleCandidateStatus, number>;
+  parseLog: string[];
+}
+interface Fragment { id: string; page: number | null; hierarchyPath: string; kind: "clause"|"table"|"note"|"heading"; text: string; order: number; }
+interface RuleCandidate {
+  id: string; documentId: string; ruleVersion: number;
+  source: { documentId: string; documentVersion: string; page: number | null;
+            hierarchyPath: string; fragmentIds: string[]; sourceText: string };
+  applicability: { jurisdiction: string | null; plantType: string[]; objectTypes: string[]; conditions: string[] };
+  constraint: { type: "MIN_DISTANCE"|"MIN_SPACING"|"OTHER"; subject: string; referenceObject: string;
+                operator: string; value: number | null; unit: string | null };
+  exceptions: string[]; references: string[];
+  machineExecutable: boolean; confidence: number; status: RuleCandidateStatus;
+  verification: { verdict: "SUPPORTED"|"PARTIALLY_SUPPORTED"|"UNSUPPORTED"|"AMBIGUOUS"|null;
+                  numericLiteralFound: boolean; notes: string | null;
+                  model: string | null; promptVersion: string | null } | null;
+  reviewer: string | null; reviewDate: number | null;
+  extraction: { model: string; promptVersion: string };
+}
+```
+
+- `POST /api/regulations/documents` — multipart `file` (.pdf/.docx). Stores original,
+  parses hierarchy synchronously, returns RegDocument. 422 {code:"UNSUPPORTED_FORMAT"|"PARSE_FAILED"}.
+- `GET /api/regulations/documents` → RegDocument[]
+- `GET /api/regulations/documents/{id}` → RegDocument
+- `GET /api/regulations/documents/{id}/fragments?path=prefix` → Fragment[] (paged by ?offset/limit, default 200)
+- `POST /api/regulations/documents/{id}/extract` → 202 {jobId}; extraction via local LLM
+  produces candidates (status EXTRACTED / NEEDS_REVIEW). Poll document.candidateCounts.
+  409 {code:"LLM_UNAVAILABLE"} when no local LLM reachable.
+- `GET /api/regulations/candidates?documentId=&status=` → RuleCandidate[]
+- `POST /api/regulations/candidates/{id}/verify` → runs second-pass verifier, returns updated candidate.
+- `PATCH /api/regulations/candidates/{id}` — body {action:"approve"|"reject"|"edit", edits?:{constraint?, applicability?}, reviewer?:string}.
+  approve: NEEDS_REVIEW/EXTRACTED/VERIFIED → VERIFIED (then ACTIVE via activate). Every edit bumps ruleVersion (old version retained server-side).
+- `POST /api/regulations/candidates/{id}/activate` → status ACTIVE (only from VERIFIED; numericLiteralFound must be true for numeric rules).
+- `POST /api/regulations/candidates/{id}/deactivate` → DEPRECATED.
+- ACTIVE candidates are merged into GET /api/rules as RegulatoryRule entries with
+  status:"verified", effectiveSource:"verified", full source provenance (document number,
+  clause=hierarchyPath, excerpt=sourceText, url:null) and id `REG_<candidateId>`;
+  the constraint engine consumes them automatically (no code change per rule).
+
+
+
 Backend: FastAPI at `http://localhost:8000`. All JSON. All geometry coordinates are in **meters** (backend normalizes CAD units at ingestion). 2D plan coordinates `[x, y]`.
 
 Frontend dev server proxies `/api/*` → `http://localhost:8000`.
@@ -243,3 +295,76 @@ interface Explanation {
 
 ## Error shape
 Non-2xx: `{"detail": {"code": "STRING_CODE", "message": "human readable"}}` or FastAPI default `{"detail": "..."}`. Handle both.
+
+## JudgeReport v2
+
+Replaces the v1 `JudgeReport` above for all new runs (schema `judge-report-2`).
+The judge runs ONLY when the deterministic validator reports `valid == true`;
+otherwise the pipeline repairs deterministically and stores `judge: null` with
+`judgeSkipped: "hard_violations"` on the iteration. There is NO LLM-invented
+overall score: the UI summary derives from `deterministicComponents`, which are
+computed in code from validator metrics and spatial diagnostics.
+
+```ts
+type JudgeDecision = "ACCEPT" | "RERUN" | "MANUAL_REVIEW"; // MANUAL_REVIEW = abstention, terminal for the run
+type DimensionStatus = "GOOD" | "IMPROVABLE" | "POOR";
+
+interface AssessmentDimension {
+  status: DimensionStatus;
+  evidence: string[];   // evidence IDs from the JudgePacket (q_i_j, cluster_N, under_q_i_j, layer_N);
+}                       // unknown IDs are stripped server-side
+
+interface JudgeReportV2 {
+  schemaVersion: "judge-report-2";
+  mode: "llm" | "heuristic_fallback";   // heuristic when local LLM unreachable/disabled
+  decision: JudgeDecision;
+  confidence: number;                   // 0..1
+  assessment: {
+    coverage: AssessmentDimension;
+    distribution: AssessmentDimension;
+    clustering: AssessmentDimension;
+    utilization: AssessmentDimension;
+    robustnessToUncertainty: AssessmentDimension;
+  };
+  issues: { type: string; severity: "LOW" | "MEDIUM" | "HIGH";
+            evidenceIds: string[]; description: string }[];
+  parameterChanges: {                   // whitelist-enforced; clamped to [min,max] and
+    parameter: string;                  //   to current ± maxDeltaPerIteration in code;
+    currentValue: number;               //   informational only when decision == ACCEPT
+    proposedValue: number;
+    reason: string;
+    evidenceIds: string[];
+  }[];
+  summary: string;
+  deterministicComponents: {            // computed in code (judge_packet.py), never by the LLM
+    coverage: number; distribution: number;
+    utilizationBalance: number;         // 1 − underused-area share
+    clusterPenalty: number;             // share of plantings inside dense clusters
+  };
+  // observability — recorded for every judgment
+  promptVersion: string | null;         // prompts/judge/{version}.md; null in heuristic mode
+  model: string | null;
+  temperature: number | null;
+  inputSchemaVersion: "judge-packet-1";
+  judgeInputHash: string;               // sha256 of the canonical JudgePacket JSON
+  // backward-compatible keys (v1 consumers)
+  reasoningSummary: string;             // mirrors `summary`
+  recommendedParameterChanges: Record<string, number>; // parameter → proposedValue
+  llmModel: string | null;
+}
+```
+
+Iteration-record additions alongside `judge`:
+
+```ts
+interface IterationJudgeExtras {
+  judgeSkipped: "hard_violations" | null;   // judge not invoked (plan invalid after repair)
+  deterministicRepair: { removed: number; passes: number } | null; // pre-judge repair, ≤ 3 passes
+  needsManualReview: boolean;               // true when decision == MANUAL_REVIEW (terminal, no rerun)
+}
+```
+
+Rerun retention rule (pipeline, deterministic): a judge-triggered rerun becomes
+the selected iteration ONLY if it is deterministically valid AND the objective
+(0.5·coverage + 0.5·distribution) improves by ≥ 0.02 AND neither component
+drops by more than 0.05; otherwise the previous selection is kept.

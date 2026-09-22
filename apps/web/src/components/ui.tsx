@@ -26,6 +26,7 @@ export function Section({
 
 export function Btn({
   children, onClick, disabled, variant = "default", className = "", title,
+  "data-testid": testid,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -33,6 +34,7 @@ export function Btn({
   variant?: "default" | "primary" | "ghost";
   className?: string;
   title?: string;
+  "data-testid"?: string;
 }) {
   const base =
     "inline-flex items-center justify-center gap-1.5 border px-2.5 h-7 text-xs rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
@@ -44,7 +46,13 @@ export function Btn({
     ghost: "border-transparent text-ink-300 hover:text-ink-100 hover:bg-ink-800",
   } as const;
   return (
-    <button className={`${base} ${styles[variant]} ${className}`} onClick={onClick} disabled={disabled} title={title}>
+    <button
+      className={`${base} ${styles[variant]} ${className}`}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      data-testid={testid}
+    >
       {children}
     </button>
   );
@@ -54,7 +62,7 @@ export function Badge({
   children, tone = "grey", title, onClick,
 }: {
   children: ReactNode;
-  tone?: "grey" | "green" | "amber" | "red" | "blue";
+  tone?: "grey" | "green" | "amber" | "red" | "blue" | "violet";
   title?: string;
   onClick?: () => void;
 }) {
@@ -64,6 +72,7 @@ export function Badge({
     amber: "border-amber-300 text-amber-800 bg-amber-50 dark:border-amber-600 dark:text-amber-300 dark:bg-amber-950/60",
     red: "border-red-300 text-red-800 bg-red-50 dark:border-red-700 dark:text-red-300 dark:bg-red-950/60",
     blue: "border-sky-300 text-sky-800 bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:bg-sky-950/60",
+    violet: "border-violet-300 text-violet-800 bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:bg-violet-950/60",
   } as const;
   const cls = `inline-flex items-center border px-1 py-px rounded-sm text-2xs leading-4 whitespace-nowrap ${tones[tone]} ${onClick ? "cursor-pointer hover:brightness-125" : ""}`;
   return (
@@ -176,6 +185,33 @@ export function Spinner({ className = "" }: { className?: string }) {
     <span
       className={`inline-block h-3 w-3 animate-spin rounded-full border border-ink-400 border-t-transparent ${className}`}
     />
+  );
+}
+
+/** Compact horizontal metric bar: label · bar · percentage. */
+export function MetricBar({
+  label, value, invert = false, title,
+}: {
+  label: string;
+  /** 0..1 */
+  value: number;
+  /** true = lower is better (e.g. penalties) — colors flip. */
+  invert?: boolean;
+  title?: string;
+}) {
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  const good = invert ? pct <= 30 : pct >= 60;
+  return (
+    <div className="flex items-center gap-2" title={title}>
+      <span className="w-24 shrink-0 truncate text-2xs text-ink-400">{label}</span>
+      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ink-700">
+        <div
+          className={`h-full rounded-full ${good ? "bg-emerald-500/80" : "bg-amber-500/80"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="w-8 shrink-0 text-right font-mono text-2xs text-ink-300">{pct}%</span>
+    </div>
   );
 }
 

@@ -183,6 +183,14 @@ def load_registry() -> RuleRegistry:
                 rule.assumption.assumedDistanceM = float(ap["assumedDistanceM"])
             if ap.get("enabled") is not None:
                 rule.assumption.enabled = bool(ap["enabled"])
+
+    # merge ACTIVE regulation-ingestion candidates (WS4) as verified rules;
+    # a broken regulations store must never break the registry
+    try:
+        from ..regulations.integration import active_candidate_rules
+        registry.rules.extend(active_candidate_rules())
+    except Exception:
+        pass
     return registry
 
 

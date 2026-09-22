@@ -1,4 +1,4 @@
-.PHONY: dev api web test fixture docker
+.PHONY: dev api web test fixture docker eval
 
 # one-command local dev (backend :8000 + frontend :5173)
 dev:
@@ -22,3 +22,9 @@ test:
 
 docker:
 	docker compose up --build
+
+# --- evaluation & regression pipeline (WS3) ----------------------------------
+# Level A deterministic checks gate (exit 1); judge benchmark runs in mock
+# mode; GPT evaluator runs only when OPENAI_EVAL_MODEL capability is present.
+eval:
+	PYTHONPATH=apps/api python3 -m evals.run

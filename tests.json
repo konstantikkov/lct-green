@@ -1,24 +1,82 @@
 {
-  "updated": "phase-0 baseline",
+  "updated": "iteration-2 integration",
   "suites": {
     "backend_pytest": {
       "path": "apps/api/tests",
-      "count": 35,
+      "count": 64,
       "status": "pass",
-      "areas": ["parsing", "units", "classification", "rules", "geometry",
-                "candidates", "validator", "pipeline", "roundtrip", "real-dwg",
-                "sanitizer", "cross-species-spacing"]
+      "areas": [
+        "parsing",
+        "units",
+        "classification",
+        "rules",
+        "geometry",
+        "candidates",
+        "validator",
+        "pipeline",
+        "roundtrip",
+        "real-dwg",
+        "sanitizer",
+        "cross-species-spacing",
+        "judge-v2",
+        "judge-packet",
+        "deterministic-repair",
+        "prompt-versioning",
+        "regulations-docparse",
+        "regulations-gates",
+        "regulations-status-machine",
+        "registry-merge",
+        "prompt-injection"
+      ]
+    },
+    "root_pytest": {
+      "path": "tests/{export,geometry,e2e}",
+      "count": 102,
+      "status": "pass",
+      "areas": [
+        "dxf-roundtrip-10-cases",
+        "placement-invariants",
+        "pipeline-e2e-cases",
+        "evaluator-capability",
+        "pairwise-swap",
+        "judge-benchmark-scorer"
+      ]
     },
     "frontend_build": {
       "path": "apps/web",
       "count": 1,
-      "status": "pass",
-      "areas": ["tsc strict + vite build"]
+      "status": "pass"
     },
-    "playwright_e2e": { "path": "tests/e2e", "count": 0, "status": "planned" },
-    "geometry_export_checks": { "path": "tests/export", "count": 0, "status": "planned" },
-    "evals_deterministic": { "path": "evals", "count": 0, "status": "planned" },
-    "evals_judge_benchmark": { "path": "evals/judge", "count": 0, "status": "planned" },
-    "evals_regulations": { "path": "evals/regulations", "count": 0, "status": "planned" }
+    "playwright_e2e": {
+      "path": "tests/playwright",
+      "count": 9,
+      "status": "run-on-deploy-host",
+      "areas": [
+        "core-flow x3 viewports",
+        "screens x3 viewports"
+      ]
+    },
+    "evals_deterministic": {
+      "path": "evals",
+      "count": 241,
+      "status": "pass",
+      "note": "make eval; Level A gates exit 1 on failure"
+    },
+    "evals_judge_benchmark": {
+      "path": "evals/judge",
+      "count": 14,
+      "status": "pass (mock)",
+      "note": "labels are engineering-bootstrap, not expert ground truth"
+    },
+    "evals_regulations": {
+      "path": "evals/regulations",
+      "count": 10,
+      "status": "pass (mock gates)"
+    },
+    "gpt_evaluator": {
+      "path": "evals/evaluator.py",
+      "status": "SKIPPED (capability)",
+      "note": "OPENAI_API_KEY not configured; explicit CapabilityError by design"
+    }
   }
 }

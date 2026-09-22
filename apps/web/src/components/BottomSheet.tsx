@@ -4,14 +4,15 @@ import { useApp, type MobileTab, type SheetSnap } from "../state/store";
 import { InspectorContent } from "./Inspector";
 import { ConstraintsPanel } from "./panels/ConstraintsPanel";
 import { GeneratePanel } from "./panels/GeneratePanel";
-import { IterationsPanel } from "./panels/IterationsPanel";
 import { LayersPanel } from "./panels/LayersPanel";
+import { QualityCard } from "./panels/QualityCard";
+import { RunsList } from "./views/RunsView";
 
 const TABS: { id: MobileTab; label: string }[] = [
   { id: "layers", label: "Layers" },
   { id: "constraints", label: "Constraints" },
   { id: "generate", label: "Generate" },
-  { id: "iterations", label: "Iterations" },
+  { id: "iterations", label: "Runs" },
   { id: "inspector", label: "Inspector" },
 ];
 
@@ -47,11 +48,13 @@ function TabContent({ tab }: { tab: MobileTab }) {
     case "constraints":
       return <ConstraintsPanel />;
     case "generate":
-      return <GeneratePanel />;
+      return iterations.length > 0
+        ? <><GeneratePanel /><QualityCard /></>
+        : <GeneratePanel />;
     case "iterations":
       return iterations.length > 0
-        ? <IterationsPanel />
-        : <div className="p-3 text-xs text-ink-500">No iterations yet — run "Generate" first.</div>;
+        ? <RunsList />
+        : <div className="p-3 text-xs text-ink-500">No runs yet — run "Generate" first.</div>;
     case "inspector":
       return <InspectorContent />;
   }

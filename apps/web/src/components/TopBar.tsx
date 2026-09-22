@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import { newProject, openProject } from "../state/actions";
-import { useApp } from "../state/store";
+import { isDebug } from "../debug";
+import { generateNow, newProject, openProject, setNav } from "../state/actions";
+import { useApp, useStage, type NavView } from "../state/store";
 import { toggleTheme, useTheme } from "../theme";
 import { Badge, Btn, Dropdown, Spinner } from "./ui";
 import type { PipelineState } from "../api/types";
@@ -36,7 +37,7 @@ function ProjectMenu() {
   const projects = useApp((s) => s.projects);
   const loadingId = useApp((s) => s.projectLoadingId);
   const [open, setOpen] = useState(false);
-  if (!doc) return <span className="text-xs text-ink-500">no file loaded</span>;
+  if (!doc) return null;
 
   return (
     <Dropdown
@@ -47,7 +48,7 @@ function ProjectMenu() {
           className="flex min-w-0 items-center gap-1.5 rounded-sm border border-transparent px-1.5 py-0.5 text-xs text-ink-100 hover:border-ink-600 hover:bg-ink-800"
           title="Switch project"
         >
-          <span className="max-w-[220px] truncate">{doc.fileName}</span>
+          <span className="max-w-[180px] truncate">{doc.fileName}</span>
           <span className="text-ink-400">▾</span>
         </button>
       }
@@ -167,70 +168,158 @@ function MobileOverflowMenu() {
   );
 }
 
+/**
+ * Slim top-level switcher. PLAN and RUNS are the primary pair; REGULATIONS and
+ * QUALITY are intentionally de-emphasized (smaller, muted, right-aligned).
+ */
+function NavTabs() {
+  const nav = useApp((s) => s.nav);
+  const iterationCount = useApp((s) => s.iterations.length);
+
+  const primary: { id: NavView; label: string; badge?: number; testid: string }[] = [
+    { id: "plan", label: "PLAN", testid: "nav-plan" },
+    {
+      id: "runs", label: "RUNS",
+      badge: iterationCount > 1 ? iterationCount : undefined,
+      testid: "nav-runs",
+    },
+  ];
+
+  return (
+    <div className="hidden items-center overflow-hidden rounded-sm border border-ink-600 md:flex">
+      {primary.map((t) => (
+        <button
+          key={t.id}
+          data-testid={t.testid}
+          className={`flex h-6 items-center gap-1 px-2.5 text-2xs font-semibold tracking-wider transition-colors ${
+            nav === t.id
+              ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-800/70 dark:text-emerald-100"
+              : "bg-ink-900 text-ink-400 hover:text-ink-100"
+          }`}
+          onClick={() => setNav(t.id)}
+        >
+          {t.label}
+          {t.badge != null && (
+            <span className="rounded-full bg-ink-700 px-1 font-mono text-2xs leading-3 text-ink-200">
+              {t.badge}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Muted secondary nav (REGULATIONS · QUALITY), right-aligned. */
+function SecondaryNav() {
+  const nav = useApp((s) => s.nav);
+  const items: { id: NavView; label: string; testid: string }[] = [
+    { id: "regulations", label: "Regulations", testid: "nav-regulations" },
+    { id: "quality", label: "Quality", testid: "nav-quality" },
+  ];
+  return (
+    <div className="hidden items-center gap-0.5 md:flex">
+      {items.map((t) => (
+        <button
+          key={t.id}
+          data-testid={t.testid}
+          className={`rounded-sm px-1.5 py-0.5 text-2xs transition-colors ${
+            nav === t.id ? "bg-ink-800 text-ink-200" : "text-ink-500 hover:text-ink-300"
+          }`}
+          onClick={() => setNav(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function TopBar() {
   const doc = useApp((s) => s.document);
   const pipelineState = useApp((s) => s.pipelineState);
   const runActive = useApp((s) => s.runActive);
   const hasIterations = useApp((s) => s.iterations.length > 0);
+  const stage = useStage();
   const theme = useTheme();
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-ink-600 bg-ink-900 px-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold tracking-tight text-ink-100">
-          Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
-        </span>
-        <span className="hidden text-2xs uppercase tracking-widest text-ink-500 md:inline">CAD greening</span>
-      </div>
-
-      <div className="h-5 w-px bg-ink-600" />
-
-      {/* Desktop: full project switcher; mobile: just the truncated file name. */}
-      <div className="hidden min-w-0 md:block">
-        <ProjectMenu />
-      </div>
-      <span className="min-w-0 max-w-[34vw] truncate text-xs text-ink-100 md:hidden">
-        {doc ? doc.fileName : <span className="text-ink-500">no file loaded</span>}
+    <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-ink-600 bg-ink-900 px-3">
+      <span className="text-sm font-semibold tracking-tight text-ink-100">
+        Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
       </span>
 
       {doc && (
-        <div className="hidden min-w-0 items-center gap-2.5 md:flex">
-          <span className="font-mono text-2xs text-ink-400">{doc.format}</span>
-          <span className="font-mono text-2xs text-ink-400">{doc.cadVersion}</span>
-          <span className="font-mono text-2xs text-ink-400">units: {doc.units}</span>
-          <span className="font-mono text-2xs text-ink-400">
-            {doc.entityCount.toLocaleString()} entities / {doc.layerCount} layers
+        <>
+          <div className="hidden h-5 w-px bg-ink-600 md:block" />
+
+          {/* Desktop: full project switcher; mobile: just the truncated file name. */}
+          <div className="hidden min-w-0 md:block">
+            <ProjectMenu />
+          </div>
+          <span className="min-w-0 max-w-[30vw] truncate text-xs text-ink-100 md:hidden">
+            {doc.fileName}
           </span>
-        </div>
+
+          <NavTabs />
+
+          {isDebug && (
+            <div className="hidden min-w-0 items-center gap-2.5 lg:flex">
+              <span className="font-mono text-2xs text-ink-500">{doc.format}</span>
+              <span className="font-mono text-2xs text-ink-500">{doc.cadVersion}</span>
+              <span className="font-mono text-2xs text-ink-500">units: {doc.units}</span>
+              <span className="font-mono text-2xs text-ink-500">
+                {doc.entityCount.toLocaleString()} entities / {doc.layerCount} layers
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       <div className="flex-1" />
 
-      {pipelineState && (
+      {doc && <SecondaryNav />}
+
+      {doc && pipelineState && (
         <Badge tone={stateTone(pipelineState)}>
           {runActive && <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
           {pipelineState}
         </Badge>
       )}
 
-      <div className="hidden items-center gap-3 md:flex">
+      {doc && stage !== "empty" && (
         <Btn
-          disabled={!doc || !hasIterations}
-          onClick={() => doc && window.open(api.exportDxfUrl(doc.projectId), "_blank")}
-          title={hasIterations ? "Download DXF with generated plantings" : "Generate a plan first"}
+          variant="primary"
+          className="hidden font-semibold md:inline-flex"
+          disabled={runActive}
+          onClick={() => generateNow()}
+          title="Generate a planting plan with the current settings"
+          data-testid="generate-button"
         >
-          Export DXF
+          {runActive ? <><Spinner /> Generating…</> : "Generate planting plan"}
         </Btn>
-        <Btn
-          disabled={!doc || !hasIterations}
-          onClick={() => doc && window.open(api.exportReportUrl(doc.projectId), "_blank")}
-          title={hasIterations ? "Download JSON report" : "Generate a plan first"}
-        >
-          Export report
-        </Btn>
-      </div>
+      )}
 
-      <MobileOverflowMenu />
+      {doc && hasIterations && (
+        <div className="hidden items-center gap-2 md:flex">
+          <Btn
+            onClick={() => window.open(api.exportDxfUrl(doc.projectId), "_blank")}
+            title="Download DXF with generated plantings"
+            data-testid="export-dxf"
+          >
+            Export DXF
+          </Btn>
+          <Btn
+            onClick={() => window.open(api.exportReportUrl(doc.projectId), "_blank")}
+            title="Download JSON report"
+            data-testid="export-report"
+          >
+            Export report
+          </Btn>
+        </div>
+      )}
+
+      {doc && <MobileOverflowMenu />}
 
       <button
         className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"

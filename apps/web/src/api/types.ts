@@ -87,6 +87,9 @@ export interface ProjectDocument {
   state: PipelineState;
   layers: LayerInfo[];
   entities: EntityRender[];
+  /** NOT in the frozen contract — some backend builds attach the DWG→DXF
+   *  converter/sanitizer log. Rendered only in debug mode when present. */
+  conversionLog?: string[];
 }
 
 export interface ChunkInfo {
@@ -188,14 +191,67 @@ export interface RunStatus {
   error: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Judge reports.
+// The backend stores both v1 ("JudgeReport" pre-WS2) and v2 ("judge-report-2")
+// objects; old iterations keep their old shape forever. The UI therefore uses
+// a single defensive type where every version-specific field is optional.
+// ---------------------------------------------------------------------------
+
+export type JudgeDecision = "ACCEPT" | "RERUN" | "MANUAL_REVIEW";
+export type DimensionStatus = "GOOD" | "IMPROVABLE" | "POOR";
+
+export interface AssessmentDimension {
+  status: DimensionStatus;
+  evidence: string[]; // evidence IDs from the JudgePacket (q_i_j, cluster_N, …)
+}
+
+export type AssessmentKey =
+  | "coverage" | "distribution" | "clustering" | "utilization" | "robustnessToUncertainty";
+
+export interface JudgeIssueV2 {
+  type: string;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  evidenceIds: string[];
+  description: string;
+}
+
+export interface JudgeParameterChange {
+  parameter: string;
+  currentValue: number;
+  proposedValue: number;
+  reason: string;
+  evidenceIds: string[];
+}
+
+export interface DeterministicComponents {
+  coverage: number;
+  distribution: number;
+  utilizationBalance: number; // 1 − underused-area share
+  clusterPenalty: number;     // share of plantings inside dense clusters
+}
+
 export interface JudgeReport {
+  schemaVersion?: "judge-report-2";
   mode: "llm" | "heuristic_fallback";
-  decision: "ACCEPT" | "RERUN";
-  score: { overall: number; coverage: number; distribution: number; confidence: number };
-  issues: string[];
-  recommendedParameterChanges: Record<string, number | null>;
-  reasoningSummary: string;
-  llmModel: string | null;
+  decision: JudgeDecision;
+  confidence?: number;
+  assessment?: Partial<Record<AssessmentKey, AssessmentDimension>>;
+  /** v1: string[]; v2: structured issues. */
+  issues?: (string | JudgeIssueV2)[];
+  parameterChanges?: JudgeParameterChange[];
+  summary?: string;
+  deterministicComponents?: DeterministicComponents;
+  promptVersion?: string | null;
+  model?: string | null;
+  temperature?: number | null;
+  inputSchemaVersion?: string;
+  judgeInputHash?: string;
+  // v1 / backward-compatible keys
+  score?: { overall: number; coverage: number; distribution: number; confidence: number };
+  reasoningSummary?: string;
+  recommendedParameterChanges?: Record<string, number | null>;
+  llmModel?: string | null;
 }
 
 export interface IterationSummary {
@@ -216,6 +272,10 @@ export interface IterationSummary {
   };
   judge: JudgeReport | null;
   runtimeMs: number;
+  // WS2 iteration-record additions (absent on old records).
+  judgeSkipped?: "hard_violations" | null;
+  deterministicRepair?: { removed: number; passes: number } | null;
+  needsManualReview?: boolean;
 }
 
 export interface Placement {
@@ -261,4 +321,91 @@ export interface Explanation {
   summary: string;
   llmNarrative: string | null;
   checks: ExplanationCheck[];
+}
+
+// ---------------------------------------------------------------------------
+// Regulations feature (WS4) — transcribed 1:1 from docs/API_CONTRACT.md.
+// ---------------------------------------------------------------------------
+
+export type DocStatus = "UPLOADED" | "PARSED" | "EXTRACTED" | "FAILED";
+export type RuleCandidateStatus =
+  | "EXTRACTED" | "NEEDS_REVIEW" | "VERIFIED" | "ACTIVE" | "DEPRECATED" | "REJECTED";
+
+export interface RegDocument {
+  id: string;
+  fileName: string;
+  title: string | null;
+  documentNumber: string | null;
+  jurisdiction: string | null;
+  publicationDate: string | null;
+  effectiveDate: string | null;
+  version: string;
+  fileHash: string;
+  status: DocStatus;
+  uploadedAt: number;
+  pageCount: number | null;
+  fragmentCount: number;
+  candidateCounts: Record<RuleCandidateStatus, number>;
+  parseLog: string[];
+}
+
+export interface Fragment {
+  id: string;
+  page: number | null;
+  hierarchyPath: string;
+  kind: "clause" | "table" | "note" | "heading";
+  text: string;
+  order: number;
+}
+
+export interface RuleCandidate {
+  id: string;
+  documentId: string;
+  ruleVersion: number;
+  source: {
+    documentId: string;
+    documentVersion: string;
+    page: number | null;
+    hierarchyPath: string;
+    fragmentIds: string[];
+    sourceText: string;
+  };
+  applicability: {
+    jurisdiction: string | null;
+    plantType: string[];
+    objectTypes: string[];
+    conditions: string[];
+  };
+  constraint: {
+    type: "MIN_DISTANCE" | "MIN_SPACING" | "OTHER";
+    subject: string;
+    referenceObject: string;
+    operator: string;
+    value: number | null;
+    unit: string | null;
+  };
+  exceptions: string[];
+  references: string[];
+  machineExecutable: boolean;
+  confidence: number;
+  status: RuleCandidateStatus;
+  verification: {
+    verdict: "SUPPORTED" | "PARTIALLY_SUPPORTED" | "UNSUPPORTED" | "AMBIGUOUS" | null;
+    numericLiteralFound: boolean;
+    notes: string | null;
+    model: string | null;
+    promptVersion: string | null;
+  } | null;
+  reviewer: string | null;
+  reviewDate: number | null;
+  extraction: { model: string; promptVersion: string };
+}
+
+export interface CandidateReviewPatch {
+  action: "approve" | "reject" | "edit";
+  edits?: {
+    constraint?: Partial<RuleCandidate["constraint"]>;
+    applicability?: Partial<RuleCandidate["applicability"]>;
+  };
+  reviewer?: string;
 }

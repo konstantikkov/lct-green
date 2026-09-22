@@ -1,7 +1,8 @@
 import type {
-  Capabilities, Category, ChunkInfo, ConstraintsResponse, Explanation,
-  GenerateRequest, IterationDetail, IterationSummary, LayerInfo,
-  ProjectDocument, ProjectListItem, RegulatoryRule, RunStatus, SpeciesInfo,
+  CandidateReviewPatch, Capabilities, Category, ChunkInfo, ConstraintsResponse,
+  Explanation, Fragment, GenerateRequest, IterationDetail, IterationSummary,
+  LayerInfo, ProjectDocument, ProjectListItem, RegDocument, RegulatoryRule,
+  RuleCandidate, RuleCandidateStatus, RunStatus, SpeciesInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -106,6 +107,54 @@ export const api = {
 
   exportDxfUrl: (projectId: string) => `/api/projects/${projectId}/export/dxf`,
   exportReportUrl: (projectId: string) => `/api/projects/${projectId}/export/report`,
+
+  // --- Regulations feature (WS4) — docs/API_CONTRACT.md, frozen contract ---
+
+  uploadRegDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<RegDocument>("/api/regulations/documents", { method: "POST", body: form });
+  },
+
+  listRegDocuments: () => request<RegDocument[]>("/api/regulations/documents"),
+
+  getRegDocument: (documentId: string) =>
+    request<RegDocument>(`/api/regulations/documents/${documentId}`),
+
+  getRegFragments: (documentId: string, opts?: { path?: string; offset?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (opts?.path) q.set("path", opts.path);
+    if (opts?.offset != null) q.set("offset", String(opts.offset));
+    if (opts?.limit != null) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return request<Fragment[]>(`/api/regulations/documents/${documentId}/fragments${qs ? `?${qs}` : ""}`);
+  },
+
+  /** 202 {jobId}; throws ApiError 409 code LLM_UNAVAILABLE when no local LLM. */
+  extractRegDocument: (documentId: string) =>
+    request<{ jobId: string }>(`/api/regulations/documents/${documentId}/extract`, { method: "POST" }),
+
+  listRegCandidates: (opts?: { documentId?: string; status?: RuleCandidateStatus }) => {
+    const q = new URLSearchParams();
+    if (opts?.documentId) q.set("documentId", opts.documentId);
+    if (opts?.status) q.set("status", opts.status);
+    const qs = q.toString();
+    return request<RuleCandidate[]>(`/api/regulations/candidates${qs ? `?${qs}` : ""}`);
+  },
+
+  verifyRegCandidate: (candidateId: string) =>
+    request<RuleCandidate>(`/api/regulations/candidates/${candidateId}/verify`, { method: "POST" }),
+
+  patchRegCandidate: (candidateId: string, body: CandidateReviewPatch) =>
+    request<RuleCandidate>(`/api/regulations/candidates/${candidateId}`, {
+      ...json(body), method: "PATCH",
+    }),
+
+  activateRegCandidate: (candidateId: string) =>
+    request<RuleCandidate>(`/api/regulations/candidates/${candidateId}/activate`, { method: "POST" }),
+
+  deactivateRegCandidate: (candidateId: string) =>
+    request<RuleCandidate>(`/api/regulations/candidates/${candidateId}/deactivate`, { method: "POST" }),
 };
 
 /**
