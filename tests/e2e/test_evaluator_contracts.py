@@ -102,6 +102,40 @@ def test_capability_error_when_model_absent():
     assert "forbidden" in msg.lower() or "fallback" in msg.lower()
 
 
+def test_local_endpoint_needs_no_api_key():
+    """Local open-source endpoints (llama.cpp/vLLM) must work without a key."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "authorization" not in {k.lower() for k in request.headers}
+        return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b-instruct"}]})
+    ev = GptEvaluator(EvaluatorConfig(model="qwen2.5-7b-instruct", api_key="",
+                                      base_url="http://127.0.0.1:8081/v1"),
+                      transport=httpx.MockTransport(handler))
+    assert ev.probe_capability() == "qwen2.5-7b-instruct"
+
+
+def test_empty_model_adopts_single_local_model():
+    """Unset OPENAI_EVAL_MODEL + exactly one served model = unambiguous adoption."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b-instruct"}]})
+    ev = GptEvaluator(EvaluatorConfig(model="", api_key="",
+                                      base_url="http://127.0.0.1:8081/v1"),
+                      transport=httpx.MockTransport(handler))
+    assert ev.probe_capability() == "qwen2.5-7b-instruct"
+    assert ev.config.model == "qwen2.5-7b-instruct"
+
+
+def test_empty_model_with_multiple_served_is_capability_error():
+    """Several models served and none configured: never choose implicitly."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})
+    ev = GptEvaluator(EvaluatorConfig(model="", api_key="",
+                                      base_url="http://127.0.0.1:8081/v1"),
+                      transport=httpx.MockTransport(handler))
+    with pytest.raises(CapabilityError) as ei:
+        ev.probe_capability()
+    assert "OPENAI_EVAL_MODEL" in str(ei.value)
+
+
 def test_probe_passes_when_model_available():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"data": [{"id": "gpt-6"}]})

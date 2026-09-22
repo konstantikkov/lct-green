@@ -17,9 +17,16 @@ import httpx
 from pydantic import BaseModel, Field
 
 PROMPT_VERSION = "gpt-eval-v1"
-DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-6"
-_TIMEOUT = 120.0
+# The evaluator speaks the OpenAI-compatible protocol but is expected to be a
+# LOCAL open-source model (llama.cpp / vLLM / Ollama). The default points at
+# the local eval server; a hosted endpoint can still be configured explicitly.
+DEFAULT_BASE_URL = "http://127.0.0.1:8081/v1"
+DEFAULT_MODEL = ""  # empty = auto-adopt the single model served locally
+
+_HOSTED_HOSTS = ("api.openai.com",)  # endpoints that always require an API key
+# Local CPU inference of a 7B evaluator is slow (prompt processing alone can
+# take minutes); generous default, overridable for hosted endpoints.
+_TIMEOUT = float(os.environ.get("EVAL_LLM_TIMEOUT_S", "900"))
 
 
 class CapabilityError(RuntimeError):
@@ -144,23 +151,30 @@ class GptEvaluator:
         self._probed: Optional[str] = None
 
     def _client(self) -> httpx.Client:
+        headers = {}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
         return httpx.Client(
             base_url=self.config.base_url,
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            headers=headers,
             timeout=_TIMEOUT,
             transport=self._transport,
         )
 
     # -- capability ---------------------------------------------------------
     def probe_capability(self) -> str:
-        """Verify key + configured model via GET /models. Raises CapabilityError."""
+        """Verify endpoint + configured model via GET /models. Raises CapabilityError.
+
+        Local open-source endpoints (llama.cpp / vLLM / Ollama) need no API key;
+        hosted endpoints (api.openai.com) still require one explicitly."""
         cfg = self.config
-        if not cfg.api_key:
+        hosted = any(h in cfg.base_url for h in _HOSTED_HOSTS)
+        if hosted and not cfg.api_key:
             raise CapabilityError(
-                f"OPENAI_API_KEY is not set — GPT evaluator (model '{cfg.model}') "
-                f"cannot run. Set OPENAI_API_KEY (and optionally OPENAI_BASE_URL, "
-                f"currently '{cfg.base_url}') in the environment / .env. "
-                f"No fallback model is used by design.")
+                f"OPENAI_API_KEY is not set — hosted evaluator endpoint "
+                f"'{cfg.base_url}' (model '{cfg.model}') cannot run. Either set "
+                f"OPENAI_API_KEY or point OPENAI_BASE_URL at the local eval model "
+                f"server. No fallback model is used by design.")
         try:
             with self._client() as client:
                 resp = client.get("/models")
@@ -175,11 +189,24 @@ class GptEvaluator:
                 f"cannot verify model '{cfg.model}' (check OPENAI_API_KEY). "
                 f"No fallback model is used by design.")
         ids = [m.get("id") for m in resp.json().get("data", [])]
+        if not cfg.model:
+            # No model configured: adopt the endpoint's model ONLY when it is
+            # unambiguous (exactly one served). Never a silent choice between
+            # alternatives — with several models the operator must pick.
+            if len(ids) == 1 and ids[0]:
+                self.config.model = ids[0]
+                self._probed = ids[0]
+                return ids[0]
+            raise CapabilityError(
+                f"OPENAI_EVAL_MODEL is not set and {cfg.base_url} serves "
+                f"{len(ids)} models — cannot choose one implicitly. Set "
+                f"OPENAI_EVAL_MODEL explicitly. No implicit model selection "
+                f"between alternatives by design.")
         if cfg.model not in ids:
             raise CapabilityError(
-                f"configured OPENAI_EVAL_MODEL '{cfg.model}' is NOT available on "
-                f"this account ({len(ids)} models visible at {cfg.base_url}). "
-                f"Change OPENAI_EVAL_MODEL to a model your account has. "
+                f"configured OPENAI_EVAL_MODEL '{cfg.model}' is NOT available at "
+                f"{cfg.base_url} ({len(ids)} models visible). "
+                f"Change OPENAI_EVAL_MODEL to a model this endpoint serves. "
                 f"Silent fallback to another model is forbidden by design.")
         self._probed = cfg.model
         return cfg.model

@@ -45,8 +45,11 @@
 - README, API contract, tests.json updated.
 
 ## Known limitations / follow-ups
-- GPT evaluator live path untested until an OpenAI key is configured
-  (by design it fails loudly, never silently).
+- Eval LLM is LOCAL open-source by default: Qwen2.5-7B-Instruct via llama.cpp on
+  the server (port 8081, localhost-only, systemd `greenplan-evalllm`). Live run
+  verified (eval-results/20260922T110910Z): structured verdicts on 3 cases, incl.
+  correctly flagging the ambiguous-layer case as UNCERTAIN. Hosted endpoints
+  remain configurable but require an explicit key; no silent fallback.
 - Judge benchmark labels are engineering-bootstrap, not expert ground truth.
 - Regulation extraction quality depends on the local model; the deterministic
   provenance gates are the safety net.

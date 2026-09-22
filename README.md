@@ -201,9 +201,13 @@ The product now separates three reasoning layers explicitly:
    clusters, underused zones); parameter changes are whitelist+range+max-delta
    clamped in code. No LLM-invented quality scores — UI numbers come from
    deterministic components.
-3. **Offline GPT evaluator** (`evals/`, `OPENAI_EVAL_MODEL`, desired `gpt-6`) —
-   dev/CI only. Missing key/model raises an explicit capability error; no silent
-   fallback. Pairwise A/B comparisons run both orders; disagreement ⇒ INCONCLUSIVE.
+3. **Offline eval LLM** (`evals/`) — dev/CI only, and **local open-source by
+   default**: a second llama.cpp instance on the server (port 8081) serving
+   Qwen2.5-7B-Instruct, deliberately stronger than the production judge model.
+   The protocol is OpenAI-compatible (`OPENAI_BASE_URL`, `OPENAI_EVAL_MODEL`);
+   an unreachable endpoint or absent model raises an explicit capability error —
+   no silent fallback, no implicit choice between several served models.
+   Pairwise A/B comparisons run both orders; disagreement ⇒ INCONCLUSIVE.
 
 **Evals** (`make eval`): 10-case golden dataset (generated deterministically),
 241 Level-A checks incl. export→re-parse→re-validate hard constraints, judge

@@ -104,8 +104,10 @@ def run_level_c(case_dirs: list[Path]) -> dict:
         try:
             report = evaluator.evaluate(packet)
             reports.append({"case": d.name, "report": report.model_dump()})
-        except CapabilityError as exc:
-            reports.append({"case": d.name, "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 — LLM-layer failures (timeouts,
+            # malformed output, capability loss mid-run) are REPORTED, never
+            # allowed to crash the runner or fail deterministic gates.
+            reports.append({"case": d.name, "error": f"{type(exc).__name__}: {exc}"})
     return {"status": "RAN", "model": model,
             "promptVersion": EVAL_PROMPT_VERSION, "reports": reports}
 

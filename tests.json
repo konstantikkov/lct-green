@@ -1,5 +1,5 @@
 {
-  "updated": "iteration-2 integration",
+  "updated": "iteration-2 + local eval LLM",
   "suites": {
     "backend_pytest": {
       "path": "apps/api/tests",
@@ -31,7 +31,7 @@
     },
     "root_pytest": {
       "path": "tests/{export,geometry,e2e}",
-      "count": 102,
+      "count": 105,
       "status": "pass",
       "areas": [
         "dxf-roundtrip-10-cases",
@@ -75,8 +75,8 @@
     },
     "gpt_evaluator": {
       "path": "evals/evaluator.py",
-      "status": "SKIPPED (capability)",
-      "note": "OPENAI_API_KEY not configured; explicit CapabilityError by design"
+      "status": "RAN (local)",
+      "note": "Local open-source evaluator: Qwen2.5-7B-Instruct (llama.cpp, server :8081, localhost-only, systemd greenplan-evalllm). Live 3-case run produced structured verdicts (eval-results/20260922T110910Z). OpenAI-compatible protocol; hosted endpoints require an explicit key; no silent fallback."
     }
   }
 }
