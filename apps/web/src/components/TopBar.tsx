@@ -258,7 +258,7 @@ export function TopBar() {
   const stage = useStage();
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-ink-600 bg-ink-900 px-3">
+    <header className="flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-2.5 border-b border-ink-600 bg-ink-900 px-3 pt-[env(safe-area-inset-top)]">
       <button
         className="text-sm font-semibold tracking-tight text-ink-100 transition-opacity hover:opacity-75"
         onClick={() => newProject()}

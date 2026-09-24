@@ -504,7 +504,7 @@ export function AdminDashboard() {
   return (
     <div
       data-testid="admin-dashboard"
-      className="h-full w-full overflow-y-auto bg-ink-950"
+      className="h-full w-full overflow-y-auto bg-ink-950 pt-[env(safe-area-inset-top)]"
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
