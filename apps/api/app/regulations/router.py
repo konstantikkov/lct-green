@@ -94,14 +94,52 @@ async def upload_document(file: UploadFile = File(...)):
     doc["pageCount"] = res.page_count
     doc["parseLog"].extend(res.parse_log)
     if res.needs_ocr:
-        # OCR explicitly out of scope: document stays UPLOADED
         doc["status"] = "UPLOADED"
+        if docparse.ocr_available():
+            # scanned PDF: recognize in the background (minutes for large
+            # documents); the UI polls document status until PARSED
+            doc["parseLog"].append(f"OCR started ({doc.get('pageCount') or '?'} pages)")
+            t = threading.Thread(target=_run_ocr_job,
+                                 args=(doc_id, path, doc.get("pageCount") or 0),
+                                 daemon=True)
+            t.start()
     else:
         storage.save_fragments(doc_id, res.fragments)
         doc["fragmentCount"] = len(res.fragments)
         doc["status"] = "PARSED"
     storage.update_document(doc)
     return _doc_response(doc)
+
+
+def _run_ocr_job(doc_id: str, path: Path, page_count: int) -> None:
+    def _progress(page: int, total: int) -> None:
+        if page % 10 == 0 or page == total:
+            d = storage.get_document(doc_id)
+            if d:
+                d["parseLog"] = [ln for ln in d.get("parseLog", [])
+                                 if not ln.startswith("OCR progress:")]
+                d["parseLog"].append(f"OCR progress: {page}/{total} pages")
+                storage.update_document(d)
+
+    try:
+        res = docparse.parse_pdf_ocr(path, doc_id, page_count, progress=_progress)
+        doc = storage.get_document(doc_id)
+        if not doc:
+            return
+        storage.save_fragments(doc_id, res.fragments)
+        doc["fragmentCount"] = len(res.fragments)
+        doc["title"] = doc.get("title") or res.title
+        doc["documentNumber"] = doc.get("documentNumber") or res.document_number
+        doc["parseLog"] = [ln for ln in doc.get("parseLog", [])
+                           if not ln.startswith("OCR progress:")]
+        doc["parseLog"].extend(res.parse_log)
+        doc["status"] = "PARSED"
+        storage.update_document(doc)
+    except Exception as exc:  # noqa: BLE001
+        doc = storage.get_document(doc_id)
+        if doc:
+            doc["parseLog"].append(f"OCR failed: {exc}")
+            storage.update_document(doc)
 
 
 @router.get("/documents")

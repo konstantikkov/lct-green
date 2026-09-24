@@ -580,3 +580,49 @@ def test_compliance_audit_endpoint(tmp_path, monkeypatch):
     mine = next(s for s in summary if s["id"] == pid)
     assert mine["entityCount"] and mine["result"]["treeCount"] > 0
     assert mine["exports"]["dxf"].endswith("/export/dxf")
+
+
+def test_scanned_pdf_ocr_job(client, monkeypatch, tmp_data):
+    """Scanned PDF: upload returns UPLOADED + 'OCR started', the background job
+    saves fragments and flips the document to PARSED."""
+    import time as _t
+    from app.regulations import docparse as dp
+
+    scanned = dp.ParseResult(page_count=3)
+    scanned.needs_ocr = True
+    scanned.parse_log.append("no extractable text in PDF (scanned document)")
+
+    def fake_ocr(path, doc_id, page_count, progress=None):
+        if progress:
+            progress(page_count, page_count)
+        res = dp.ParseResult(page_count=page_count or 3)
+        res.title = "СП-скан"
+        res.fragments = [{"id": f"{doc_id}:scan:p1", "page": 1,
+                          "hierarchyPath": "9 > 9.5", "kind": "clause",
+                          "text": "Расстояние до дерева не менее 5 м.", "order": 1}]
+        res.parse_log.append("pdf parsed via OCR (tesseract): 3 pages, 1 fragments (1 clauses)")
+        return res
+
+    monkeypatch.setattr("app.regulations.router.docparse.parse_document",
+                        lambda *a, **k: scanned)
+    monkeypatch.setattr("app.regulations.router.docparse.ocr_available", lambda: True)
+    monkeypatch.setattr("app.regulations.router.docparse.parse_pdf_ocr", fake_ocr)
+
+    r = client.post("/api/regulations/documents",
+                    files={"file": ("scan.pdf", b"%PDF-1.4 fake scanned body",
+                                    "application/pdf")})
+    assert r.status_code == 201, r.text
+    doc = r.json()
+    assert doc["status"] == "UPLOADED"
+    assert any("OCR started" in ln for ln in doc["parseLog"])
+
+    for _ in range(50):
+        d = client.get(f"/api/regulations/documents/{doc['id']}").json()
+        if d["status"] == "PARSED":
+            break
+        _t.sleep(0.1)
+    assert d["status"] == "PARSED"
+    assert d["fragmentCount"] == 1
+    assert any("via OCR" in ln for ln in d["parseLog"])
+    frags = client.get(f"/api/regulations/documents/{doc['id']}/fragments").json()
+    assert frags and "не менее 5 м" in frags[0]["text"]

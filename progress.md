@@ -53,7 +53,11 @@
 - Judge benchmark labels are engineering-bootstrap, not expert ground truth.
 - Regulation extraction quality depends on the local model; the deterministic
   provenance gates are the safety net.
-- OCR for scanned PDFs is out of scope (flagged in parseLog).
+- OCR for scanned PDFs: IMPLEMENTED (tesseract rus+eng + poppler, async job
+  with progress in parseLog; UI polls document status). Verified live on the
+  real scanned СП 42.13330 (101 pages -> 1,627 fragments, doc number
+  auto-detected). Extraction quality from OCR'd tables varies — the
+  numeric-literal provenance gate and NEEDS_REVIEW keep it honest.
 
 ## Iteration 3 (user feedback) — DONE
 - Workspace tab strip (Интерпретация · Ограничения · Генерация · Результат)

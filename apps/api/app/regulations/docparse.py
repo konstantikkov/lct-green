@@ -214,27 +214,52 @@ def _pdf_paragraphs(page_text: str) -> list[str]:
     return paras
 
 
-def parse_pdf(path: Path, doc_id: str) -> ParseResult:
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover
-        raise ParseError(f"pypdf not installed: {exc}")
+# ---------------------------------------------------------------------------
+# OCR fallback for scanned PDFs (tesseract + poppler's pdftoppm)
+# ---------------------------------------------------------------------------
 
-    try:
-        reader = PdfReader(str(path))
-        page_texts = [(i + 1, p.extract_text() or "") for i, p in enumerate(reader.pages)]
-    except Exception as exc:
-        raise ParseError(f"PDF parsing failed: {exc}")
+def ocr_available() -> bool:
+    import shutil as _sh
+    return bool(_sh.which("tesseract") and _sh.which("pdftoppm"))
 
+
+def ocr_pdf_pages(path: Path, page_count: int, dpi: int = 200,
+                  langs: str = "rus+eng", progress=None) -> list[tuple[int, str]]:
+    """Renders each page with pdftoppm and OCRs it with tesseract.
+    Safe subprocess invocation (argv lists, per-step timeouts). Returns
+    (page_no, text) pairs, same shape as native extraction."""
+    import subprocess
+    import tempfile
+
+    out: list[tuple[int, str]] = []
+    with tempfile.TemporaryDirectory(prefix="ocr_") as tmp:
+        tmpdir = Path(tmp)
+        for page in range(1, page_count + 1):
+            base = tmpdir / f"pg_{page}"
+            r = subprocess.run(
+                ["pdftoppm", "-r", str(dpi), "-gray", "-png",
+                 "-f", str(page), "-l", str(page), str(path), str(base)],
+                capture_output=True, timeout=120, shell=False)
+            imgs = sorted(tmpdir.glob(f"pg_{page}*.png"))
+            if r.returncode != 0 or not imgs:
+                out.append((page, ""))
+                continue
+            t = subprocess.run(
+                ["tesseract", str(imgs[0]), "stdout", "-l", langs, "--psm", "4"],
+                capture_output=True, timeout=180, shell=False)
+            out.append((page, t.stdout.decode("utf-8", errors="replace")
+                        if t.returncode == 0 else ""))
+            for img in imgs:
+                img.unlink(missing_ok=True)
+            if progress:
+                progress(page, page_count)
+    return out
+
+
+def build_pdf_result(page_texts: list[tuple[int, str]], doc_id: str,
+                     via_ocr: bool = False) -> ParseResult:
+    """Hierarchy/fragment construction shared by native and OCR extraction."""
     res = ParseResult(page_count=len(page_texts))
-    total_text = "".join(t for _, t in page_texts).strip()
-    if not total_text:
-        res.needs_ocr = True
-        res.parse_log.append(
-            "no extractable text in PDF (likely scanned); OCR would be required "
-            "— OCR is out of scope, document left in UPLOADED state")
-        return res
-
     first_texts: list[str] = []
     for _, t in page_texts[:3]:
         first_texts.extend(t.splitlines())
@@ -259,8 +284,49 @@ def parse_pdf(path: Path, doc_id: str) -> ParseResult:
 
     res.fragments = b.fragments
     res.parse_log.append(
-        f"pdf parsed: {len(page_texts)} pages, {len(res.fragments)} fragments "
+        f"pdf parsed{' via OCR (tesseract)' if via_ocr else ''}: "
+        f"{len(page_texts)} pages, {len(res.fragments)} fragments "
         f"({sum(1 for f in res.fragments if f['kind'] == 'clause')} clauses)")
+    return res
+
+
+def parse_pdf(path: Path, doc_id: str) -> ParseResult:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover
+        raise ParseError(f"pypdf not installed: {exc}")
+
+    try:
+        reader = PdfReader(str(path))
+        page_texts = [(i + 1, p.extract_text() or "") for i, p in enumerate(reader.pages)]
+    except Exception as exc:
+        raise ParseError(f"PDF parsing failed: {exc}")
+
+    total_text = "".join(t for _, t in page_texts).strip()
+    if not total_text:
+        res = ParseResult(page_count=len(page_texts))
+        res.needs_ocr = True
+        if ocr_available():
+            res.parse_log.append(
+                "no extractable text in PDF (scanned document) — OCR fallback "
+                "available, queueing tesseract recognition")
+        else:
+            res.parse_log.append(
+                "no extractable text in PDF (scanned document); install "
+                "tesseract-ocr + tesseract-ocr-rus + poppler-utils to enable OCR")
+        return res
+    return build_pdf_result(page_texts, doc_id)
+
+
+def parse_pdf_ocr(path: Path, doc_id: str, page_count: int,
+                  progress=None) -> ParseResult:
+    """Full OCR parse of a scanned PDF (minutes for large documents)."""
+    page_texts = ocr_pdf_pages(path, page_count, progress=progress)
+    recognized = sum(1 for _, t in page_texts if t.strip())
+    if recognized == 0:
+        raise ParseError("OCR produced no text on any page")
+    res = build_pdf_result(page_texts, doc_id, via_ocr=True)
+    res.parse_log.insert(0, f"OCR recognized text on {recognized}/{len(page_texts)} pages")
     return res
 
 
