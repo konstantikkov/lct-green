@@ -2,7 +2,8 @@ import { api, ApiError, watchRun } from "../api/client";
 import type { Category, GenerateRequest, PlantKind, ProjectDocument } from "../api/types";
 import {
   getState, setState, MASSING_DETAIL_STORAGE_KEY,
-  type GenOptions, type MobileTab, type NavView, type Selection, type SheetSnap, type ViewMode,
+  type GenOptions, type MobileTab, type NavView, type Selection, type SheetSnap,
+  type ViewMode, type WorkspaceTab,
 } from "./store";
 
 function errMsg(e: unknown): string {
@@ -30,6 +31,23 @@ export function setSheetSnap(snap: SheetSnap) {
 function raiseSheet(tab: MobileTab) {
   const snap = getState().sheetSnap;
   setState({ mobileTab: tab, sheetSnap: snap === "full" ? "full" : "half" });
+}
+
+/**
+ * Selects a workspace tab (the strip under the TopBar drives both the desktop
+ * panel and the mobile bottom sheet). Un-collapses the panel; on mobile it
+ * also raises the sheet so the tapped section is actually visible.
+ */
+export function setWorkspaceTab(tab: WorkspaceTab) {
+  setState({ workspaceTab: tab, panelCollapsed: false, mobileTab: "panel" });
+  if (isMobile()) {
+    const snap = getState().sheetSnap;
+    if (snap === "peek") setState({ sheetSnap: "half" });
+  }
+}
+
+export function togglePanelCollapsed() {
+  setState((s) => ({ panelCollapsed: !s.panelCollapsed }));
 }
 
 export async function loadCapabilities() {
@@ -72,6 +90,13 @@ function installDocument(doc: ProjectDocument) {
     run: null,
     runError: null,
     nav: "plan",
+    // Auto-advance: after upload land on Интерпретация.
+    workspaceTab: "interpretation",
+    panelCollapsed: false,
+    mobileTab: "panel",
+    audit: null,
+    auditStatus: "idle",
+    auditError: null,
   });
   // Static data may have failed earlier if backend was down; retry now.
   const s = getState();
@@ -89,6 +114,7 @@ export async function uploadFile(file: File) {
     const doc = await api.uploadProject(file);
     installDocument(doc);
     void loadProjects(); // keep the shared list fresh
+    void loadProjectSummaries();
   } catch (e) {
     const code = e instanceof ApiError ? e.code : null;
     setState({ uploading: false, uploadError: { code, message: errMsg(e) } });
@@ -100,6 +126,15 @@ export async function loadProjects() {
     setState({ projects: await api.listProjects(), projectsError: null });
   } catch (e) {
     setState({ projectsError: errMsg(e) });
+  }
+}
+
+/** Rich listing for the admin dashboard (start screen). */
+export async function loadProjectSummaries() {
+  try {
+    setState({ summaries: await api.getProjectsSummary(), summariesError: null });
+  } catch (e) {
+    setState({ summariesError: errMsg(e) });
   }
 }
 
@@ -146,8 +181,14 @@ export function newProject() {
     run: null,
     runError: null,
     layerVisibility: {},
+    workspaceTab: "interpretation",
+    panelCollapsed: false,
+    audit: null,
+    auditStatus: "idle",
+    auditError: null,
   });
   void loadProjects();
+  void loadProjectSummaries();
 }
 
 export function setViewMode(mode: ViewMode) {
@@ -275,9 +316,15 @@ export async function buildConstraints() {
 export async function startGeneration(req: GenerateRequest) {
   const doc = getState().document;
   if (!doc) return;
-  setState({ runActive: true, runError: null, run: null });
-  // On mobile, surface run progress in the sheet's Generate tab.
-  if (isMobile()) raiseSheet("generate");
+  setState({
+    runActive: true, runError: null, run: null,
+    // Auto-advance: jump to Генерация to show the stage checklist.
+    workspaceTab: "generate", panelCollapsed: false, mobileTab: "panel",
+    // Previous audit (if any) refers to the previous iteration.
+    audit: null, auditStatus: "idle", auditError: null,
+  });
+  // On mobile, surface run progress in the sheet.
+  if (isMobile()) raiseSheet("panel");
   try {
     const { runId } = await api.generate(doc.projectId, req);
     const final = await watchRun(doc.projectId, runId, (run) => {
@@ -288,7 +335,9 @@ export async function startGeneration(req: GenerateRequest) {
       return;
     }
     await loadIterations();
-    setState({ runActive: false });
+    // Auto-advance: land on Результат once the run completed.
+    setState({ runActive: false, workspaceTab: "result" });
+    void loadProjectSummaries(); // dashboard result columns changed
   } catch (e) {
     setState({ runActive: false, runError: errMsg(e) });
   }
@@ -324,6 +373,50 @@ export function select(selection: Selection) {
   // On mobile, picking something in the viewer opens the Inspector tab.
   if (selection && isMobile()) raiseSheet("inspector");
   if (selection?.type === "placement") void loadExplanation(selection.placement.id);
+}
+
+// --- Compliance audit (iteration 3) -----------------------------------------
+
+/** Opens the dedicated "Аудит соответствия" view and (re)fetches the audit. */
+export function openAudit() {
+  if (!getState().document) return;
+  setState({ nav: "audit" });
+  void loadAudit();
+}
+
+/** Deterministic re-check is cheap server-side — always fetch fresh. */
+export async function loadAudit() {
+  const doc = getState().document;
+  if (!doc) return;
+  setState({ auditStatus: "loading", auditError: null });
+  try {
+    const audit = await api.getCompliance(doc.projectId);
+    if (getState().document?.projectId !== doc.projectId) return; // stale
+    setState({ audit, auditStatus: "loaded" });
+  } catch (e) {
+    if (e instanceof ApiError && (e.code === "NO_RESULT" || e.status === 409)) {
+      setState({ audit: null, auditStatus: "no_result" });
+    } else {
+      setState({ auditStatus: "error", auditError: errMsg(e) });
+    }
+  }
+}
+
+/**
+ * Audit row click: select that tree on the canvas (existing placement
+ * selection) and open the Inspector. Loads the audited iteration first if a
+ * different one is active.
+ */
+export async function selectAuditPlacement(placementId: string) {
+  const s = getState();
+  if (!s.document || !s.audit) return;
+  if (s.activeIteration?.iterationId !== s.audit.iterationId) {
+    await loadIteration(s.audit.iterationId);
+  }
+  const placement = getState().activeIteration?.placements.find((p) => p.id === placementId);
+  if (!placement) return;
+  setState({ nav: "plan", workspaceTab: "result" });
+  select({ type: "placement", placement });
 }
 
 async function loadExplanation(placementId: string) {

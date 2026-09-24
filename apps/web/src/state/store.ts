@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type {
-  Capabilities, ChunkInfo, ConstraintsResponse, ExclusionZone, Explanation,
-  IterationDetail, IterationSummary, Placement, PipelineState, ProjectDocument,
-  ProjectListItem, RegDocument, RegulatoryRule, RuleCandidate,
-  RuleCandidateStatus, RunStatus, SpeciesInfo, Strategy,
+  Capabilities, ChunkInfo, ComplianceAudit, ConstraintsResponse, ExclusionZone,
+  Explanation, IterationDetail, IterationSummary, Placement, PipelineState,
+  ProjectDocument, ProjectListItem, ProjectSummary, RegDocument, RegulatoryRule,
+  RuleCandidate, RuleCandidateStatus, RunStatus, SpeciesInfo, Strategy,
 } from "../api/types";
 
 export type ViewMode = "2d" | "3d";
@@ -12,7 +12,13 @@ export type ViewMode = "2d" | "3d";
 export type Stage = "empty" | "imported" | "generated";
 
 /** Top-level views. PLAN is the default workflow; the rest are secondary. */
-export type NavView = "plan" | "regulations" | "runs" | "quality";
+export type NavView = "plan" | "regulations" | "runs" | "quality" | "audit";
+
+/** Workspace tab strip (PLAN view): exactly one section panel open at a time. */
+export type WorkspaceTab = "interpretation" | "constraints" | "generate" | "result";
+
+/** Compliance-audit fetch lifecycle. */
+export type AuditStatus = "idle" | "loading" | "loaded" | "no_result" | "error";
 
 /** Generation options shared by the TopBar button and the Generate panel. */
 export interface GenOptions {
@@ -36,8 +42,9 @@ function readInitialMassingDetail(): boolean {
   }
 }
 
-/** Mobile bottom-sheet tab ids (< md only). */
-export type MobileTab = "layers" | "constraints" | "generate" | "iterations" | "inspector";
+/** Mobile bottom-sheet content (< md only): the active workspace-tab panel
+ *  or the inspector for the current canvas selection. */
+export type MobileTab = "panel" | "inspector";
 /** Mobile bottom-sheet snap states (< md only). */
 export type SheetSnap = "peek" | "half" | "full";
 
@@ -68,6 +75,10 @@ export interface AppState {
   projectsError: string | null;
   /** Project id currently being opened from the list. */
   projectLoadingId: string | null;
+
+  /** Rich admin-dashboard listing (GET /api/projects/summary). */
+  summaries: ProjectSummary[] | null;
+  summariesError: string | null;
 
   viewMode: ViewMode;
   /** 3D massing: true = Detailed (CAD underlay, lanterns, fences), false = Simple. */
@@ -106,10 +117,19 @@ export interface AppState {
   mobileTab: MobileTab;
   sheetSnap: SheetSnap;
 
-  /** Top-level view (PLAN / REGULATIONS / RUNS / QUALITY). */
+  /** Top-level view (PLAN / REGULATIONS / RUNS / QUALITY / AUDIT). */
   nav: NavView;
+  /** Active workspace tab in the PLAN view (drives desktop panel AND sheet). */
+  workspaceTab: WorkspaceTab;
+  /** Desktop-only: the workspace panel is hidden (canvas full-width). */
+  panelCollapsed: boolean;
   /** Shared generation options (TopBar button + Generate panel). */
   genOptions: GenOptions;
+
+  /** Compliance audit (GET /api/projects/{id}/compliance). */
+  audit: ComplianceAudit | null;
+  auditStatus: AuditStatus;
+  auditError: string | null;
 
   // --- Regulations feature (WS4) ---
   regDocs: RegDocument[] | null;
@@ -157,6 +177,8 @@ const initialState: AppState = {
   projects: null,
   projectsError: null,
   projectLoadingId: null,
+  summaries: null,
+  summariesError: null,
   viewMode: "2d",
   massingDetail: readInitialMassingDetail(),
   layerVisibility: {},
@@ -180,9 +202,14 @@ const initialState: AppState = {
   explanationLoading: false,
   explanationError: null,
   pipelineState: null,
-  mobileTab: "layers",
+  mobileTab: "panel",
   sheetSnap: "peek",
   nav: "plan",
+  workspaceTab: "interpretation",
+  panelCollapsed: false,
+  audit: null,
+  auditStatus: "idle",
+  auditError: null,
   genOptions: {
     speciesIds: null,
     strategy: "balanced",

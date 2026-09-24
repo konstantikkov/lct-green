@@ -532,3 +532,51 @@ def test_registry_survives_broken_regulations_store(tmp_data, monkeypatch):
     from app.services.rules import load_registry
     reg = load_registry()
     assert len(reg.rules) > 0  # YAML rules still there
+
+
+def test_compliance_audit_endpoint(tmp_path, monkeypatch):
+    """Per-tree law-compliance audit over the selected iteration, incl. summary
+    aggregation by document and rule."""
+    import json as _json
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("GREENPLAN_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("LOCAL_LLM_ENABLED", "false")
+    import importlib
+    from app import config as _cfg
+    importlib.reload(_cfg)
+    from app import store as _store, pipeline as _pipeline, main as _main
+    importlib.reload(_store); importlib.reload(_pipeline); importlib.reload(_main)
+    client = TestClient(_main.app)
+    _store.init_db()  # TestClient without context manager skips startup events
+
+    fixture = Path(__file__).resolve().parents[3] / "fixtures" / "synthetic_site.dxf"
+    r = client.post("/api/projects", files={"file": ("synthetic_site.dxf",
+                    fixture.read_bytes(), "application/dxf")})
+    assert r.status_code == 201, r.text
+    pid = r.json()["projectId"]
+
+    run = client.post(f"/api/projects/{pid}/generate", json={
+        "plantKinds": ["TREE"], "speciesIds": ["tree_linden"],
+        "strategy": "balanced", "seed": 42, "maxIterations": 1,
+        "useLlmJudge": False}).json()["runId"]
+    import time as _t
+    for _ in range(120):
+        st = client.get(f"/api/projects/{pid}/runs/{run}").json()
+        if st["state"] in ("COMPLETED", "FAILED"):
+            break
+        _t.sleep(0.5)
+    assert st["state"] == "COMPLETED"
+
+    audit = client.get(f"/api/projects/{pid}/compliance").json()
+    assert audit["summary"]["placements"] > 0
+    assert audit["summary"]["compliant"] == audit["summary"]["placements"]
+    assert audit["summary"]["checksTotal"] > 0
+    assert audit["byDocument"], "checks must aggregate per source document"
+    p0 = audit["placements"][0]
+    assert p0["verdict"] == "COMPLIANT" and p0["checks"]
+    assert all(c["source"]["document"] for c in p0["checks"])
+
+    summary = client.get("/api/projects/summary").json()
+    mine = next(s for s in summary if s["id"] == pid)
+    assert mine["entityCount"] and mine["result"]["treeCount"] > 0
+    assert mine["exports"]["dxf"].endswith("/export/dxf")

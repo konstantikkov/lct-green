@@ -15,7 +15,7 @@ tar czf "$TAR" -C "$REPO_DIR" \
     rules prompts fixtures/synthetic_site.dxf
 
 echo "==> uploading"
-scp -i "$PEM" -o UserKnownHostsFile=/tmp/known_hosts "$TAR" "$TARGET":/tmp/
+scp -i "$PEM" -o UserKnownHostsFile=/tmp/known_hosts -o StrictHostKeyChecking=accept-new "$TAR" "$TARGET":/tmp/
 
 echo "==> provisioning"
 $SSH 'bash -s' <<'REMOTE'

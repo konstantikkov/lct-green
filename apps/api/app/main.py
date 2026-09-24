@@ -174,6 +174,12 @@ async def create_project(file: UploadFile = File(...)):
     rt = pipeline.put_runtime(pid, doc)
     pipeline.ensure_chunks(rt)
     store.save_json(pid, "document", doc.model_dump())
+    # lightweight meta for fast admin/dashboard listings (document blob is huge)
+    store.save_json(pid, "meta", {
+        "format": fmt, "cadVersion": doc.cadVersion, "units": doc.units,
+        "entityCount": doc.entityCount, "layerCount": len(doc.layers),
+        "uncertainLayers": sum(1 for l in doc.layers if l.classification.requiresReview),
+    })
     try:
         store.save_file_blob(pid, "source_dxf", Path(dxf_path))
     except Exception:
@@ -187,6 +193,115 @@ def list_projects():
     return [{"id": p["id"], "name": p["name"], "fileName": p["file_name"],
              "createdAt": p["created_at"], "state": p["state"]}
             for p in store.list_projects()]
+
+
+@app.get("/api/projects/summary")
+def list_projects_summary():
+    """Enriched listing for the admin start screen: CAD meta (stored at upload),
+    iteration count and selected-result metrics, export availability."""
+    out = []
+    for p in store.list_projects():
+        meta = store.load_json(p["id"], "meta") or {}
+        iters = store.list_iterations(p["id"])
+        selected = next((r for r in iters if r.get("selected")), iters[-1] if iters else None)
+        result = None
+        if selected:
+            m = selected.get("metrics", {})
+            result = {
+                "iterationCount": len(iters),
+                "treeCount": m.get("treeCount"), "shrubCount": m.get("shrubCount"),
+                "hardViolations": len(selected.get("validation", {}).get("hardViolations", [])),
+                "coverageScore": m.get("coverageScore"),
+                "distributionScore": m.get("distributionScore"),
+                "judgeDecision": (selected.get("judge") or {}).get("decision"),
+            }
+        out.append({
+            "id": p["id"], "name": p["name"], "fileName": p["file_name"],
+            "createdAt": p["created_at"], "state": p["state"],
+            "format": meta.get("format"), "units": meta.get("units"),
+            "entityCount": meta.get("entityCount"), "layerCount": meta.get("layerCount"),
+            "uncertainLayers": meta.get("uncertainLayers"),
+            "result": result,
+            "exports": {"dxf": f"/api/projects/{p['id']}/export/dxf",
+                        "report": f"/api/projects/{p['id']}/export/report"} if result else None,
+        })
+    return out
+
+
+@app.get("/api/projects/{pid}/compliance")
+def compliance_audit(pid: str):
+    """Document-law compliance audit for the selected iteration: every placement
+    is checked against every effective rule (YAML registry + ACTIVE document-
+    derived REG_* rules) with exact distances and source citations. Deterministic
+    geometry only — this is the legal-audit view over the validator/explanation
+    machinery, not an LLM opinion."""
+    rt = _get_rt(pid)
+    rec = _selected_iteration(pid)
+    registry = pipeline.ensure_registry(rt)
+    idx = pipeline.ensure_geometry(rt)
+    constraints = pipeline.ensure_constraints(rt)
+    oracle = RuleDistanceOracle(idx)
+
+    by_document: dict[str, dict] = {}
+    by_rule: dict[str, dict] = {}
+    placements_out = []
+    compliant = 0
+    checks_total = 0
+
+    for p in rec["placements"]:
+        pl = Placement(id=p["id"], kind=p["kind"], speciesId=p["speciesId"],
+                       x=p["position"][0], y=p["position"][1],
+                       crownRadiusM=p["crownRadiusM"], score=p["score"])
+        exp = build_explanation(pl, rec["index"], registry, oracle,
+                                constraints.site_boundary)
+        failing = []
+        checks = []
+        for c in exp["checks"]:
+            if c["result"] == "n/a":
+                continue
+            checks_total += 1
+            doc_name = c["source"]["document"]
+            bd = by_document.setdefault(doc_name, {"checks": 0, "passed": 0, "failed": 0})
+            br = by_rule.setdefault(c["ruleId"], {
+                "checks": 0, "passed": 0, "failed": 0,
+                "document": doc_name, "effectiveSource": c["effectiveSource"],
+                "requiredM": c["requiredM"]})
+            bd["checks"] += 1
+            br["checks"] += 1
+            if c["result"] == "passed":
+                bd["passed"] += 1
+                br["passed"] += 1
+            else:
+                bd["failed"] += 1
+                br["failed"] += 1
+                failing.append(c["ruleId"])
+            checks.append(c)
+        verdict = "COMPLIANT" if not failing else "VIOLATIONS"
+        if not failing:
+            compliant += 1
+        placements_out.append({
+            "id": p["id"], "kind": p["kind"], "speciesId": p["speciesId"],
+            "position": p["position"], "verdict": verdict,
+            "failingRules": failing, "checks": checks,
+        })
+
+    reg_rules = [r for r in registry.rules if r.id.startswith("REG_")]
+    return {
+        "iterationId": rec["iterationId"],
+        "rulesetVersion": registry.version,
+        "documentDerivedRules": len(reg_rules),
+        "verifiedRules": sum(1 for r in registry.rules if r.effective_source == "verified"),
+        "assumedRules": sum(1 for r in registry.rules if r.effective_source == "assumption"),
+        "summary": {
+            "placements": len(placements_out),
+            "compliant": compliant,
+            "withViolations": len(placements_out) - compliant,
+            "checksTotal": checks_total,
+        },
+        "byDocument": by_document,
+        "byRule": by_rule,
+        "placements": placements_out,
+    }
 
 
 def _get_rt(pid: str) -> pipeline.ProjectRuntime:

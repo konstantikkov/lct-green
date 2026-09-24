@@ -1,5 +1,39 @@
 # API Contract — Green Placement MVP
 
+## Admin dashboard & compliance audit (iteration 3)
+
+### `GET /api/projects/summary` → rich listing for the start screen
+```ts
+interface ProjectSummary {
+  id: string; name: string; fileName: string; createdAt: number; state: string;
+  format: "DWG"|"DXF"|null; units: string|null;
+  entityCount: number|null; layerCount: number|null; uncertainLayers: number|null;
+  result: { iterationCount: number; treeCount: number|null; shrubCount: number|null;
+            hardViolations: number; coverageScore: number|null;
+            distributionScore: number|null; judgeDecision: string|null } | null;
+  exports: { dxf: string; report: string } | null;  // href download paths
+}
+```
+(older projects may have null meta — render dashes)
+
+### `GET /api/projects/{id}/compliance` → per-tree law-compliance audit
+Deterministic re-check of EVERY placement of the selected iteration against every
+effective rule (YAML registry + ACTIVE document-derived REG_* rules). 409 NO_RESULT
+when no generation exists.
+```ts
+interface ComplianceAudit {
+  iterationId: string; rulesetVersion: string;
+  documentDerivedRules: number; verifiedRules: number; assumedRules: number;
+  summary: { placements: number; compliant: number; withViolations: number; checksTotal: number };
+  byDocument: Record<string, { checks: number; passed: number; failed: number }>;
+  byRule: Record<string, { checks: number; passed: number; failed: number;
+                           document: string; effectiveSource: string; requiredM: number|null }>;
+  placements: { id: string; kind: string; speciesId: string; position: [number, number];
+                verdict: "COMPLIANT"|"VIOLATIONS"; failingRules: string[];
+                checks: ExplanationCheck[] }[];  // same check shape as /explanation
+}
+```
+
 ## Regulations feature (WS4) — /api/regulations
 
 ```ts

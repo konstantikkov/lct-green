@@ -54,3 +54,18 @@
 - Regulation extraction quality depends on the local model; the deterministic
   provenance gates are the safety net.
 - OCR for scanned PDFs is out of scope (flagged in parseLog).
+
+## Iteration 3 (user feedback) — DONE
+- Workspace tab strip (Интерпретация · Ограничения · Генерация · Результат)
+  replaces the stacked sidebar; one section disclosed at a time, status glyphs,
+  auto-advance, collapse; same tabs drive the mobile sheet.
+- Start screen = admin dashboard: app-style tree-glyph frieze, stats strip,
+  detailed project table from GET /api/projects/summary with per-row DXF/report
+  downloads.
+- Compliance audit: GET /api/projects/{id}/compliance re-checks every placement
+  against every effective rule (registry + document-derived REG_*), aggregated
+  by document and rule, per-tree verdicts with citations; АУДИТ СООТВЕТСТВИЯ view
+  with violations filter and canvas cross-selection; cross-link to Регламенты
+  document upload.
+- Verified live: Playwright 9/9 across 3 viewports; audit shows 531/531
+  compliant, 3318 checks on the example project.

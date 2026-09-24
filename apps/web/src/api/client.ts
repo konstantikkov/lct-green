@@ -1,8 +1,9 @@
 import type {
-  CandidateReviewPatch, Capabilities, Category, ChunkInfo, ConstraintsResponse,
-  Explanation, Fragment, GenerateRequest, IterationDetail, IterationSummary,
-  LayerInfo, ProjectDocument, ProjectListItem, RegDocument, RegulatoryRule,
-  RuleCandidate, RuleCandidateStatus, RunStatus, SpeciesInfo,
+  CandidateReviewPatch, Capabilities, Category, ChunkInfo, ComplianceAudit,
+  ConstraintsResponse, Explanation, Fragment, GenerateRequest, IterationDetail,
+  IterationSummary, LayerInfo, ProjectDocument, ProjectListItem, ProjectSummary,
+  RegDocument, RegulatoryRule, RuleCandidate, RuleCandidateStatus, RunStatus,
+  SpeciesInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -65,6 +66,13 @@ export const api = {
   },
 
   listProjects: () => request<ProjectListItem[]>("/api/projects"),
+
+  /** Rich admin-dashboard listing (iteration 3 contract). */
+  getProjectsSummary: () => request<ProjectSummary[]>("/api/projects/summary"),
+
+  /** Per-tree law-compliance audit; 409 NO_RESULT when no generation exists. */
+  getCompliance: (projectId: string) =>
+    request<ComplianceAudit>(`/api/projects/${projectId}/compliance`),
 
   getDocument: (projectId: string) =>
     request<ProjectDocument>(`/api/projects/${projectId}/document`),

@@ -1,20 +1,15 @@
 import { useRef } from "react";
 import { setMobileTab, setSheetSnap } from "../state/actions";
-import { useApp, type MobileTab, type SheetSnap } from "../state/store";
+import { useApp, type SheetSnap, type WorkspaceTab } from "../state/store";
 import { InspectorContent } from "./Inspector";
-import { ConstraintsPanel } from "./panels/ConstraintsPanel";
-import { GeneratePanel } from "./panels/GeneratePanel";
-import { LayersPanel } from "./panels/LayersPanel";
-import { QualityCard } from "./panels/QualityCard";
-import { RunsList } from "./views/RunsView";
+import { WorkspaceTabContent } from "./Workspace";
 
-const TABS: { id: MobileTab; label: string }[] = [
-  { id: "layers", label: "Layers" },
-  { id: "constraints", label: "Constraints" },
-  { id: "generate", label: "Generate" },
-  { id: "iterations", label: "Runs" },
-  { id: "inspector", label: "Inspector" },
-];
+const TAB_LABELS: Record<WorkspaceTab, string> = {
+  interpretation: "Интерпретация",
+  constraints: "Ограничения",
+  generate: "Генерация",
+  result: "Результат",
+};
 
 /**
  * Snap transforms are expressed relative to the sheet's own height (88vh/dvh)
@@ -40,37 +35,23 @@ interface DragState {
   startTime: number;
 }
 
-function TabContent({ tab }: { tab: MobileTab }) {
-  const iterations = useApp((s) => s.iterations);
-  switch (tab) {
-    case "layers":
-      return <LayersPanel />;
-    case "constraints":
-      return <ConstraintsPanel />;
-    case "generate":
-      return iterations.length > 0
-        ? <><GeneratePanel /><QualityCard /></>
-        : <GeneratePanel />;
-    case "iterations":
-      return iterations.length > 0
-        ? <RunsList />
-        : <div className="p-3 text-xs text-ink-500">No runs yet — run "Generate" first.</div>;
-    case "inspector":
-      return <InspectorContent />;
-  }
-}
-
 /**
- * Mobile-only (< md) bottom sheet hosting the desktop side panels as tabs.
+ * Mobile-only (< md) bottom sheet. Content is driven by the SAME workspace
+ * tab strip as the desktop panel (unified). A canvas selection switches the
+ * sheet into Inspector mode; "← назад" returns to the active section panel.
  * Hand-rolled drag: pointer events move the sheet via translateY; on release
  * it snaps to the nearest of peek/half/full. Tapping the handle toggles
  * peek <-> half.
  */
 export function BottomSheet() {
   const snap = useApp((s) => s.sheetSnap);
-  const tab = useApp((s) => s.mobileTab);
+  const tab = useApp((s) => s.workspaceTab);
+  const mobileTab = useApp((s) => s.mobileTab);
+  const selection = useApp((s) => s.selection);
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+
+  const inspectorMode = mobileTab === "inspector" && selection != null;
 
   const applySnap = (next: SheetSnap) => {
     // Write the target transform imperatively too: if `next` equals the
@@ -139,7 +120,7 @@ export function BottomSheet() {
     applySnap(best);
   };
 
-  const activeLabel = TABS.find((t) => t.id === tab)?.label ?? "";
+  const activeLabel = inspectorMode ? "Инспектор" : TAB_LABELS[tab];
 
   return (
     <div
@@ -151,7 +132,7 @@ export function BottomSheet() {
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      {/* Drag handle — the only drag surface, so tab bar / content scroll freely. */}
+      {/* Drag handle — the only drag surface, so content scrolls freely. */}
       <div
         className="flex h-14 shrink-0 cursor-grab touch-none select-none flex-col items-center justify-center gap-1.5"
         onPointerDown={onPointerDown}
@@ -163,35 +144,23 @@ export function BottomSheet() {
         <div className="text-2xs font-semibold uppercase tracking-wider text-ink-300">{activeLabel}</div>
       </div>
 
-      {/* Tab bar — horizontally scrollable row of compact tabs. */}
-      <div
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-ink-600 px-2 pb-2"
-        style={{ WebkitOverflowScrolling: "touch" }}
-      >
-        {TABS.map((t) => (
+      {inspectorMode && (
+        <div className="flex shrink-0 items-center border-b border-ink-600 px-2 pb-1.5">
           <button
-            key={t.id}
-            className={`shrink-0 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs transition-colors ${
-              t.id === tab
-                ? "border-ink-500 bg-ink-800 text-ink-100"
-                : "border-transparent text-ink-400 hover:text-ink-200"
-            }`}
-            onClick={() => {
-              setMobileTab(t.id);
-              if (snap === "peek") applySnap("half");
-            }}
+            className="text-2xs text-ink-400 underline decoration-dotted hover:text-ink-200"
+            onClick={() => setMobileTab("panel")}
           >
-            {t.label}
+            ← {TAB_LABELS[tab]}
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {/* Tab content */}
+      {/* Content: the active workspace-tab panel, or the Inspector. */}
       <div
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        <TabContent tab={tab} />
+        {inspectorMode ? <InspectorContent /> : <WorkspaceTabContent tab={tab} />}
       </div>
     </div>
   );

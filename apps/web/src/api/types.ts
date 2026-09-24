@@ -324,6 +324,68 @@ export interface Explanation {
 }
 
 // ---------------------------------------------------------------------------
+// Admin dashboard & compliance audit (iteration 3) — docs/API_CONTRACT.md.
+// ---------------------------------------------------------------------------
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  fileName: string;
+  createdAt: number;
+  state: string;
+  format: "DWG" | "DXF" | null;
+  units: string | null;
+  entityCount: number | null;
+  layerCount: number | null;
+  uncertainLayers: number | null;
+  result: {
+    iterationCount: number;
+    treeCount: number | null;
+    shrubCount: number | null;
+    hardViolations: number;
+    coverageScore: number | null;
+    distributionScore: number | null;
+    judgeDecision: string | null;
+  } | null;
+  /** href download paths */
+  exports: { dxf: string; report: string } | null;
+}
+
+export interface ComplianceDocStat {
+  checks: number;
+  passed: number;
+  failed: number;
+}
+
+export interface ComplianceRuleStat extends ComplianceDocStat {
+  document: string;
+  effectiveSource: string;
+  requiredM: number | null;
+}
+
+export interface CompliancePlacement {
+  id: string;
+  kind: string;
+  speciesId: string;
+  position: [number, number];
+  verdict: "COMPLIANT" | "VIOLATIONS";
+  failingRules: string[];
+  checks: ExplanationCheck[];
+}
+
+export interface ComplianceAudit {
+  iterationId: string;
+  rulesetVersion: string;
+  documentDerivedRules: number;
+  verifiedRules: number;
+  assumedRules: number;
+  summary: { placements: number; compliant: number; withViolations: number; checksTotal: number };
+  byDocument: Record<string, ComplianceDocStat>;
+  byRule: Record<string, ComplianceRuleStat>;
+  placements: CompliancePlacement[];
+}
+
+// ---------------------------------------------------------------------------
 // Regulations feature (WS4) — transcribed 1:1 from docs/API_CONTRACT.md.
 // ---------------------------------------------------------------------------
 
