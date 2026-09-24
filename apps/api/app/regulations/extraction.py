@@ -17,6 +17,16 @@ from typing import Iterable
 
 from .. import config
 from ..services.llm import LocalLLM
+
+
+def reg_llm() -> "LocalLLM":
+    """LLM used for regulation extraction/verification. Structured extraction
+    needs a stronger model than the fast judge; REG_LLM_BASE_URL (default: the
+    judge endpoint) lets deployments point it at the larger local model."""
+    import os
+    base = os.environ.get("REG_LLM_BASE_URL") or None
+    timeout = float(os.environ.get("REG_LLM_TIMEOUT_S", "600"))
+    return LocalLLM(base_url=base, timeout=timeout)
 from . import storage
 from .models import ExtractionBatch, LLMCandidate
 
@@ -174,7 +184,7 @@ async def extract_document(doc_id: str, llm: LocalLLM | None = None,
                            max_calls: int = MAX_LLM_CALLS,
                            batch_size: int = BATCH_SIZE) -> dict:
     """Run extraction over a parsed document. Returns summary counts."""
-    llm = llm or LocalLLM()
+    llm = llm or reg_llm()
     doc = storage.get_document(doc_id)
     if doc is None:
         raise ValueError(f"no document {doc_id}")

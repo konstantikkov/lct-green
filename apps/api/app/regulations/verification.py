@@ -32,7 +32,8 @@ def _neighbor_fragments(cand: dict) -> list[dict]:
 
 async def verify_candidate(cand: dict, llm: LocalLLM | None = None) -> dict:
     """Run the verifier on one candidate; persists and returns the update."""
-    llm = llm or LocalLLM()
+    from .extraction import reg_llm
+    llm = llm or reg_llm()
     neighbors = _neighbor_fragments(cand)
     payload = {
         "candidate": {

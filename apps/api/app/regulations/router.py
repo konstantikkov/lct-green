@@ -150,7 +150,7 @@ async def extract_document(doc_id: str):
         _err(404, "DOCUMENT_NOT_FOUND", f"No document {doc_id}")
     if doc.get("status") not in ("PARSED", "EXTRACTED"):
         _err(409, "NOT_PARSED", f"Document is {doc.get('status')}; no parsed fragments to extract from.")
-    llm = LocalLLM()
+    llm = extraction.reg_llm()
     if not await llm.is_reachable():
         _err(409, "LLM_UNAVAILABLE", "No local LLM reachable for extraction.")
     job_id = f"regjob_{uuid.uuid4().hex[:10]}"
@@ -185,10 +185,11 @@ def _get_cand(cand_id: str) -> dict:
 @router.post("/candidates/{cand_id}/verify")
 async def verify_candidate(cand_id: str):
     cand = _get_cand(cand_id)
-    llm = LocalLLM()
+    llm = extraction.reg_llm()
     if not await llm.is_reachable():
         _err(409, "LLM_UNAVAILABLE", "No local LLM reachable for verification.")
     cand = await verification.verify_candidate(cand, llm)
+    invalidate_project_caches()
     return _cand_response(cand)
 
 
@@ -239,6 +240,7 @@ def patch_candidate(cand_id: str, patch: CandidatePatch):
     cand["reviewer"] = patch.reviewer or cand.get("reviewer")
     cand["reviewDate"] = time.time()
     storage.save_candidate(cand)
+    invalidate_project_caches()
     return _cand_response(cand)
 
 
@@ -258,6 +260,7 @@ def activate_candidate(cand_id: str):
                  "Numeric value+unit not literally present in sourceText.")
     cand["status"] = "ACTIVE"
     storage.save_candidate(cand)
+    invalidate_project_caches()
     return _cand_response(cand)
 
 
@@ -266,4 +269,75 @@ def deactivate_candidate(cand_id: str):
     cand = _get_cand(cand_id)
     cand["status"] = "DEPRECATED"
     storage.save_candidate(cand)
+    invalidate_project_caches()
     return _cand_response(cand)
+
+
+# ---------------------------------------------------------------------------
+# free-text conditions (wizard: "условия" step) — user-entered text goes
+# through the SAME extraction + gates + review flow as uploaded documents
+# ---------------------------------------------------------------------------
+
+class TextCondition(BaseModel):
+    text: str
+    title: Optional[str] = None
+
+
+def invalidate_project_caches() -> None:
+    """Rules changed (activation/edit): cached constraints must be rebuilt."""
+    try:
+        from .. import pipeline
+        for rt in list(pipeline._runtimes.values()):
+            rt.invalidate_semantics()
+    except Exception:
+        pass
+
+
+@router.post("/text", status_code=201)
+async def add_text_condition(body: TextCondition):
+    text = (body.text or "").strip()
+    if len(text) < 10:
+        _err(422, "EMPTY_TEXT", "Введите текст условия (минимум 10 символов).")
+    if len(text) > 20000:
+        _err(413, "TEXT_TOO_LARGE", "Текст условия слишком большой (лимит 20 000 символов).")
+    llm = extraction.reg_llm()
+    if not await llm.is_reachable():
+        _err(409, "LLM_UNAVAILABLE", "Локальная LLM недоступна для разбора условия.")
+
+    doc_id = storage.new_id("regtxt")
+    data = text.encode("utf-8")
+    path = storage.save_original(doc_id, ".txt", data)
+    title = (body.title or "Пользовательское условие").strip()[:120]
+    doc = {
+        "id": doc_id, "fileName": f"{title}.txt", "title": title,
+        "documentNumber": None, "jurisdiction": None, "publicationDate": None,
+        "effectiveDate": None, "version": "1",
+        "fileHash": hashlib.sha256(data).hexdigest(),
+        "status": "PARSED", "uploadedAt": time.time(), "pageCount": None,
+        "fragmentCount": 0,
+        "parseLog": [f"user-entered text condition stored at {path}"],
+        "originalPath": str(path),
+    }
+    storage.create_document(doc)
+    frags = []
+    for i, para in enumerate(p.strip() for p in text.splitlines() if p.strip()):
+        frags.append({"id": f"{doc_id}:text:p{i + 1}", "page": None,
+                      "hierarchyPath": f"текст > абзац {i + 1}", "kind": "clause",
+                      "text": para, "order": i + 1})
+    storage.save_fragments(doc_id, frags)
+    doc["fragmentCount"] = len(frags)
+    storage.update_document(doc)
+
+    # text conditions are small — extract synchronously so the wizard can show
+    # candidates for review immediately
+    try:
+        await extraction.extract_document(doc_id, llm)
+    except Exception as exc:  # noqa: BLE001
+        doc["parseLog"].append(f"extraction failed: {exc}")
+        storage.update_document(doc)
+        _err(502, "EXTRACTION_FAILED", f"LLM не смогла разобрать условие: {exc}")
+
+    return {
+        "document": _doc_response(storage.get_document(doc_id)),
+        "candidates": [_cand_response(c) for c in storage.list_candidates(document_id=doc_id)],
+    }

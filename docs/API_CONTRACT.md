@@ -34,6 +34,21 @@ interface ComplianceAudit {
 }
 ```
 
+## Iteration 4 additions
+
+- `DELETE /api/projects/{id}` → `{deleted: id}`; 404 PROJECT_NOT_FOUND. Removes
+  rows, blobs, disk cache and uploaded files.
+- RunStatus now includes `progress: number` (0–100, coarse per-iteration; 100 on
+  COMPLETED) for progress bars.
+- `POST /api/regulations/text` — body `{text: string, title?: string}`. Creates a
+  text "document" (fileName `<title>.txt`), fragments per paragraph, runs LLM
+  extraction SYNCHRONOUSLY and returns `{document: RegDocument, candidates:
+  RuleCandidate[]}` so the UI can show candidates for review immediately.
+  Errors: 422 EMPTY_TEXT, 413 TEXT_TOO_LARGE, 409 LLM_UNAVAILABLE,
+  502 EXTRACTION_FAILED. Candidates then follow the normal review flow
+  (verify/approve/edit/activate); activation invalidates cached project
+  constraints server-side, so the next constraints fetch / generation uses them.
+
 ## Regulations feature (WS4) — /api/regulations
 
 ```ts

@@ -326,7 +326,7 @@ def test_extraction_endpoint_gates_and_injection(client, tmp_path, monkeypatch):
                      value=3, unit="м", plantType=["TREE"], confidence=0.99),
     ])
     fake = FakeLLM(extract_result=script)
-    monkeypatch.setattr("app.regulations.router.LocalLLM", lambda: fake)
+    monkeypatch.setattr("app.regulations.extraction.reg_llm", lambda: fake)
 
     r = client.post(f"/api/regulations/documents/{doc['id']}/extract")
     assert r.status_code == 202
@@ -367,7 +367,7 @@ def test_extract_llm_unavailable(client, tmp_path, monkeypatch):
     data = _docx_bytes(tmp_path)
     doc = client.post("/api/regulations/documents",
                       files={"file": ("norms.docx", data, "application/x")}).json()
-    monkeypatch.setattr("app.regulations.router.LocalLLM",
+    monkeypatch.setattr("app.regulations.extraction.reg_llm",
                         lambda: FakeLLM(reachable=False))
     r = client.post(f"/api/regulations/documents/{doc['id']}/extract")
     assert r.status_code == 409
@@ -382,7 +382,7 @@ def test_verify_supported_and_unsupported(client, monkeypatch, tmp_data):
     doc, frag = _mk_doc("regdoc_ver001")
     cand = _mk_candidate(doc, frag, value=5, unit="м", conf=0.9)
 
-    monkeypatch.setattr("app.regulations.router.LocalLLM", lambda: FakeLLM(
+    monkeypatch.setattr("app.regulations.extraction.reg_llm", lambda: FakeLLM(
         verify_result=VerifyLLMResult(verdict="SUPPORTED", notes="ok",
                                       valueSupported=True, unitSupported=True,
                                       applicabilitySupported=True,
@@ -398,14 +398,14 @@ def test_verify_supported_and_unsupported(client, monkeypatch, tmp_data):
 
     # UNSUPPORTED verdict → NEEDS_REVIEW even with a numeric literal
     cand2 = _mk_candidate(doc, frag, value=5, unit="м", conf=0.9)
-    monkeypatch.setattr("app.regulations.router.LocalLLM", lambda: FakeLLM(
+    monkeypatch.setattr("app.regulations.extraction.reg_llm", lambda: FakeLLM(
         verify_result=VerifyLLMResult(verdict="UNSUPPORTED", notes="nope")))
     out2 = client.post(f"/api/regulations/candidates/{cand2['id']}/verify").json()
     assert out2["status"] == "NEEDS_REVIEW"
 
     # SUPPORTED but the deterministic gate fails → still NEEDS_REVIEW
     cand3 = _mk_candidate(doc, frag, value=9, unit="м", conf=0.9)
-    monkeypatch.setattr("app.regulations.router.LocalLLM", lambda: FakeLLM(
+    monkeypatch.setattr("app.regulations.extraction.reg_llm", lambda: FakeLLM(
         verify_result=VerifyLLMResult(verdict="SUPPORTED", isObligation=True)))
     out3 = client.post(f"/api/regulations/candidates/{cand3['id']}/verify").json()
     assert out3["status"] == "NEEDS_REVIEW"

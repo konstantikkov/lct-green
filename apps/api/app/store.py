@@ -253,3 +253,25 @@ def list_iterations(pid: str) -> list[dict]:
         out = [json.loads(p.read_text(encoding="utf-8"))
                for p in sorted(d.glob("iteration_*.json"))]
     return sorted(out, key=lambda x: (x.get("runId", ""), x.get("index", 0)))
+
+
+def delete_project(pid: str) -> bool:
+    """Removes a project: rows, blobs, disk cache, uploaded files."""
+    import shutil
+    proj = get_project(pid)
+    if proj is None:
+        return False
+    if USE_PG:
+        _pg_exec("DELETE FROM blobs WHERE project_id=%s", (pid,))
+        _pg_exec("DELETE FROM runs WHERE project_id=%s", (pid,))
+        _pg_exec("DELETE FROM projects WHERE id=%s", (pid,))
+    else:
+        with _lock, _sqlite() as c:
+            c.execute("DELETE FROM runs WHERE project_id=?", (pid,))
+            c.execute("DELETE FROM projects WHERE id=?", (pid,))
+    shutil.rmtree(config.DATA_DIR / "projects" / pid, ignore_errors=True)
+    for key in ("upload_path", "dxf_path"):
+        p = proj.get(key)
+        if p:
+            Path(p).unlink(missing_ok=True)
+    return True

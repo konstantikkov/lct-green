@@ -311,6 +311,15 @@ def _get_rt(pid: str) -> pipeline.ProjectRuntime:
     return rt
 
 
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str):
+    if not store.delete_project(pid):
+        _err(404, "PROJECT_NOT_FOUND", f"No project {pid}")
+    with pipeline._rt_lock:
+        pipeline._runtimes.pop(pid, None)
+    return {"deleted": pid}
+
+
 @app.get("/api/projects/{pid}/document")
 def get_document(pid: str):
     rt = _get_rt(pid)

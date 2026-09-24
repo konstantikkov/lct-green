@@ -29,6 +29,10 @@ from .services.validator import Placement, RuleDistanceOracle, validate_plan
 
 STAGES = ["GENERATING_CANDIDATES", "OPTIMIZING", "VALIDATING", "JUDGING"]
 
+# coarse per-iteration progress mapping (percent at stage start / end)
+_STAGE_PROGRESS = {"GENERATING_CANDIDATES": (5, 40), "OPTIMIZING": (40, 72),
+                   "VALIDATING": (72, 82), "JUDGING": (82, 95)}
+
 
 @dataclass
 class ProjectRuntime:
@@ -116,7 +120,7 @@ def _init_status(run_id: str) -> dict:
     st = {
         "runId": run_id, "state": "GENERATING_CANDIDATES",
         "stages": [{"stage": s, "status": "pending", "detail": ""} for s in STAGES],
-        "currentIteration": 0, "error": None, "_version": 0,
+        "currentIteration": 0, "error": None, "progress": 0, "_version": 0,
     }
     _run_status[run_id] = st
     return st
@@ -134,6 +138,9 @@ def _set_stage(run_id: str, stage: str, status: str, detail: str = "") -> None:
                 s["detail"] = detail
     if status == "active":
         st["state"] = stage
+    span = _STAGE_PROGRESS.get(stage)
+    if span:
+        st["progress"] = span[0] if status == "active" else span[1]
     st["_version"] += 1
 
 
@@ -450,6 +457,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
         st = _run_status.get(run_id)
         if st:
             st["state"] = "COMPLETED"
+            st["progress"] = 100
             st["_version"] += 1
         store.finish_run(run_id, "COMPLETED")
         store.update_project(pid, state="COMPLETED")
