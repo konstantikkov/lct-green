@@ -189,6 +189,9 @@ export interface RunStatus {
   stages: RunStage[];
   currentIteration: number;
   error: string | null;
+  /** Iteration-4 contract: 0–100, coarse per-iteration; 100 on COMPLETED.
+   *  Optional defensively (older backend builds omit it). */
+  progress?: number;
 }
 
 // ---------------------------------------------------------------------------

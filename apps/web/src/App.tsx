@@ -4,6 +4,7 @@ import { BottomSheet } from "./components/BottomSheet";
 import { Inspector } from "./components/Inspector";
 import { StatusBar } from "./components/StatusBar";
 import { TopBar } from "./components/TopBar";
+import { Wizard } from "./components/Wizard";
 import { WorkspacePanel, WorkspaceTabs } from "./components/Workspace";
 import { AuditView } from "./components/views/AuditView";
 import { QualityView } from "./components/views/QualityView";
@@ -49,6 +50,19 @@ export default function App() {
     void loadProjects();
   }, []);
 
+  // Regulations & Quality are global views — reachable from the dashboard
+  // (and via /regulations, /quality deep links) without an open project.
+  if (!doc && (nav === "regulations" || nav === "quality")) {
+    return (
+      <div className="flex h-full flex-col">
+        <TopBar />
+        <div className="flex min-h-0 flex-1">
+          {nav === "regulations" ? <RegulationsView /> : <QualityView />}
+        </div>
+      </div>
+    );
+  }
+
   // Stage "empty": no project open — the admin dashboard is the start screen.
   if (!doc) {
     return (
@@ -72,6 +86,7 @@ export default function App() {
       </div>
       {nav === "plan" && <StatusBar />}
       {nav === "plan" && <BottomSheet />}
+      <Wizard />
     </div>
   );
 }

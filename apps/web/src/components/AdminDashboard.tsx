@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ProjectSummary } from "../api/types";
-import { loadProjectSummaries, openExample, openProject, uploadFile } from "../state/actions";
-import { ensureRegulationsLoaded } from "../state/regulations";
+import { deleteProject, loadProjectSummaries, openExample, openProject, uploadFile } from "../state/actions";
 import { useApp } from "../state/store";
+import { SecondaryNav, ThemeToggle } from "./TopBar";
 import { Badge, Btn, Spinner } from "./ui";
 
 function formatDate(v: string | number): string {
@@ -82,7 +82,8 @@ function PlantBand() {
   return (
     <svg
       viewBox="0 0 640 60"
-      className="h-12 w-full max-w-3xl select-none sm:h-14"
+      className="mx-auto block h-12 w-full max-w-3xl select-none sm:h-14"
+      preserveAspectRatio="xMidYMax meet"
       aria-hidden="true"
       fill="none"
     >
@@ -113,48 +114,6 @@ function PlantBand() {
         );
       })}
     </svg>
-  );
-}
-
-// --- Stats strip ----------------------------------------------------------------
-
-function StatChip({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <div
-      className="flex items-baseline gap-1.5 rounded-sm border border-ink-600 bg-ink-900 px-2.5 py-1"
-      title={title}
-    >
-      <span className="font-mono text-sm text-ink-100">{value}</span>
-      <span className="text-2xs text-ink-400">{label}</span>
-    </div>
-  );
-}
-
-function StatsStrip() {
-  const summaries = useApp((s) => s.summaries);
-  const summariesError = useApp((s) => s.summariesError);
-  const regDocs = useApp((s) => s.regDocs);
-  const regDocsError = useApp((s) => s.regDocsError);
-  const rules = useApp((s) => s.rules);
-
-  const chips: { label: string; value: string; title?: string }[] = [];
-  if (summaries && !summariesError) {
-    chips.push({ label: "проектов", value: String(summaries.length), title: "Projects" });
-    const trees = summaries.reduce((acc, p) => acc + (p.result?.treeCount ?? 0), 0);
-    chips.push({ label: "деревьев размещено", value: String(trees), title: "Trees placed (selected results)" });
-  }
-  if (regDocs && !regDocsError) {
-    chips.push({ label: "документов", value: String(regDocs.length), title: "Regulatory documents" });
-  }
-  if (rules) {
-    const active = rules.filter((r) => r.enabled && r.effectiveSource !== "inactive").length;
-    chips.push({ label: "активных правил", value: String(active), title: "Active rules (effective in the engine)" });
-  }
-  if (chips.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {chips.map((c) => <StatChip key={c.label} {...c} />)}
-    </div>
   );
 }
 
@@ -280,29 +239,141 @@ function ResultCell({ r }: { r: ProjectSummary["result"] }) {
   );
 }
 
-/** Actions: open + direct export downloads (plain <a download> per contract). */
+// --- Actions cell: compact button group + delete with confirm ------------------
+
+function DownloadDxfIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
+    </svg>
+  );
+}
+
+function ReportIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z" />
+      <path d="M14 3v4h4M9.5 12h5M9.5 16h5" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+    </svg>
+  );
+}
+
+const ICON_BTN_CLS =
+  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 " +
+  "text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100";
+
+/** h-7 icon button; renders <a download> when href is set, greyed when disabled. */
+function IconAction({
+  href, onClick, disabled, title, testid, children, className = "",
+}: {
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  title: string;
+  testid?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  if (href != null && !disabled) {
+    return (
+      <a className={`${ICON_BTN_CLS} ${className}`} href={href} download title={title} data-testid={testid}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button
+      className={`${ICON_BTN_CLS} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-ink-800 disabled:hover:text-ink-300 ${className}`}
+      disabled={disabled}
+      title={title}
+      data-testid={testid}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Compact button group: solid «Открыть», icon downloads, hover-revealed delete
+ *  with an inline confirm («Удалить проект? Это действие необратимо.»). */
 function ActionsCell({ p }: { p: ProjectSummary }) {
   const loadingId = useApp((s) => s.projectLoadingId);
-  const aCls =
-    "inline-flex h-6 items-center rounded-sm border border-ink-600 bg-ink-800 px-1.5 font-sans text-2xs " +
-    "text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100 whitespace-nowrap";
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  if (confirming) {
+    return (
+      <div
+        className="flex flex-wrap items-center justify-end gap-1.5 rounded-sm border border-red-300 bg-red-50 px-2 py-1 dark:border-red-800 dark:bg-red-950/40"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="whitespace-nowrap text-2xs text-red-800 dark:text-red-200">
+          Удалить проект? Это действие необратимо.
+        </span>
+        <button
+          className="inline-flex h-6 items-center rounded-sm bg-red-600 px-2 text-2xs font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+          disabled={deleting}
+          onClick={() => {
+            setDeleting(true);
+            void deleteProject(p.id).finally(() => {
+              setDeleting(false);
+              setConfirming(false);
+            });
+          }}
+        >
+          {deleting ? <Spinner className="h-2.5 w-2.5 border-white/70" /> : "Удалить"}
+        </button>
+        <button
+          className="inline-flex h-6 items-center rounded-sm border border-ink-600 bg-ink-800 px-2 text-2xs text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
+          onClick={() => setConfirming(false)}
+        >
+          Отмена
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-      <button className={aCls} onClick={() => void openProject(p.id)} title="Open project">
-        {loadingId === p.id ? <Spinner className="h-2.5 w-2.5" /> : "Открыть"}
+      <button
+        className="inline-flex h-7 shrink-0 items-center rounded-sm bg-emerald-600 px-2.5 text-2xs font-semibold text-white transition-colors hover:bg-emerald-500"
+        onClick={() => void openProject(p.id)}
+        title="Открыть проект"
+      >
+        {loadingId === p.id ? <Spinner className="h-2.5 w-2.5 border-white/70" /> : "Открыть"}
       </button>
-      {p.exports ? (
-        <>
-          <a className={aCls} href={p.exports.dxf} download title="Download DXF with plantings" data-testid="download-dxf">
-            DXF ↓
-          </a>
-          <a className={aCls} href={p.exports.report} download title="Download JSON report" data-testid="download-report">
-            Отчёт ↓
-          </a>
-        </>
-      ) : (
-        <span className="px-1 text-2xs text-ink-600" title="No generated result yet">— · —</span>
-      )}
+      <IconAction
+        href={p.exports?.dxf}
+        disabled={!p.exports}
+        title={p.exports ? "Скачать DXF" : "Скачать DXF — сначала сгенерируйте план"}
+        testid="download-dxf"
+      >
+        <DownloadDxfIcon />
+      </IconAction>
+      <IconAction
+        href={p.exports?.report}
+        disabled={!p.exports}
+        title={p.exports ? "Скачать отчёт" : "Скачать отчёт — сначала сгенерируйте план"}
+        testid="download-report"
+      >
+        <ReportIcon />
+      </IconAction>
+      <IconAction
+        onClick={() => setConfirming(true)}
+        title="Удалить проект"
+        testid="delete-project"
+        className="hover:border-red-300 hover:text-red-600 dark:hover:border-red-800 dark:hover:text-red-400 md:opacity-0 md:transition-opacity md:focus-visible:opacity-100 md:group-hover:opacity-100"
+      >
+        <TrashIcon />
+      </IconAction>
     </div>
   );
 }
@@ -347,7 +418,7 @@ function ProjectsTable({ summaries }: { summaries: ProjectSummary[] }) {
             <tr
               key={p.id}
               data-testid="project-row"
-              className="cursor-pointer border-b border-ink-700/60 last:border-0 hover:bg-ink-850"
+              className="group cursor-pointer border-b border-ink-700/60 last:border-0 hover:bg-ink-850"
               onClick={() => void openProject(p.id)}
             >
               <td className="max-w-[220px] px-2 py-1.5">
@@ -382,7 +453,7 @@ function ProjectCards({ summaries }: { summaries: ProjectSummary[] }) {
         <div
           key={p.id}
           data-testid="project-row"
-          className="cursor-pointer rounded-sm border border-ink-600 bg-ink-900 p-2"
+          className="group cursor-pointer rounded-sm border border-ink-600 bg-ink-900 p-2"
           onClick={() => void openProject(p.id)}
         >
           <div className="flex items-center gap-1.5">
@@ -412,18 +483,18 @@ function ProjectCards({ summaries }: { summaries: ProjectSummary[] }) {
 // --- Dashboard --------------------------------------------------------------------
 
 /**
- * Start screen: decorated admin dashboard — wordmark, plant-glyph band,
- * stats strip, prominent upload zone and the full projects table with
- * per-project CAD meta, result metrics and export downloads.
+ * Start screen: decorated admin dashboard — wordmark + global nav, centered
+ * plant-glyph band, prominent upload zone and the full projects table with
+ * per-project CAD meta, result metrics, export downloads and delete.
  */
 export function AdminDashboard() {
   const [dragOver, setDragOver] = useState(false);
   const summaries = useApp((s) => s.summaries);
   const summariesError = useApp((s) => s.summariesError);
+  const routeError = useApp((s) => s.routeError);
 
   useEffect(() => {
     void loadProjectSummaries();
-    ensureRegulationsLoaded(); // "Документов" stat chip
   }, []);
 
   const sorted = summaries
@@ -443,22 +514,26 @@ export function AdminDashboard() {
         if (file) void uploadFile(file);
       }}
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pb-10 pt-8">
-        {/* Header row: wordmark + tagline */}
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pb-10 pt-6">
+        {/* Header row: wordmark left, global nav + theme toggle top-right. */}
+        <div className="flex items-center gap-2">
           <div className="text-2xl font-semibold tracking-tight text-ink-100">
             Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
           </div>
-          <div className="text-xs text-ink-400">
-            Автоматическое размещение озеленения по нормативным ограничениям
-          </div>
+          <div className="flex-1" />
+          <SecondaryNav className="flex" />
+          <ThemeToggle />
         </div>
 
         <PlantBand />
 
         <UploadZone dragOver={dragOver} />
 
-        <StatsStrip />
+        {routeError && (
+          <div className="rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-2xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            {routeError}
+          </div>
+        )}
 
         <div>
           <div className="mb-1.5 flex items-baseline justify-between">

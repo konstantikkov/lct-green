@@ -1,4 +1,5 @@
 import { openAudit, setNav, setWorkspaceTab, togglePanelCollapsed } from "../state/actions";
+import { openWizard } from "../state/wizard";
 import { useApp, type WorkspaceTab } from "../state/store";
 import { Btn, Spinner } from "./ui";
 import { ConstraintsPanel } from "./panels/ConstraintsPanel";
@@ -214,6 +215,15 @@ export function WorkspaceTabs() {
           </button>
         );
       })}
+      <div className="min-w-2 flex-1" />
+      <button
+        data-testid="open-wizard"
+        className="mr-1 flex shrink-0 items-center gap-1 self-center rounded-sm border border-ink-600 bg-ink-800 px-2 py-0.5 text-2xs text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
+        onClick={() => openWizard(1)}
+        title="Пошаговый мастер: Ограничения → Условия → Генерация → Итоги"
+      >
+        Мастер
+      </button>
     </div>
   );
 }

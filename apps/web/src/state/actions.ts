@@ -97,6 +97,16 @@ function installDocument(doc: ProjectDocument) {
     audit: null,
     auditStatus: "idle",
     auditError: null,
+    routeError: null,
+    // Wizard state is per-project; uploadFile re-opens it explicitly.
+    wizardOpen: false,
+    wizardStep: 1,
+    wizardCandidates: [],
+    wizardNotice: null,
+    wizardBusy: false,
+    wizardBusyLabel: null,
+    wizardCandidateBusyId: null,
+    wizardCandidateErrors: {},
   });
   // Static data may have failed earlier if backend was down; retry now.
   const s = getState();
@@ -109,10 +119,13 @@ function installDocument(doc: ProjectDocument) {
 }
 
 export async function uploadFile(file: File) {
-  setState({ uploading: true, uploadError: null });
+  setState({ uploading: true, uploadError: null, routeError: null });
   try {
     const doc = await api.uploadProject(file);
     installDocument(doc);
+    // The step-by-step wizard opens automatically after a successful upload
+    // (never when opening an existing project).
+    setState({ wizardOpen: true, wizardStep: 1 });
     void loadProjects(); // keep the shared list fresh
     void loadProjectSummaries();
   } catch (e) {
@@ -164,7 +177,8 @@ export async function openProject(projectId: string) {
   setState({ projectLoadingId: null });
 }
 
-/** Returns to the empty-state screen ("New project…"). */
+/** Returns to the start screen (admin dashboard). Also used by the router
+ *  for `/` and by the TopBar logo ("GreenPlan" → home). */
 export function newProject() {
   setState({
     document: null,
@@ -186,9 +200,32 @@ export function newProject() {
     audit: null,
     auditStatus: "idle",
     auditError: null,
+    wizardOpen: false,
+    wizardStep: 1,
+    wizardCandidates: [],
+    wizardNotice: null,
+    wizardBusy: false,
+    wizardBusyLabel: null,
+    wizardCandidateBusyId: null,
+    wizardCandidateErrors: {},
   });
   void loadProjects();
   void loadProjectSummaries();
+}
+
+/** DELETE /api/projects/{id} — removes the row from both cached lists. */
+export async function deleteProject(projectId: string) {
+  try {
+    await api.deleteProject(projectId);
+    setState((s) => ({
+      summaries: s.summaries?.filter((p) => p.id !== projectId) ?? null,
+      projects: s.projects?.filter((p) => p.id !== projectId) ?? null,
+      routeError: null,
+    }));
+    void loadProjectSummaries(); // refresh from the source of truth
+  } catch (e) {
+    setState({ routeError: `Не удалось удалить проект: ${errMsg(e)}` });
+  }
 }
 
 export function setViewMode(mode: ViewMode) {
@@ -335,8 +372,13 @@ export async function startGeneration(req: GenerateRequest) {
       return;
     }
     await loadIterations();
-    // Auto-advance: land on Результат once the run completed.
-    setState({ runActive: false, workspaceTab: "result" });
+    // Auto-advance: land on Результат once the run completed. Inside the
+    // wizard, the Генерация step advances to Итоги automatically.
+    setState((s) => ({
+      runActive: false,
+      workspaceTab: "result" as const,
+      ...(s.wizardOpen && s.wizardStep === 3 ? { wizardStep: 4 as const } : {}),
+    }));
     void loadProjectSummaries(); // dashboard result columns changed
   } catch (e) {
     setState({ runActive: false, runError: errMsg(e) });

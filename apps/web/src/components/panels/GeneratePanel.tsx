@@ -21,7 +21,8 @@ const STAGE_LABELS: Partial<Record<RunStage["stage"], string>> = {
   RERUNNING: "Re-running",
 };
 
-function StageChecklist() {
+/** Also rendered inside the wizard's Генерация step. */
+export function StageChecklist() {
   const run = useApp((s) => s.run);
   if (!run) return null;
   return (

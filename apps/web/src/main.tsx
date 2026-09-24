@@ -2,7 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App";
+import { initRouter } from "./state/router";
 import "./index.css";
+
+// Hand-rolled history routing: /p/<id>[, /runs, /audit], /regulations, /quality.
+initRouter();
 
 // autoUpdate: fetch the new service worker immediately and reload the page
 // once it takes control, so deploys are picked up on the next visit instead

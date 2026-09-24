@@ -67,6 +67,10 @@ export const api = {
 
   listProjects: () => request<ProjectListItem[]>("/api/projects"),
 
+  /** Iteration 4: removes rows, blobs, disk cache and uploaded files. */
+  deleteProject: (projectId: string) =>
+    request<{ deleted: string }>(`/api/projects/${projectId}`, { method: "DELETE" }),
+
   /** Rich admin-dashboard listing (iteration 3 contract). */
   getProjectsSummary: () => request<ProjectSummary[]>("/api/projects/summary"),
 
@@ -125,6 +129,14 @@ export const api = {
   },
 
   listRegDocuments: () => request<RegDocument[]>("/api/regulations/documents"),
+
+  /** Iteration 4: synchronous LLM extraction from free text. Errors:
+   *  422 EMPTY_TEXT, 413 TEXT_TOO_LARGE, 409 LLM_UNAVAILABLE, 502 EXTRACTION_FAILED. */
+  parseRegulationText: (text: string, title?: string) =>
+    request<{ document: RegDocument; candidates: RuleCandidate[] }>(
+      "/api/regulations/text",
+      json(title ? { text, title } : { text }),
+    ),
 
   getRegDocument: (documentId: string) =>
     request<RegDocument>(`/api/regulations/documents/${documentId}`),

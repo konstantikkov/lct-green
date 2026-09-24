@@ -23,8 +23,14 @@ test("screenshot every stage state", async ({ page }, testInfo) => {
   await expect(t(page, "admin-dashboard")).toBeVisible();
   await shoot(page, testInfo, "dashboard");
 
-  // --- interpretation-tab ----------------------------------------------------
+  // --- wizard-step-1 (opens automatically after upload) ----------------------
   await t(page, "open-example").click();
+  await expect(t(page, "wizard")).toBeVisible({ timeout: 120_000 });
+  await expect(t(page, "wizard-step-1")).toBeVisible();
+  await shoot(page, testInfo, "wizard-step-1");
+  await t(page, "wizard-skip").click();
+
+  // --- interpretation-tab ----------------------------------------------------
   await expect(t(page, "workspace-tabs")).toBeVisible({ timeout: 120_000 });
   await expect(t(page, "layer-summary")).toBeVisible();
   await shoot(page, testInfo, "interpretation-tab");
@@ -38,6 +44,17 @@ test("screenshot every stage state", async ({ page }, testInfo) => {
   await t(page, "generate-button").click();
   await expect(t(page, "quality-card")).toBeVisible({ timeout: 240_000 });
   await shoot(page, testInfo, "generated-result");
+
+  // --- wizard итоги (reopen via «Мастер», step through to Итоги) --------------
+  await t(page, "open-wizard").click();
+  await expect(t(page, "wizard-step-1")).toBeVisible();
+  await t(page, "wizard-next").click(); // → Условия
+  await t(page, "wizard-next").click(); // → Генерация
+  await t(page, "wizard-next").click(); // → Итоги (result already exists)
+  await expect(t(page, "wizard-step-4")).toBeVisible();
+  await expect(t(page, "wizard-report")).toContainText(/посадок/, { timeout: 60_000 });
+  await shoot(page, testInfo, "wizard-step-4-itogi");
+  await t(page, "wizard-skip").click();
 
   // --- audit-view -------------------------------------------------------------
   await t(page, "open-audit").click();

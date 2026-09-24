@@ -210,15 +210,16 @@ function NavTabs() {
   );
 }
 
-/** Muted secondary nav (REGULATIONS · QUALITY), right-aligned. */
-function SecondaryNav() {
+/** Muted secondary nav (REGULATIONS · QUALITY), right-aligned.
+ *  Shared with the dashboard header (pass className="flex"). */
+export function SecondaryNav({ className = "hidden md:flex" }: { className?: string }) {
   const nav = useApp((s) => s.nav);
   const items: { id: NavView; label: string; testid: string }[] = [
     { id: "regulations", label: "Regulations", testid: "nav-regulations" },
     { id: "quality", label: "Quality", testid: "nav-quality" },
   ];
   return (
-    <div className="hidden items-center gap-0.5 md:flex">
+    <div className={`items-center gap-0.5 ${className}`}>
       {items.map((t) => (
         <button
           key={t.id}
@@ -235,19 +236,37 @@ function SecondaryNav() {
   );
 }
 
+/** Sun/moon theme switch — shared by the TopBar and the dashboard header. */
+export function ThemeToggle() {
+  const theme = useTheme();
+  return (
+    <button
+      className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
+      onClick={toggleTheme}
+      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+    >
+      {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+    </button>
+  );
+}
+
 export function TopBar() {
   const doc = useApp((s) => s.document);
   const pipelineState = useApp((s) => s.pipelineState);
   const runActive = useApp((s) => s.runActive);
   const hasIterations = useApp((s) => s.iterations.length > 0);
   const stage = useStage();
-  const theme = useTheme();
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-ink-600 bg-ink-900 px-3">
-      <span className="text-sm font-semibold tracking-tight text-ink-100">
+      <button
+        className="text-sm font-semibold tracking-tight text-ink-100 transition-opacity hover:opacity-75"
+        onClick={() => newProject()}
+        title="На главную (список проектов)"
+        data-testid="logo-home"
+      >
         Green<span className="text-emerald-600 dark:text-emerald-400">Plan</span>
-      </span>
+      </button>
 
       {doc && (
         <>
@@ -278,7 +297,7 @@ export function TopBar() {
 
       <div className="flex-1" />
 
-      {doc && <SecondaryNav />}
+      <SecondaryNav />
 
       {doc && pipelineState && (
         <Badge tone={stateTone(pipelineState)}>
@@ -321,13 +340,7 @@ export function TopBar() {
 
       {doc && <MobileOverflowMenu />}
 
-      <button
-        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
-        onClick={toggleTheme}
-        title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-      >
-        {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-      </button>
+      <ThemeToggle />
     </header>
   );
 }

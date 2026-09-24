@@ -20,6 +20,10 @@ export type WorkspaceTab = "interpretation" | "constraints" | "generate" | "resu
 /** Compliance-audit fetch lifecycle. */
 export type AuditStatus = "idle" | "loading" | "loaded" | "no_result" | "error";
 
+/** Step-by-step wizard after a fresh upload: 1 Ограничения · 2 Условия ·
+ *  3 Генерация · 4 Итоги. */
+export type WizardStep = 1 | 2 | 3 | 4;
+
 /** Generation options shared by the TopBar button and the Generate panel. */
 export interface GenOptions {
   /** null = "all species" (catalog may not be loaded yet). */
@@ -79,6 +83,8 @@ export interface AppState {
   /** Rich admin-dashboard listing (GET /api/projects/summary). */
   summaries: ProjectSummary[] | null;
   summariesError: string | null;
+  /** Non-fatal dashboard note (unknown deep-link project id, delete failure). */
+  routeError: string | null;
 
   viewMode: ViewMode;
   /** 3D massing: true = Detailed (CAD underlay, lanterns, fences), false = Simple. */
@@ -146,6 +152,21 @@ export interface AppState {
   regSelectedCandidateId: string | null;
   /** Candidate id with an in-flight verify/review/activate call. */
   regBusyCandidateId: string | null;
+
+  // --- Step-by-step wizard (opens automatically after a successful upload) ---
+  wizardOpen: boolean;
+  wizardStep: WizardStep;
+  /** Rule candidates gathered in step 2 (free text + document extraction). */
+  wizardCandidates: RuleCandidate[];
+  /** Non-fatal step-2 notice (e.g. LLM_UNAVAILABLE) — amber, step passable. */
+  wizardNotice: string | null;
+  /** Text parse or document upload+extract in flight. */
+  wizardBusy: boolean;
+  wizardBusyLabel: string | null;
+  /** Candidate id with an in-flight approve/edit/reject chain. */
+  wizardCandidateBusyId: string | null;
+  /** Per-candidate error messages (e.g. NUMERIC_LITERAL_NOT_FOUND). */
+  wizardCandidateErrors: Record<string, string>;
 }
 
 /** empty (no project) → imported (doc loaded) → generated (≥1 iteration). */
@@ -179,6 +200,7 @@ const initialState: AppState = {
   projectLoadingId: null,
   summaries: null,
   summariesError: null,
+  routeError: null,
   viewMode: "2d",
   massingDetail: readInitialMassingDetail(),
   layerVisibility: {},
@@ -229,6 +251,14 @@ const initialState: AppState = {
   regFilter: "ALL",
   regSelectedCandidateId: null,
   regBusyCandidateId: null,
+  wizardOpen: false,
+  wizardStep: 1,
+  wizardCandidates: [],
+  wizardNotice: null,
+  wizardBusy: false,
+  wizardBusyLabel: null,
+  wizardCandidateBusyId: null,
+  wizardCandidateErrors: {},
 };
 
 let state: AppState = initialState;
@@ -244,7 +274,8 @@ export function setState(partial: Partial<AppState> | ((s: AppState) => Partial<
   listeners.forEach((l) => l());
 }
 
-function subscribe(listener: () => void): () => void {
+/** Also used by the hand-rolled router to sync the URL with the state. */
+export function subscribeStore(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -254,5 +285,5 @@ function subscribe(listener: () => void): () => void {
  * so reference equality short-circuits re-renders.
  */
 export function useApp<T>(selector: (s: AppState) => T): T {
-  return useSyncExternalStore(subscribe, () => selector(state), () => selector(state));
+  return useSyncExternalStore(subscribeStore, () => selector(state), () => selector(state));
 }
