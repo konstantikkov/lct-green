@@ -54,12 +54,13 @@ class LocalLLM:
         return False
 
     async def _chat(self, messages: list[dict], json_schema: dict | None = None,
-                    json_mode: bool = True) -> str:
+                    json_mode: bool = True, max_tokens: int | None = None) -> str:
         payload: dict = {
             "model": self.model or "local",
             "messages": messages,
             "temperature": 0.1,
-            "max_tokens": 320,
+            # terse default suits the judge; extraction passes a larger budget
+            "max_tokens": max_tokens or 320,
         }
         if json_schema:
             # grammar-constrained decoding (llama.cpp, vLLM, recent Ollama):
@@ -98,7 +99,8 @@ class LocalLLM:
             return text[start:end + 1]
         return text
 
-    async def structured_generate(self, schema: Type[T], messages: list[dict]) -> T:
+    async def structured_generate(self, schema: Type[T], messages: list[dict],
+                                  max_tokens: int | None = None) -> T:
         """Generate + validate against a Pydantic schema; one repair retry."""
         if not self.enabled:
             raise LocalLLMError("local LLM disabled (LOCAL_LLM_ENABLED=false)")
@@ -106,7 +108,7 @@ class LocalLLM:
         msgs = list(messages)
         msgs[-1] = {**msgs[-1], "content": msgs[-1]["content"] +
                     "\n\nRespond ONLY with a JSON object."}
-        raw = await self._chat(msgs, json_schema=json_schema)
+        raw = await self._chat(msgs, json_schema=json_schema, max_tokens=max_tokens)
         try:
             return schema.model_validate_json(self._extract_json(raw))
         except Exception as first_err:
@@ -116,7 +118,7 @@ class LocalLLM:
                                             f"({first_err}). Reply with corrected JSON only. "
                                             f"Schema: {json.dumps(json_schema)[:1500]}"},
             ]
-            raw2 = await self._chat(repair)
+            raw2 = await self._chat(repair, max_tokens=max_tokens)
             return schema.model_validate_json(self._extract_json(raw2))
 
 

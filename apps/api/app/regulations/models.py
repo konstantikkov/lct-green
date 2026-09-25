@@ -119,7 +119,9 @@ class LLMCandidate(BaseModel):
 
 
 class ExtractionBatch(BaseModel):
-    candidates: list[LLMCandidate] = Field(default_factory=list)
+    # maxItems is enforced by grammar-constrained decoding: a CPU model at
+    # ~3 tok/s must not free-run into HTTP timeouts on table-dense batches
+    candidates: list[LLMCandidate] = Field(default_factory=list, max_length=8)
 
 
 class VerifyLLMResult(BaseModel):

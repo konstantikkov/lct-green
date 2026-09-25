@@ -84,9 +84,13 @@ class FakeLLM:
     async def is_reachable(self):
         return self.reachable
 
-    async def structured_generate(self, schema, messages):
+    async def structured_generate(self, schema, messages=None, max_tokens=None, **kw):
         if schema is ExtractionBatch:
-            return self.extract_result
+            # one-shot: batching splits fragments across several LLM calls;
+            # the scripted result must not be duplicated per batch
+            r = self.extract_result
+            self.extract_result = ExtractionBatch()
+            return r
         return self.verify_result
 
 
@@ -626,3 +630,33 @@ def test_scanned_pdf_ocr_job(client, monkeypatch, tmp_data):
     assert any("via OCR" in ln for ln in d["parseLog"])
     frags = client.get(f"/api/regulations/documents/{doc['id']}/fragments").json()
     assert frags and "не менее 5 м" in frags[0]["text"]
+
+
+def test_human_review_can_activate_ocr_table_rule(client, monkeypatch, tmp_data):
+    """A numeric candidate whose sourceText lacks the unit (OCR table row) is
+    blocked from automatic activation, but a NAMED human approval activates it
+    with the override recorded in verification notes."""
+    doc, frag = _mk_doc("regdoc_ocrtable")
+    frag = dict(frag)
+    frag["text"] = "Наружная стена здания и сооружения 5,0 1,5 Край трамвайного полотна 5,0 3,0"
+    storage.save_fragments(doc["id"], [frag])
+    cand = _mk_candidate(doc, frag, value=5.0, unit="м")
+    cand["status"] = "VERIFIED"
+    cand["verification"] = {"verdict": "SUPPORTED", "numericLiteralFound": False,
+                            "notes": None, "model": "fake", "promptVersion": "v1"}
+    storage.save_candidate(cand)
+
+    # no reviewer → blocked
+    r = client.post(f"/api/regulations/candidates/{cand['id']}/activate")
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "NUMERIC_LITERAL_NOT_FOUND"
+
+    # named human approval → activate with recorded override
+    r = client.patch(f"/api/regulations/candidates/{cand['id']}",
+                     json={"action": "approve", "reviewer": "eng-reviewer"})
+    assert r.status_code == 200
+    r = client.post(f"/api/regulations/candidates/{cand['id']}/activate")
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "ACTIVE"
+    assert "human review" in (out["verification"]["notes"] or "")

@@ -289,13 +289,24 @@ def activate_candidate(cand_id: str):
         _err(409, "INVALID_TRANSITION",
              f"Only VERIFIED candidates can be activated (is {cand['status']}).")
     if cand["constraint"].get("value") is not None:
-        # numeric rules require the deterministic literal gate to hold
+        # numeric rules require the deterministic literal gate — OR an explicit
+        # named human review. OCR'd tables often carry the unit only in the
+        # header row; the reviewer sees the source fragment and is the
+        # authority the review flow exists for. The override is recorded.
         literal_ok = (cand.get("verification") or {}).get("numericLiteralFound")
         if literal_ok is None:
             literal_ok = extraction.numeric_gate(cand)
         if not literal_ok:
-            _err(409, "NUMERIC_LITERAL_NOT_FOUND",
-                 "Numeric value+unit not literally present in sourceText.")
+            if not cand.get("reviewer"):
+                _err(409, "NUMERIC_LITERAL_NOT_FOUND",
+                     "Numeric value+unit not literally present in sourceText "
+                     "and no named human review — cannot activate automatically.")
+            ver = cand.get("verification") or {}
+            note = ("activated on human review by "
+                    f"'{cand['reviewer']}' despite missing literal unit in the "
+                    "cited fragment (OCR table)")
+            ver["notes"] = f"{ver.get('notes') or ''}; {note}".strip("; ")
+            cand["verification"] = ver
     cand["status"] = "ACTIVE"
     storage.save_candidate(cand)
     invalidate_project_caches()
