@@ -22,6 +22,16 @@ Scoring: per-field accuracies (value/unit/subject/object/operator/
 applicability/exception recall/citation). A citation mismatch (prediction
 does not cite the gold fragment id) FAILS the whole case — fields are not
 credited even if they match.
+
+Gate cases (gold entries with a "kind" field) run through the REAL backend
+gates/merge logic with scripted inputs, no LLM:
+  * hierarchy_mismatch — clause/table reference in sourceText conflicting
+    with the fragment hierarchyPath must yield NEEDS_REVIEW (never
+    VERIFIED-able) with machineExecutable gated [audit 3];
+  * title_trap — digits-only/short titles replaced by a synthesized
+    subject → referenceObject title [audit 3];
+  * canonical_merge — an ACTIVE candidate whose canonical key is covered by
+    a registry rule PATCHES that rule in place, no duplicate [audit 4].
 """
 from __future__ import annotations
 
@@ -92,6 +102,113 @@ def mock_predictions(gold: list[dict]) -> list[dict]:
     return preds
 
 
+def _gate_hierarchy_mismatch(case: dict) -> tuple[bool, str]:
+    from app.regulations import extraction as ex
+
+    cand = {
+        "source": {"sourceText": case["sourceText"],
+                   "hierarchyPath": case["hierarchyPath"],
+                   "fragmentIds": [case["id"]]},
+        "constraint": dict(case.get("constraint")
+                           or {"type": "MIN_DISTANCE", "value": None, "unit": None}),
+        "confidence": 0.9, "references": [], "exceptions": [],
+    }
+    ex.apply_gates(cand)
+    e = case["expected"]
+    notes = (cand.get("verification") or {}).get("notes") or ""
+    # the SAME deterministic check verification.py recomputes: while it
+    # returns a ref, the verifier forces AMBIGUOUS → VERIFIED unreachable
+    ref = ex.hierarchy_reference_mismatch(case["sourceText"], case["hierarchyPath"])
+    problems = []
+    if cand["status"] != e["status"]:
+        problems.append(f"status={cand['status']} want {e['status']}")
+    if cand["machineExecutable"] != e["machineExecutable"]:
+        problems.append(f"machineExecutable={cand['machineExecutable']}")
+    if e.get("mismatchRef") is None:
+        if ref is not None:
+            problems.append(f"unexpected mismatch ref {ref!r}")
+    else:
+        if ref != e["mismatchRef"]:
+            problems.append(f"mismatch ref {ref!r} want {e['mismatchRef']!r}")
+        if "hierarchy/clause mismatch" not in notes:
+            problems.append("verification.notes missing mismatch note")
+    return not problems, ", ".join(problems) or "ok"
+
+
+def _gate_title_trap(case: dict) -> tuple[bool, str]:
+    from app.regulations import extraction as ex
+
+    title = ex.sanitize_title(case.get("llmTitle"), case.get("subject"),
+                              case.get("referenceObject"))
+    problems = []
+    if title != case["expectedTitle"]:
+        problems.append(f"title {title!r} want {case['expectedTitle']!r}")
+    if not title or len(title) < 4 or title.strip().isdigit():
+        problems.append(f"title {title!r} is still a bare number/too short")
+    return not problems, ", ".join(problems) or "ok"
+
+
+def _gate_canonical_merge(case: dict) -> tuple[bool, str]:
+    from app.regulations import integration as integ
+    from app.services.rules import (RegulatoryRule, RuleAssumption,
+                                    RuleRegistry, RuleSource)
+
+    rule = RegulatoryRule(
+        id=case["canonicalRuleId"],
+        appliesTo=case["appliesTo"],
+        constraint={"type": "min_distance", "distance_m": None, "units": "m"},
+        source=RuleSource(document="СП 42.13330.2016 (без значения)"),
+        status="missing_source_data",
+        assumption=RuleAssumption(assumedDistanceM=3.0, enabled=True,
+                                  note="демо-значение"),
+    )
+    registry = RuleRegistry(version="bench", rules=[rule])
+    cand, doc = case["candidate"], case["document"]
+    integ.apply_active_candidates(registry, candidates=[cand],
+                                  documents={doc["id"]: doc})
+    e = case["expected"]
+    problems = []
+    if len(registry.rules) != 1:
+        problems.append(f"{len(registry.rules)} rules — duplicate appended")
+    if rule.status != e["status"]:
+        problems.append(f"status={rule.status}")
+    if rule.effective_distance_m != e["distanceM"]:
+        problems.append(f"effectiveDistanceM={rule.effective_distance_m}")
+    if rule.effective_source != "verified":
+        problems.append(f"effectiveSource={rule.effective_source}")
+    if rule.source.clause != cand["source"]["hierarchyPath"]:
+        problems.append(f"clause={rule.source.clause!r}")
+    if cand["source"]["sourceText"][:40] not in (rule.source.excerpt or ""):
+        problems.append("excerpt missing sourceText")
+    if "верифицировано" not in rule.note or cand["id"] not in rule.note:
+        problems.append(f"merge note missing: {rule.note!r}")
+    return not problems, ", ".join(problems) or "ok"
+
+
+GATE_RUNNERS = {
+    "hierarchy_mismatch": _gate_hierarchy_mismatch,
+    "title_trap": _gate_title_trap,
+    "canonical_merge": _gate_canonical_merge,
+}
+
+
+def run_gate_cases(cases: list[dict]) -> list[tuple[str, bool, str]]:
+    """Scripted inputs through the REAL backend gates/merge logic (no LLM)."""
+    out = []
+    for case in cases:
+        cid = case.get("id") or case.get("fragmentId") or "?"
+        runner = GATE_RUNNERS.get(case.get("kind"))
+        if runner is None:
+            out.append((cid, False, f"unknown gate kind {case.get('kind')!r}"))
+            continue
+        try:
+            ok, note = runner(case)
+        except Exception as exc:  # noqa: BLE001
+            ok, note = False, f"EXCEPTION: {exc}"
+        out.append((cid, ok, note))
+    return out
+
+
 def score(gold: list[dict], preds: list[dict]) -> dict:
     by_frag: dict[str, dict] = {}
     for p in preds:
@@ -151,7 +268,9 @@ def main() -> int:
                     help="run deterministic gates against gold sourceText (no LLM)")
     args = ap.parse_args()
 
-    gold = load_jsonl(args.gold)
+    all_cases = load_jsonl(args.gold)
+    gold = [c for c in all_cases if not c.get("kind")]       # field cases
+    gate_cases = [c for c in all_cases if c.get("kind")]     # gate/merge cases
     if args.mock:
         preds = mock_predictions(gold)
         mode = "mock (deterministic gates, no LLM)"
@@ -172,9 +291,22 @@ def main() -> int:
     for fid, ok, note in res["cases"]:
         print(f"  [{'PASS' if ok else 'FAIL'}] {fid}: {note}")
 
+    gate_res = run_gate_cases(gate_cases)
+    gate_passed = sum(1 for _, ok, _ in gate_res if ok)
+    print(f"gate/merge cases (real backend logic, scripted inputs): "
+          f"{gate_passed}/{len(gate_res)}")
+    for cid, ok, note in gate_res:
+        print(f"  [{'PASS' if ok else 'FAIL'}] {cid}: {note}")
+
+    failed = gate_passed != len(gate_res)
     if args.mock and res["casesPassed"] != res["n"]:
         print("MOCK MODE FAILURE: deterministic gates disagree with gold labels",
               file=sys.stderr)
+        failed = True
+    if failed and (args.mock or gate_res):
+        if gate_passed != len(gate_res):
+            print("GATE CASE FAILURE: backend gates/merge logic disagrees "
+                  "with gold expectations", file=sys.stderr)
         return 1
     return 0
 

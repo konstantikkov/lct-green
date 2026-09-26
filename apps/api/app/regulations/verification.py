@@ -14,7 +14,8 @@ import json
 
 from ..services.llm import LocalLLM
 from . import storage
-from .extraction import CONFIDENCE_THRESHOLD, load_prompt, numeric_gate
+from .extraction import (CONFIDENCE_THRESHOLD, hierarchy_reference_mismatch,
+                         load_prompt, numeric_gate)
 from .models import VerifyLLMResult
 
 PROMPT_VERSION = "verify_v1"
@@ -60,6 +61,20 @@ async def verify_candidate(cand: dict, llm: LocalLLM | None = None) -> dict:
             verdict="AMBIGUOUS", notes="verifier LLM call failed")
 
     literal_ok = numeric_gate(cand)  # deterministic, recomputed every time
+    # hierarchy-agreement gate, also deterministic and recomputed: while the
+    # mismatch holds, the verdict is forced to AMBIGUOUS → VERIFIED unreachable
+    mismatch = hierarchy_reference_mismatch(
+        cand["source"].get("sourceText", ""),
+        cand["source"].get("hierarchyPath", ""))
+    if mismatch:
+        note = (f"hierarchy/clause mismatch: path "
+                f"'{cand['source'].get('hierarchyPath', '')}' "
+                f"vs text reference '{mismatch}'")
+        result = VerifyLLMResult(
+            verdict="AMBIGUOUS",
+            notes=f"{result.notes}; {note}" if result.notes else note,
+            isObligation=result.isObligation)
+        cand["machineExecutable"] = False
     cand["verification"] = {
         "verdict": result.verdict,
         "numericLiteralFound": literal_ok,

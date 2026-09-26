@@ -1,4 +1,5 @@
-"""Document parsing: PDF (pypdf) and DOCX (python-docx) → hierarchy fragments.
+"""Document parsing: PDF (pypdf), DOCX (python-docx) and RTF (striprtf)
+→ hierarchy fragments.
 
 Fragments get STABLE ids `<docKey>:<h1_slug>[:<h2_slug>]:p<order>` (t<order>
 for tables) so re-parsing the same file yields identical ids. docKey comes
@@ -15,6 +16,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CLAUSE_RE = re.compile(r"^(\d+(?:\.\d+)+)[.)]?\s+")
+TABLE_CAPTION_RE = re.compile(r"^Таблица\s+(\d+(?:\.\d+)?)", re.IGNORECASE)
+# OCR/PDF/RTF line that opens a numbered top-level section ("9 Насаждения…")
+SECTION_HEADING_RE = re.compile(r"^(\d+)\s+[А-ЯЁA-Z][^.]{2,80}$")
 DOCNUM_RE = re.compile(
     r"(СП\s*[\d.]+\d|ГОСТ\s*[\d.\-]+\d|СНиП\s*[\d.\-]+\d|"
     r"ППМ\s*№?\s*[\d\-]+(?:-ПП)?|№\s*\d+-ПП)", re.IGNORECASE)
@@ -67,7 +71,18 @@ class ParseResult:
 
 
 class _Builder:
-    """Shared fragment builder maintaining heading stack + global order."""
+    """Shared fragment builder maintaining heading stack + global order.
+
+    Besides the heading stack it tracks two OCR-robust contexts (audit item 3):
+
+    * clause context — a paragraph starting with a clause number X.Y updates
+      the section context to "X > X.Y" even when the section heading itself
+      was missed by the heading regex (common in OCR'd PDFs), so subsequent
+      caption/row fragments are not attributed to a stale earlier section;
+    * "Таблица N[.M]" context — after a table caption, subsequent fragments
+      (same page or the next one, until the next heading/clause) get
+      " > Таблица N[.M]" appended to their hierarchyPath.
+    """
 
     def __init__(self, doc_key_fallback: str):
         self.doc_key_fallback = doc_key_fallback
@@ -75,6 +90,9 @@ class _Builder:
         self.headings: list[tuple[int, str]] = []  # (level, title)
         self.fragments: list[dict] = []
         self.order = 0
+        self.clause_ctx: str | None = None   # e.g. "9 > 9.6"
+        self.table_ctx: str | None = None    # e.g. "Таблица 9.1"
+        self.table_page: int | None = None
 
     def _key(self) -> str:
         return slugify(self.doc_key, 32) if self.doc_key else self.doc_key_fallback
@@ -86,9 +104,21 @@ class _Builder:
     def _heading_path(self) -> str:
         return " > ".join(t for _, t in self.headings)
 
+    def _base_path(self) -> str:
+        return self.clause_ctx or self._heading_path()
+
+    def _table_active(self, page: int | None) -> bool:
+        if not self.table_ctx:
+            return False
+        if page is None or self.table_page is None:
+            return True
+        return page - self.table_page <= 1  # same page or the next one
+
     def push_heading(self, level: int, text: str, page: int | None) -> None:
         self.headings = [h for h in self.headings if h[0] < level]
         self.headings.append((level, text))
+        self.clause_ctx = None
+        self.table_ctx = None
         self.order += 1
         self.fragments.append({
             "id": f"{self._key()}:{self._slug_trail()}:p{self.order}",
@@ -98,14 +128,26 @@ class _Builder:
 
     def push_paragraph(self, text: str, page: int | None) -> None:
         self.order += 1
-        kind = "note" if NOTE_RE.match(text) else "clause" if CLAUSE_RE.match(text) else "clause"
-        m = CLAUSE_RE.match(text)
-        if m:
-            num = m.group(1)
+        kind = "clause"
+        cm = CLAUSE_RE.match(text)
+        tm = TABLE_CAPTION_RE.match(text)
+        if cm:
+            num = cm.group(1)
             parts = num.split(".")
             path = " > ".join(".".join(parts[:i + 1]) for i in range(len(parts)))
+            # clause number at paragraph start = section context "X > X.Y":
+            # trust it even when the heading regex missed the section heading
+            self.clause_ctx = path
+            self.table_ctx = None  # a new clause ends the table region
+        elif tm:
+            label = f"Таблица {tm.group(1)}"
+            self.table_ctx, self.table_page = label, page
+            base = self._base_path()
+            path = f"{base} > {label}" if base else label
         else:
-            path = self._heading_path()
+            path = self._base_path()
+            if self._table_active(page):
+                path = f"{path} > {self.table_ctx}" if path else self.table_ctx
         if NOTE_RE.match(text):
             kind = "note"
         self.fragments.append({
@@ -118,9 +160,12 @@ class _Builder:
                    page: int | None) -> None:
         self.order += 1
         lines = [" | ".join(headers)] + [" | ".join(r) for r in rows]
+        path = self._base_path()
+        if self._table_active(page):
+            path = f"{path} > {self.table_ctx}" if path else self.table_ctx
         self.fragments.append({
             "id": f"{self._key()}:{self._slug_trail()}:t{self.order}",
-            "page": page, "hierarchyPath": self._heading_path() or "Таблица",
+            "page": page, "hierarchyPath": path or "Таблица",
             "kind": "table", "text": "\n".join(lines), "order": self.order,
             "table": {"headers": headers, "rows": rows},
         })
@@ -195,7 +240,9 @@ def parse_docx(path: Path, doc_id: str) -> ParseResult:
 # ---------------------------------------------------------------------------
 
 def _pdf_paragraphs(page_text: str) -> list[str]:
-    """Group extracted lines into paragraphs; new clause numbers start one."""
+    """Group extracted lines into paragraphs; new clause numbers start one.
+    Table captions ("Таблица N.M") always form their own paragraph so the
+    builder can open a table context exactly at the caption."""
     paras: list[str] = []
     cur: list[str] = []
     for line in page_text.splitlines():
@@ -204,6 +251,12 @@ def _pdf_paragraphs(page_text: str) -> list[str]:
             if cur:
                 paras.append(" ".join(cur))
                 cur = []
+            continue
+        if TABLE_CAPTION_RE.match(line):
+            if cur:
+                paras.append(" ".join(cur))
+                cur = []
+            paras.append(line)
             continue
         if CLAUSE_RE.match(line) and cur:
             paras.append(" ".join(cur))
@@ -270,13 +323,12 @@ def build_pdf_result(page_texts: list[tuple[int, str]], doc_id: str,
 
     b = _Builder(doc_id.split("_")[-1][:8])
     b.doc_key = res.document_number
-    heading_re = re.compile(r"^(\d+)\s+[А-ЯЁA-Z][^.]{2,80}$")
     for page_no, text in page_texts:
         for para in _pdf_paragraphs(text):
             para = re.sub(r"\s+", " ", para).strip()
             if not para:
                 continue
-            hm = heading_re.match(para)
+            hm = SECTION_HEADING_RE.match(para)
             if hm and len(para) < 90:
                 b.push_heading(1, para, page_no)
             else:
@@ -330,9 +382,60 @@ def parse_pdf_ocr(path: Path, doc_id: str, page_count: int,
     return res
 
 
+# ---------------------------------------------------------------------------
+# RTF (striprtf) — e.g. the official СП 42.13330 source distribution
+# ---------------------------------------------------------------------------
+
+def parse_rtf(path: Path, doc_id: str) -> ParseResult:
+    """RTF → text via striprtf, then the same _Builder flow as PDFs:
+    no page numbers (page=None), clause numbers X.Y[.Z] at line start drive
+    the hierarchy, and "Таблица N.M" captions open a table context."""
+    try:
+        from striprtf.striprtf import rtf_to_text
+    except ImportError as exc:  # pragma: no cover
+        raise ParseError(f"striprtf not installed: {exc}")
+
+    try:
+        raw = path.read_bytes()
+        try:
+            src = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            src = raw.decode("cp1251", errors="replace")
+        text = rtf_to_text(src, errors="ignore")
+    except Exception as exc:
+        raise ParseError(f"RTF parsing failed: {exc}")
+    if not text.strip():
+        raise ParseError("RTF contains no extractable text")
+
+    res = ParseResult(page_count=None)  # RTF has no page geometry
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    res.document_number = detect_doc_number(lines)
+    res.title = lines[0][:200] if lines else None
+
+    b = _Builder(doc_id.split("_")[-1][:8])
+    b.doc_key = res.document_number
+    for line in lines:  # striprtf emits one line per \par — 1 line = 1 para
+        para = re.sub(r"\s+", " ", line).strip()
+        if not para:
+            continue
+        hm = SECTION_HEADING_RE.match(para)
+        if hm and len(para) < 90:
+            b.push_heading(1, para, None)
+        else:
+            b.push_paragraph(para, None)
+
+    res.fragments = b.fragments
+    res.parse_log.append(
+        f"rtf parsed: {len(res.fragments)} fragments "
+        f"({sum(1 for f in res.fragments if f['kind'] == 'clause')} clauses)")
+    return res
+
+
 def parse_document(path: Path, doc_id: str, ext: str) -> ParseResult:
     if ext == ".pdf":
         return parse_pdf(path, doc_id)
     if ext == ".docx":
         return parse_docx(path, doc_id)
+    if ext == ".rtf":
+        return parse_rtf(path, doc_id)
     raise ParseError(f"unsupported extension {ext}")

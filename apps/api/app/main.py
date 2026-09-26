@@ -22,7 +22,7 @@ from .services.explain import build_explanation
 from .services.geometry import as_polygon_list
 from .services.llm import LocalLLM, capabilities as llm_capabilities
 from .services.rules import load_registry, load_species, save_override
-from .services.validator import Placement, RuleDistanceOracle
+from .services.validator import Placement, RuleDistanceOracle, validate_plan
 from .regulations.router import router as regulations_router
 
 app = FastAPI(title="GreenPlan API", version=config.ALGORITHM_VERSION)
@@ -248,30 +248,37 @@ def compliance_audit(pid: str):
     compliant = 0
     checks_total = 0
 
-    for p in rec["placements"]:
-        pl = Placement(id=p["id"], kind=p["kind"], speciesId=p["speciesId"],
-                       x=p["position"][0], y=p["position"][1],
-                       crownRadiusM=p["crownRadiusM"], score=p["score"])
+    all_placements = [Placement(id=p["id"], kind=p["kind"], speciesId=p["speciesId"],
+                                x=p["position"][0], y=p["position"][1],
+                                crownRadiusM=p["crownRadiusM"], score=p["score"])
+                      for p in rec["placements"]]
+
+    for p, pl in zip(rec["placements"], all_placements):
         exp = build_explanation(pl, rec["index"], registry, oracle,
-                                constraints.site_boundary)
+                                constraints.site_boundary,
+                                site_boundary_source=constraints.site_boundary_kind)
         failing = []
         checks = []
         for c in exp["checks"]:
-            if c["result"] == "n/a":
+            if c["result"] == "NOT_APPLICABLE":
                 continue
             checks_total += 1
             doc_name = c["source"]["document"]
-            bd = by_document.setdefault(doc_name, {"checks": 0, "passed": 0, "failed": 0})
+            bd = by_document.setdefault(doc_name, {"checks": 0, "passed": 0,
+                                                   "failed": 0, "unverified": 0})
             br = by_rule.setdefault(c["ruleId"], {
-                "checks": 0, "passed": 0, "failed": 0,
+                "checks": 0, "passed": 0, "failed": 0, "unverified": 0,
                 "document": doc_name, "effectiveSource": c["effectiveSource"],
                 "requiredM": c["requiredM"]})
             bd["checks"] += 1
             br["checks"] += 1
-            if c["result"] == "passed":
+            if c["result"] == "PASS":
                 bd["passed"] += 1
                 br["passed"] += 1
-            else:
+            elif c["result"] == "UNVERIFIED":
+                bd["unverified"] += 1
+                br["unverified"] += 1
+            else:  # FAIL
                 bd["failed"] += 1
                 br["failed"] += 1
                 failing.append(c["ruleId"])
@@ -285,6 +292,14 @@ def compliance_audit(pid: str):
             "failingRules": failing, "checks": checks,
         })
 
+    # deterministic regulatory verdict, recomputed against the CURRENT
+    # effective registry (this endpoint is a fresh audit, not a cached view)
+    revalidation = validate_plan(all_placements, idx, registry,
+                                 constraints.site_boundary,
+                                 constraints.allowed_area,
+                                 site_boundary_source=constraints.site_boundary_kind,
+                                 visibility_zones=constraints.visibility_zones())
+
     reg_rules = [r for r in registry.rules if r.id.startswith("REG_")]
     return {
         "iterationId": rec["iterationId"],
@@ -292,6 +307,7 @@ def compliance_audit(pid: str):
         "documentDerivedRules": len(reg_rules),
         "verifiedRules": sum(1 for r in registry.rules if r.effective_source == "verified"),
         "assumedRules": sum(1 for r in registry.rules if r.effective_source == "assumption"),
+        "regulatory": revalidation.get("regulatory"),
         "summary": {
             "placements": len(placements_out),
             "compliant": compliant,
@@ -461,7 +477,7 @@ async def run_events(pid: str, run_id: str):
 # ---------------------------------------------------------------------------
 
 _SUMMARY_KEYS = ("iterationId", "index", "runId", "selected", "parameters", "seed",
-                 "metrics", "judge", "runtimeMs")
+                 "metrics", "regulatory", "judge", "runtimeMs")
 
 
 @app.get("/api/projects/{pid}/iterations")
@@ -509,7 +525,8 @@ async def get_explanation(pid: str, placement_id: str):
                           crownRadiusM=p["crownRadiusM"], score=p["score"])
     oracle = RuleDistanceOracle(idx)
     exp = build_explanation(placement, rec["index"], registry, oracle,
-                            constraints.site_boundary)
+                            constraints.site_boundary,
+                            site_boundary_source=constraints.site_boundary_kind)
 
     # optional local-LLM narrative from deterministic facts only
     llm = LocalLLM()
@@ -588,12 +605,28 @@ def export_report(pid: str):
                        x=p["position"][0], y=p["position"][1],
                        crownRadiusM=p["crownRadiusM"], score=p["score"])
         explanations.append(build_explanation(pl, rec["index"], registry, oracle,
-                                              constraints.site_boundary))
+                                              constraints.site_boundary,
+                                              site_boundary_source=constraints.site_boundary_kind))
+
+    regulatory = rec.get("regulatory") or rec.get("validation", {}).get("regulatory")
+    reg_status = (regulatory or {}).get("status")
+    if reg_status == "COMPLIANT":
+        headline = ("РЕГУЛЯТОРНЫЙ СТАТУС: COMPLIANT — все применимые жесткие "
+                    "проверки пройдены по верифицированным значениям.")
+    else:
+        headline = (f"РЕГУЛЯТОРНЫЙ СТАТУС: {reg_status or 'НЕ ОПРЕДЕЛЕН'} — "
+                    "нормативное соответствие НЕ УСТАНОВЛЕНО (regulatory "
+                    "compliance NOT established). См. блок 'regulatory': "
+                    "непроверенные значения и блокеры перечислены там.")
 
     report = {
         "project": {"id": pid, "fileName": proj["file_name"],
                     "fileHash": proj["file_hash"], "units": rt.doc.units,
                     "cadVersion": rt.doc.cadVersion},
+        # deterministic regulatory verdict — prominent, never derived from the
+        # LLM judge (whose decision is only about optimization continuation)
+        "headline": headline,
+        "regulatory": regulatory,
         "observability": rec.get("observability", {}),
         "parameters": rec.get("parameters", {}),
         "seed": rec.get("seed"),
@@ -605,9 +638,11 @@ def export_report(pid: str):
         "repairLog": constraints.repair_log,
         "placements": rec.get("placements", []),
         "explanations": explanations,
-        "disclaimer": "Rules with status=missing_source_data use explicitly flagged ASSUMED "
-                      "demo distances (see effectiveSource per check); they are NOT verified "
-                      "regulatory values.",
+        "disclaimer": headline + " Rules with status=missing_source_data use explicitly "
+                      "flagged ASSUMED demo distances (see effectiveSource per check); "
+                      "they are NOT verified regulatory values. The LLM judge decision "
+                      "(ACCEPT/RERUN) concerns optimization quality only and NEVER "
+                      "asserts regulatory validity.",
     }
     stem = Path(proj["file_name"]).stem
     out = config.OUTPUT_DIR / f"{stem}_greening_report.json"

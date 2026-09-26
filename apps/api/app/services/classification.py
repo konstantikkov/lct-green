@@ -33,8 +33,10 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- utilities (specific first) ---
     (r"водопров|водоснабж|\bв1\b|\bхвс\b|\bгвс\b|water", "UTILITY_WATER", 0.86),
     (r"газопров|газоснабж|\bгаз\b|gas", "UTILITY_GAS", 0.86),
-    (r"канализ|\bк1\b|фекальн|бытов[а-я]*\s*сток|sewer|хозбыт", "UTILITY_SEWER", 0.86),
-    (r"ливн|дожд|дренаж|\bк2\b|водоотвод|drain|storm", "UTILITY_DRAINAGE", 0.84),
+    # ливневая (дождевая) канализация К2 = канализация по семантике СП 42
+    # табл. 9.1 (1.5 м), НЕ дренаж (2.0 м) — держим её в UTILITY_SEWER
+    (r"канализ|\bк1\b|\bк2\b|фекальн|бытов[а-я]*\s*сток|ливн|дожд|sewer|storm|хозбыт", "UTILITY_SEWER", 0.86),
+    (r"дренаж|водоотвод|drain", "UTILITY_DRAINAGE", 0.84),
     (r"теплосет|теплотрасс|тепло|\bтс\b|heat", "UTILITY_HEAT", 0.84),
     (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|лэп|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
     (r"связ|телефон|телеграф|тлф|слаботоч|волокон|вол[сc]|telecom|comm", "UTILITY_COMMUNICATION", 0.84),

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { normalizeCheckResult } from "../api/types";
 import type { ExclusionZone, Explanation, Placement } from "../api/types";
 import { isDebug } from "../debug";
 import { select } from "../state/actions";
 import { useApp, type Selection } from "../state/store";
+import { CheckResultBadge } from "./regulatory";
 import { Badge, KV, Spinner } from "./ui";
 
 const DISTANCE_LABELS: Record<string, string> = {
@@ -24,15 +26,24 @@ function SourceBadge({ source }: { source: "verified" | "assumption" }) {
 function ChecksList({ explanation }: { explanation: Explanation }) {
   return (
     <div className="space-y-1.5">
-      {explanation.checks.map((c, i) => (
+      {explanation.checks.map((c, i) => {
+        const r = normalizeCheckResult(c.result); // handles legacy "passed"/"failed"/"n/a" too
+        return (
         <div key={i} className="border border-ink-700 bg-ink-900/60 p-1.5">
           <div className="flex items-center gap-1.5">
-            <span className={c.result === "passed" ? "text-emerald-600 dark:text-emerald-400" : "text-ink-500"}>
-              {c.result === "passed" ? "✓" : "–"}
+            <span className={
+              r === "PASS"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : r === "FAIL"
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-ink-500"
+            }>
+              {r === "PASS" ? "✓" : r === "FAIL" ? "✕" : "–"}
             </span>
             <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink-200" title={c.ruleId}>
               {c.ruleId}
             </span>
+            <CheckResultBadge result={c.result} />
             <SourceBadge source={c.effectiveSource} />
           </div>
           <div className="mt-1 flex items-center gap-2 font-mono text-2xs text-ink-300">
@@ -51,7 +62,8 @@ function ChecksList({ explanation }: { explanation: Explanation }) {
             {c.source.clause ? ` · ${c.source.clause}` : ""} · {c.source.status}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

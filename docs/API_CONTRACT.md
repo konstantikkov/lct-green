@@ -1,5 +1,46 @@
 # API Contract — Green Placement MVP
 
+## Regulatory verdict separation (iteration 5) — FROZEN
+
+Per-check result: `"PASS" | "FAIL" | "UNVERIFIED" | "NOT_APPLICABLE"`.
+- PASS: geometry satisfied against a rule whose value is VERIFIED from a source.
+- FAIL: geometry violates any enforced rule (verified or assumed — safe direction).
+- UNVERIFIED: geometry satisfied but the rule value is an ASSUMED demo value
+  (`missing_source_data`), or an applicability condition can't be confirmed
+  (e.g. crown diameter > 5 m for СП 42 табл. 9.1; site boundary inferred from
+  extents; generic untyped-utility safe buffer; recommended-range rules).
+- NOT_APPLICABLE: no such obstacle in the drawing / rule not applicable.
+
+Overall `regulatory.status` (DETERMINISTIC, judge can never change it):
+any FAIL → `"NON_COMPLIANT"`; else any applicable-hard UNVERIFIED or any
+blocker → `"NEEDS_REVIEW"`; else `"COMPLIANT"`.
+
+`regulatory` object (in iteration records, /compliance, export report):
+```ts
+interface RegulatoryVerdict {
+  status: "COMPLIANT" | "NON_COMPLIANT" | "NEEDS_REVIEW";
+  blockers: string[];            // e.g. "SITE_BOUNDARY_UNKNOWN", "UNVERIFIED_HARD_RULES:19"
+  coverage: {                    // deterministic, 0..1
+    regulatoryCoverage: number;  // verified applicable hard checks / applicable hard checks
+    parser: { siteBoundaryDetected: boolean; utilitiesTypedShare: number|null;
+              roadsClassified: boolean; existingVegetationDetected: boolean;
+              crossingsDetected: number };
+  };
+  checkCounts: { pass: number; fail: number; unverified: number; notApplicable: number };
+}
+```
+Judge changes: decision means ONLY "further optimization iteration useful?".
+Judge confidence is capped in code at `0.3 + 0.7*regulatoryCoverage`. Judge
+output is sanity-passed: parameterChanges with no-op reasons dropped; if any
+assessment dimension != GOOD while issues==[] a deterministic issue is added.
+UI labels: regulatory status shown separately from the judge decision chip
+("Оптимизация: завершена/можно улучшить" vs "Соответствие: ТРЕБУЕТ ПРОВЕРКИ").
+Rule model gains `role: "regulatory" | "safe_buffer" | "design_heuristic"` and
+optional `condition: {crownDiameterMaxM?: number}`; design_heuristic violations
+are warnings, never hardViolations.
+
+
+
 ## Admin dashboard & compliance audit (iteration 3)
 
 ### `GET /api/projects/summary` → rich listing for the start screen

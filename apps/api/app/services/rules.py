@@ -23,6 +23,13 @@ from .. import config
 
 _lock = threading.Lock()
 
+RULE_ROLES = ("regulatory", "safe_buffer", "design_heuristic")
+
+
+def _snake_to_camel(name: str) -> str:
+    parts = name.split("_")
+    return parts[0] + "".join(p.title() for p in parts[1:])
+
 
 class RuleSource(BaseModel):
     document: str
@@ -48,6 +55,14 @@ class RegulatoryRule(BaseModel):
     source: RuleSource
     status: str = "missing_source_data"
     severity: str = "hard"
+    # role separates true regulatory constraints from engineering artifacts:
+    #   regulatory       — a legal norm (checked for PASS/FAIL/UNVERIFIED)
+    #   safe_buffer      — conservative technological offset, NOT a norm check
+    #   design_heuristic — project heuristic; violations are warnings only
+    role: str = "regulatory"
+    # applicability conditions, e.g. {crown_diameter_max_m: 5.0} for СП 42
+    # табл. 9.1 (rows apply to trees with crown ≤ 5 m only)
+    condition: dict[str, Any] = Field(default_factory=dict)
     assumption: Optional[RuleAssumption] = None
     note: str = ""
 
@@ -84,6 +99,8 @@ class RegulatoryRule(BaseModel):
             "source": self.source.model_dump(),
             "status": self.status,
             "severity": self.severity,
+            "role": self.role,
+            "condition": {_snake_to_camel(k): v for k, v in self.condition.items()},
             "assumption": self.assumption.model_dump() if self.assumption else None,
             "effectiveDistanceM": self.effective_distance_m,
             "effectiveSource": self.effective_source,
@@ -164,6 +181,8 @@ def load_registry() -> RuleRegistry:
             constraint=r.get("constraint", {}),
             source=source, status=r.get("status", "missing_source_data"),
             severity=r.get("severity", "hard"),
+            role=r.get("role", "regulatory"),
+            condition=r.get("condition") or {},
             assumption=assumption, note=r.get("note", ""),
         ))
 
@@ -184,11 +203,14 @@ def load_registry() -> RuleRegistry:
             if ap.get("enabled") is not None:
                 rule.assumption.enabled = bool(ap["enabled"])
 
-    # merge ACTIVE regulation-ingestion candidates (WS4) as verified rules;
-    # a broken regulations store must never break the registry
+    # merge ACTIVE regulation-ingestion candidates (WS4): the integration layer
+    # receives the whole registry so it can PATCH canonical YAML rules in place
+    # (same subject/obstacle/type => merged provenance) instead of appending a
+    # duplicate constraint. A broken regulations store must never break the
+    # registry.
     try:
-        from ..regulations.integration import active_candidate_rules
-        registry.rules.extend(active_candidate_rules())
+        from ..regulations.integration import apply_active_candidates
+        apply_active_candidates(registry)
     except Exception:
         pass
     return registry

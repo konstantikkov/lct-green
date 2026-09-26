@@ -474,65 +474,100 @@ def test_status_transitions_and_version_bump(client, tmp_data):
 # ---------------------------------------------------------------------------
 
 def test_active_candidates_merge_into_registry(client, tmp_data):
+    """Canonical rule merge (audit item 4): an ACTIVE candidate whose
+    canonical key (plantingTypes, obstacle, constraint type) is covered by a
+    YAML rule PATCHES that rule in place — no duplicate REG_ constraint. Only
+    uncovered keys append new REG_ rules."""
     doc, frag = _mk_doc("regdoc_int001")
     active = _mk_candidate(doc, frag, value=5, unit="м", conf=0.9, status="ACTIVE")
-    # unit conversion: 150 см → 1.5 m
+    active["reviewer"] = "ivanov"
+    storage.save_candidate(active)
+    # unit conversion: 150 см → 1.5 m; merges into TREE_UTILITY_GAS_MIN_DISTANCE
     frag_cm = {"id": "sp-42.13330.2016:4-trebovaniya:p9", "page": None,
                "hierarchyPath": "4 > 4.5", "kind": "clause",
                "text": "4.5 От газопровода до ствола дерева — не менее 150 см.",
                "order": 9}
-    storage.save_fragments("regdoc_int001", [frag, frag_cm])
+    # uncovered canonical key (TREE, PARKING) → appended as REG_ rule
+    frag_park = {"id": "sp-42.13330.2016:4-trebovaniya:p11", "page": None,
+                 "hierarchyPath": "4 > 4.7", "kind": "clause",
+                 "text": "4.7 От края парковки до ствола дерева — не менее 3 м.",
+                 "order": 11}
+    storage.save_fragments("regdoc_int001", [frag, frag_cm, frag_park])
     lc = LLMCandidate(fragmentIds=[frag_cm["id"]], constraintType="MIN_DISTANCE",
                       subject="TREE", referenceObject="GAS_PIPE",
                       value=150, unit="см", plantType=["TREE"], confidence=0.9)
     cm = extraction.build_candidate(lc, doc, {frag_cm["id"]: frag_cm})
     cm["status"] = "ACTIVE"
     storage.save_candidate(cm)
+    lp = LLMCandidate(fragmentIds=[frag_park["id"]], constraintType="MIN_DISTANCE",
+                      subject="TREE", referenceObject="PARKING",
+                      value=3, unit="м", plantType=["TREE"], confidence=0.9)
+    park = extraction.build_candidate(lp, doc, {frag_park["id"]: frag_park})
+    park["status"] = "ACTIVE"
+    storage.save_candidate(park)
     # unmappable reference object → skipped, never crashes the registry
     junk = _mk_candidate(doc, frag, value=5, unit="м", conf=0.9,
                          status="ACTIVE", reference_object="UFO_LANDING_PAD")
 
-    rules = integration.active_candidate_rules()
-    by_id = {r.id: r for r in rules}
-    assert f"REG_{active['id']}" in by_id
-    assert f"REG_{junk['id']}" not in by_id
-
-    r1 = by_id[f"REG_{active['id']}"]
-    assert r1.constraint == {"type": "min_distance", "distance_m": 5.0, "units": "m"}
-    assert r1.appliesTo == {"planting_type": ["TREE"], "obstacle_type": ["BUILDING"]}
-    assert r1.status == "verified" and r1.severity == "hard"
-    assert r1.source.documentNumber == "СП 42.13330.2016"
-    assert r1.source.clause == "4 > 4.3 > 4.3.12"
-    assert CLAUSE_TEXT[:40] in (r1.source.excerpt or "")
-    assert r1.effective_distance_m == 5.0 and r1.effective_source == "verified"
-
-    r2 = by_id[f"REG_{cm['id']}"]
-    assert abs(r2.constraint["distance_m"] - 1.5) < 1e-9
-    assert r2.appliesTo["obstacle_type"] == ["UTILITY_GAS"]
-
-    # load_registry merges them after YAML rules + overrides
     from app.services.rules import load_registry
     reg = load_registry()
-    reg_ids = {r.id for r in reg.rules}
-    assert f"REG_{active['id']}" in reg_ids
+    ids = [r.id for r in reg.rules]
 
-    # …and GET /api/rules exposes them with verified provenance
+    # YAML canonical rule PATCHED in place, id kept, no REG_ duplicate
+    canonical = reg.get("TREE_BUILDING_MIN_DISTANCE")
+    assert canonical is not None
+    assert canonical.status == "verified"
+    assert canonical.constraint["distance_m"] == 5.0
+    assert canonical.effective_distance_m == 5.0
+    assert canonical.effective_source == "verified"  # assumption now irrelevant
+    assert canonical.assumption is not None          # …but kept
+    assert canonical.source.documentNumber == "СП 42.13330.2016"
+    assert canonical.source.clause == "4 > 4.3 > 4.3.12"
+    assert canonical.source.url is None
+    assert CLAUSE_TEXT[:40] in (canonical.source.excerpt or "")
+    assert "верифицировано" in canonical.note
+    assert active["id"] in canonical.note and "ivanov" in canonical.note
+    assert f"REG_{active['id']}" not in ids  # NEVER a duplicate constraint
+
+    gas = reg.get("TREE_UTILITY_GAS_MIN_DISTANCE")
+    assert abs(gas.constraint["distance_m"] - 1.5) < 1e-9
+    assert gas.status == "verified"
+    assert f"REG_{cm['id']}" not in ids
+
+    # uncovered key → appended REG_ rule
+    assert f"REG_{park['id']}" in ids
+    r_park = reg.get(f"REG_{park['id']}")
+    assert r_park.appliesTo == {"planting_type": ["TREE"], "obstacle_type": ["PARKING"]}
+    assert r_park.constraint == {"type": "min_distance", "distance_m": 3.0, "units": "m"}
+    assert r_park.status == "verified" and r_park.severity == "hard"
+
+    assert f"REG_{junk['id']}" not in ids  # unmappable → skipped
+
+    # idempotent w.r.t. duplicates: re-applying never adds another rule
+    before = len(reg.rules)
+    integration.apply_active_candidates(reg)
+    assert len(reg.rules) == before
+
+    # …and GET /api/rules exposes the PATCHED canonical rule
     api_rules = client.get("/api/rules").json()
-    mine = next(r for r in api_rules if r["id"] == f"REG_{active['id']}")
+    api_ids = [r["id"] for r in api_rules]
+    assert f"REG_{active['id']}" not in api_ids
+    mine = next(r for r in api_rules if r["id"] == "TREE_BUILDING_MIN_DISTANCE")
     assert mine["status"] == "verified"
     assert mine["effectiveSource"] == "verified"
     assert mine["effectiveDistanceM"] == 5.0
     assert mine["constraint"]["distanceM"] == 5.0
+    assert mine["source"]["clause"] == "4 > 4.3 > 4.3.12"
 
 
 def test_registry_survives_broken_regulations_store(tmp_data, monkeypatch):
     """A broken regulations store must never kill the registry."""
     import app.regulations.integration as integ
 
-    def boom():
+    def boom(registry, candidates=None, documents=None):
         raise RuntimeError("regulations store exploded")
 
-    monkeypatch.setattr(integ, "active_candidate_rules", boom)
+    monkeypatch.setattr(integ, "apply_active_candidates", boom)
     from app.services.rules import load_registry
     reg = load_registry()
     assert len(reg.rules) > 0  # YAML rules still there
@@ -579,6 +614,30 @@ def test_compliance_audit_endpoint(tmp_path, monkeypatch):
     p0 = audit["placements"][0]
     assert p0["verdict"] == "COMPLIANT" and p0["checks"]
     assert all(c["source"]["document"] for c in p0["checks"])
+    # iteration-5 regulatory separation: new statuses, unverified counted
+    # separately, deterministic regulatory verdict block present
+    assert all(c["result"] in ("PASS", "FAIL", "UNVERIFIED", "NOT_APPLICABLE")
+               for c in p0["checks"])
+    assert all("unverified" in bd for bd in audit["byDocument"].values())
+    reg = audit["regulatory"]
+    assert reg["status"] == "NEEDS_REVIEW"  # demo registry = assumed values
+    assert any(b.startswith("UNVERIFIED_HARD_RULES:") for b in reg["blockers"])
+    assert reg["checkCounts"]["fail"] == 0
+    assert 0.0 <= reg["coverage"]["regulatoryCoverage"] <= 1.0
+
+    # iterations API: summary rows expose the stored regulatory verdict
+    iters = client.get(f"/api/projects/{pid}/iterations").json()
+    assert iters and iters[0]["regulatory"]["status"] == "NEEDS_REVIEW"
+
+    # export report: regulatory block is top-level and the headline says
+    # compliance NOT established whenever status != COMPLIANT
+    rep = client.get(f"/api/projects/{pid}/export/report")
+    assert rep.status_code == 200
+    report = _json.loads(rep.content)
+    assert report["regulatory"]["status"] == "NEEDS_REVIEW"
+    assert "НЕ УСТАНОВЛЕНО" in report["headline"]
+    assert "NOT established" in report["disclaimer"] or \
+           "НЕ УСТАНОВЛЕНО" in report["disclaimer"]
 
     summary = client.get("/api/projects/summary").json()
     mine = next(s for s in summary if s["id"] == pid)
@@ -630,6 +689,170 @@ def test_scanned_pdf_ocr_job(client, monkeypatch, tmp_data):
     assert any("via OCR" in ln for ln in d["parseLog"])
     frags = client.get(f"/api/regulations/documents/{doc['id']}/fragments").json()
     assert frags and "не менее 5 м" in frags[0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# RTF parsing (striprtf) — same _Builder flow as PDFs
+# ---------------------------------------------------------------------------
+
+RTF_FIXTURE = "\n".join([
+    r"{\rtf1\ansi\ansicpg1251\deff0{\fonttbl{\f0 Times New Roman;}}",
+    r"\f0\fs24 СП 42.13330.2016 Свод правил. Градостроительство.\par",
+    r"9 Насаждения и благоустройство\par",
+    r"9.6 Расстояние от зданий и сооружений до оси ствола дерева "
+    r"принимается по таблице 9.1, но не менее 5 м.\par",
+    r"Таблица 9.1\par",
+    r"Наружная стена здания | 5,0 | 1,5\par",
+    "}",
+])
+
+
+def test_rtf_docparse_hierarchy_and_table_context(tmp_path):
+    p = tmp_path / "sp42.rtf"
+    p.write_bytes(RTF_FIXTURE.encode("utf-8"))
+    res = docparse.parse_rtf(p, "regdoc_rtf00001")
+
+    assert res.document_number == "СП 42.13330.2016"
+    assert res.page_count is None  # RTF has no page geometry
+    assert all(f["page"] is None for f in res.fragments)
+
+    heading = next(f for f in res.fragments if f["kind"] == "heading")
+    assert heading["text"] == "9 Насаждения и благоустройство"
+
+    clause = next(f for f in res.fragments if f["text"].startswith("9.6"))
+    assert clause["hierarchyPath"] == "9 > 9.6"
+
+    # "Таблица 9.1" opens a table context: caption + row carry the suffix
+    caption = next(f for f in res.fragments if f["text"] == "Таблица 9.1")
+    assert caption["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+    row = next(f for f in res.fragments if "Наружная стена" in f["text"])
+    assert row["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+
+    assert any("rtf parsed" in line for line in res.parse_log)
+    # stable ids across re-parses
+    res2 = docparse.parse_rtf(p, "regdoc_other999")
+    assert [f["id"] for f in res.fragments] == [f["id"] for f in res2.fragments]
+
+
+def test_rtf_upload_endpoint_and_signature(client):
+    r = client.post("/api/regulations/documents",
+                    files={"file": ("СП 42.rtf", RTF_FIXTURE.encode("utf-8"),
+                                    "application/rtf")})
+    assert r.status_code == 201, r.text
+    doc = r.json()
+    assert doc["status"] == "PARSED"
+    assert doc["documentNumber"] == "СП 42.13330.2016"
+    assert doc["fragmentCount"] > 0
+
+    frags = client.get(f"/api/regulations/documents/{doc['id']}/fragments").json()
+    row = next(f for f in frags if "Наружная стена" in f["text"])
+    assert row["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+
+    # signature check: .rtf without {\rtf magic → 422
+    r = client.post("/api/regulations/documents",
+                    files={"file": ("fake.rtf", b"hello world", "application/rtf")})
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "UNSUPPORTED_FORMAT"
+
+
+def test_pdf_builder_clause_and_table_context():
+    """OCR'd PDF: a clause line "9.6 …" fixes the section context even when
+    the section heading was missed, and "Таблица N.M" context spans the same
+    page + the next one, expiring afterwards."""
+    pages = [
+        (1, "8 Улицы и дороги\n8.2 Ширина проезжей части не менее 3 м."),
+        (2, "9.6 Расстояния, м, от зданий и сооружений до оси ствола дерева.\n"
+            "Таблица 9.1\nНаружная стена здания 5,0 1,5"),
+        (3, "Край тротуара 0,7 0,5"),
+        (5, "Продолжение раздела без номера пункта"),
+    ]
+    res = docparse.build_pdf_result(pages, "regdoc_pdfctx01")
+    by_text = {f["text"]: f for f in res.fragments}
+
+    assert by_text["8 Улицы и дороги"]["kind"] == "heading"
+    assert by_text["8.2 Ширина проезжей части не менее 3 м."]["hierarchyPath"] == "8 > 8.2"
+    # clause number at paragraph start overrides the stale section-8 context
+    clause = by_text["9.6 Расстояния, м, от зданий и сооружений до оси ствола дерева."]
+    assert clause["hierarchyPath"] == "9 > 9.6"
+    assert by_text["Таблица 9.1"]["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+    assert by_text["Наружная стена здания 5,0 1,5"]["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+    # next page still belongs to the table…
+    assert by_text["Край тротуара 0,7 0,5"]["hierarchyPath"] == "9 > 9.6 > Таблица 9.1"
+    # …but two+ pages later the table context has expired
+    assert by_text["Продолжение раздела без номера пункта"]["hierarchyPath"] == "9 > 9.6"
+
+
+# ---------------------------------------------------------------------------
+# hierarchy-agreement gate + title sanitization (audit item 3)
+# ---------------------------------------------------------------------------
+
+def test_hierarchy_mismatch_gate(client, monkeypatch, tmp_data):
+    """sourceText referencing clause 9.6 / таблица 9.1 while the cited
+    fragment path says section 8 → NEEDS_REVIEW, machineExecutable gated,
+    and VERIFIED unreachable (verifier forced to AMBIGUOUS)."""
+    doc, _ = _mk_doc("regdoc_mis001")
+    frag = {"id": "x:mis:p1", "page": None, "hierarchyPath": "8 > 8.2",
+            "kind": "clause",
+            "text": "9.6 Расстояния, м, от зданий и сооружений до оси ствола "
+                    "дерева принимаются по таблице 9.1. Наружная стена здания 5,0",
+            "order": 1}
+    storage.save_fragments("regdoc_mis001", [frag])
+    lc = LLMCandidate(fragmentIds=[frag["id"]], constraintType="MIN_DISTANCE",
+                      subject="TREE", referenceObject="BUILDING_WALL",
+                      value=5.0, unit="м", plantType=["TREE"], confidence=0.95)
+    cand = extraction.build_candidate(lc, doc, {frag["id"]: frag})
+
+    assert cand["status"] == "NEEDS_REVIEW"
+    assert cand["machineExecutable"] is False  # stays gated
+    notes = (cand["verification"] or {})["notes"]
+    assert "hierarchy/clause mismatch" in notes
+    assert "path '8 > 8.2'" in notes and "'9.6'" in notes
+    storage.save_candidate(cand)
+
+    # even a scripted SUPPORTED verdict cannot reach VERIFIED while the
+    # deterministic mismatch holds: verification forces AMBIGUOUS
+    monkeypatch.setattr("app.regulations.extraction.reg_llm", lambda: FakeLLM(
+        verify_result=VerifyLLMResult(verdict="SUPPORTED", notes="ok",
+                                      valueSupported=True, unitSupported=True,
+                                      applicabilitySupported=True,
+                                      exceptionsComplete=True, isObligation=True)))
+    out = client.post(f"/api/regulations/candidates/{cand['id']}/verify").json()
+    assert out["status"] == "NEEDS_REVIEW"
+    assert out["verification"]["verdict"] == "AMBIGUOUS"
+    assert "hierarchy/clause mismatch" in out["verification"]["notes"]
+    assert out["machineExecutable"] is False
+
+    # consistent path+text (control): no mismatch flag, no forced AMBIGUOUS
+    ok = extraction.hierarchy_reference_mismatch(
+        "9.6 Расстояния принимаются по таблице 9.1.", "9 > 9.6 > Таблица 9.1")
+    assert ok is None
+    # cross-references to other clauses ("п. 9.5") never trigger the gate
+    assert extraction.hierarchy_reference_mismatch(
+        "5.1.6 Расстояния принимаются в соответствии с п. 9.5 и таблицей 3.",
+        "5 > 5.1 > 5.1.6") is None
+
+
+def test_title_sanitization(tmp_data):
+    """Candidate title must never be a bare number (audit found title "400")."""
+    doc, frag = _mk_doc("regdoc_title01")
+    lc = LLMCandidate(fragmentIds=[frag["id"]], title="400",
+                      constraintType="MIN_DISTANCE", subject="TREE",
+                      referenceObject="BUILDING_WALL", value=5, unit="м",
+                      plantType=["TREE"], confidence=0.9)
+    cand = extraction.build_candidate(lc, doc, {frag["id"]: frag})
+    assert cand["title"] == "TREE → BUILDING_WALL"
+
+    from app.regulations.models import RuleCandidate
+    assert RuleCandidate.model_validate(cand).model_dump()["title"] == \
+        "TREE → BUILDING_WALL"
+
+    st = extraction.sanitize_title
+    assert st("5,0", "TREE", "SIDEWALK") == "TREE → SIDEWALK"    # numeric junk
+    assert st("м", "TREE", "SIDEWALK") == "TREE → SIDEWALK"      # < 4 chars
+    assert st(None, "SHRUB", "FENCE") == "SHRUB → FENCE"         # missing
+    assert st(None, "", "") == "правило без названия"            # nothing usable
+    assert st("Дерево — стена здания", "TREE", "BUILDING_WALL") == \
+        "Дерево — стена здания"                                  # sane kept
 
 
 def test_human_review_can_activate_ocr_table_rule(client, monkeypatch, tmp_data):

@@ -43,6 +43,11 @@ PRIORITY_RE = re.compile(r"расстоян|не менее|не ближе|(?<!
 PLANTING_RE = re.compile(r"ствол|дерев|кустарн|посадк|насажден|озелен",
                          re.IGNORECASE)
 RECOMMEND_RE = re.compile(r"рекоменд|желательно|как правило", re.IGNORECASE)
+# hierarchy-agreement gate (audit item 3)
+CLAUSE_START_RE = re.compile(r"^(\d+(?:\.\d+)+)[.)]?\s+")
+HIER_TABLE_REF_RE = re.compile(r"табл(?:\.|иц[а-яё]*)\s*№?\s*(\d+\.\d+)", re.IGNORECASE)
+PATH_TOP_RE = re.compile(r"^\s*(\d+)")
+BARE_NUMBER_RE = re.compile(r"[\d\s.,;:%\-–—]+")
 REF_CLAUSE_RE = re.compile(r"(?:п\.|пункт[аеу]?м?)\s*\d+(?:\.\d+)*", re.IGNORECASE)
 REF_TABLE_RE = re.compile(r"таблиц[а-яё]*\s*№?\s*\d+", re.IGNORECASE)
 REF_DOC_RE = re.compile(r"(?:СП\s*[\d.]+\d|ГОСТ\s*[\d.\-]+\d|СНиП\s*[\d.\-]+\d)")
@@ -97,6 +102,54 @@ def numeric_literal_found(value: float | None, unit: str | None, text: str) -> b
     return False
 
 
+def hierarchy_reference_mismatch(text: str, hierarchy_path: str) -> str | None:
+    """Deterministic hierarchy-agreement check (audit item 3).
+
+    When the sourceText carries its own structural references — a clause
+    number at a line start ("9.6 Расстояния …") or a section-numbered table
+    ("Таблица 9.1") — the stored hierarchyPath must agree with them. Returns
+    the first text reference whose TOP-LEVEL section number conflicts with
+    the hierarchyPath's top-level section (e.g. text says "9.6" but the cited
+    fragment path says "8 > …"), else None. Cross-references like "п. 9.5"
+    or "таблицей 3" (no section-dotted number) deliberately do NOT trigger:
+    they legitimately point elsewhere.
+    """
+    if not text or not hierarchy_path:
+        return None
+    mp = PATH_TOP_RE.match(hierarchy_path)
+    if not mp:
+        return None  # non-numbered context (free text, plain «Таблица», …)
+    path_top = mp.group(1)
+    refs: list[tuple[str, str]] = []  # (display, top-level section)
+    for line in text.splitlines():
+        cm = CLAUSE_START_RE.match(line.strip())
+        if cm:
+            refs.append((cm.group(1), cm.group(1).split(".")[0]))
+    for tm in HIER_TABLE_REF_RE.finditer(text):
+        refs.append((f"таблица {tm.group(1)}", tm.group(1).split(".")[0]))
+    for display, top in refs:
+        if top != path_top:
+            return display
+    return None
+
+
+def sanitize_title(raw: str | None, subject: str | None,
+                   reference_object: str | None) -> str:
+    """Candidate title must never be a bare number (audit found title "400"):
+    digits-only or <4-char titles are replaced with a subject→referenceObject
+    synthesized title."""
+    t = re.sub(r"\s+", " ", raw or "").strip()
+    if t and len(t) >= 4 and not BARE_NUMBER_RE.fullmatch(t):
+        return t[:160]
+
+    def usable(s: str) -> bool:
+        return bool(s) and not BARE_NUMBER_RE.fullmatch(s)
+
+    parts = [s for s in ((subject or "").strip(), (reference_object or "").strip())
+             if usable(s)]
+    return " → ".join(parts) if parts else "правило без названия"
+
+
 def is_recommendation(text: str) -> bool:
     """«Рекомендуется…» — a recommendation, not an obligation: it must never
     become a machine-executable hard rule automatically."""
@@ -122,6 +175,8 @@ def apply_gates(cand: dict) -> dict:
     - confidence < 0.75 → NEEDS_REVIEW;
     - recommendation wording («рекомендуется») → never machine-executable
       obligation → NEEDS_REVIEW;
+    - hierarchy agreement: a clause/table reference in sourceText that
+      conflicts with the stored hierarchyPath → NEEDS_REVIEW, not executable;
     - cross-references/exceptions regex-detected from sourceText are merged in.
     """
     text = cand["source"]["sourceText"]
@@ -145,6 +200,22 @@ def apply_gates(cand: dict) -> dict:
         status = "NEEDS_REVIEW"
     if float(cand.get("confidence", 0.0)) < CONFIDENCE_THRESHOLD:
         status = "NEEDS_REVIEW"
+
+    hier_path = cand.get("source", {}).get("hierarchyPath") or ""
+    mismatch = hierarchy_reference_mismatch(text, hier_path)
+    cand["_hierarchyMismatch"] = mismatch  # recomputable; verifier re-derives
+    if mismatch:
+        status = "NEEDS_REVIEW"
+        cand["machineExecutable"] = False
+        note = (f"hierarchy/clause mismatch: path '{hier_path}' "
+                f"vs text reference '{mismatch}'")
+        ver = cand.get("verification") or {
+            "verdict": None, "numericLiteralFound": literal_ok,
+            "notes": None, "model": None, "promptVersion": None}
+        if note not in (ver.get("notes") or ""):
+            ver["notes"] = f"{ver['notes']}; {note}" if ver.get("notes") else note
+        cand["verification"] = ver
+
     cand["status"] = status
     cand["_numericLiteralFound"] = literal_ok  # internal, recomputable
     return cand
@@ -300,6 +371,9 @@ def build_candidate(lc: LLMCandidate, doc: dict, frag_index: dict[str, dict],
         "id": storage.new_id("cand"),
         "documentId": doc["id"],
         "ruleVersion": 1,
+        # title sanity: never a bare number (audit found title "400")
+        "title": sanitize_title(getattr(lc, "title", None), lc.subject,
+                                lc.referenceObject),
         "source": {
             "documentId": doc["id"],
             "documentVersion": doc.get("version", "1"),

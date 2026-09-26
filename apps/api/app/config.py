@@ -31,6 +31,11 @@ LOCAL_LLM_MODEL = os.environ.get("LOCAL_LLM_MODEL", "")
 LOCAL_LLM_ENABLED = os.environ.get("LOCAL_LLM_ENABLED", "true").lower() in ("1", "true", "yes")
 LOCAL_LLM_TIMEOUT_S = float(os.environ.get("LOCAL_LLM_TIMEOUT_S", "180"))
 
+# LLM judge prompt (prompts/judge/{version}.md). v2 forbids any legal-
+# compliance wording: the judge decision means only "further optimization
+# iteration useful?" — regulatory status is deterministic (validator).
+JUDGE_PROMPT_VERSION_DEFAULT = "v2"
+
 # Placement
 PLACEMENT_RANDOM_SEED = int(os.environ.get("PLACEMENT_RANDOM_SEED", "42"))
 MAX_ITERATIONS_DEFAULT = int(os.environ.get("MAX_ITERATIONS", "3"))

@@ -161,6 +161,12 @@ def test_cross_species_tree_spacing():
     both = placements + [Placement(id=f"m{i}", kind="TREE", speciesId="tree_maple",
                                    x=c.x, y=c.y, crownRadiusM=4.0) for i, c in enumerate(chosen2)]
     report = validate_plan(both, idx, registry, cons.site_boundary, cons.allowed_area)
-    spacing_viol = [v for v in report["hardViolations"] if v["ruleId"] == "TREE_TREE_MIN_SPACING"]
+    # spacing is a design heuristic now: cross-species crowding would surface
+    # as design_heuristic WARNINGS (never hardViolations) — the optimizer must
+    # still leave none
+    assert not any(v["ruleId"] == "TREE_TREE_MIN_SPACING"
+                   for v in report["hardViolations"])
+    spacing_warn = [w for w in report["warnings"]
+                    if w["ruleId"] == "TREE_TREE_MIN_SPACING"]
     assert chosen2, "second species should still find spots"
-    assert not spacing_viol, spacing_viol[:3]
+    assert not spacing_warn, spacing_warn[:3]

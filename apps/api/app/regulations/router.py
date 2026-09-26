@@ -21,7 +21,7 @@ from .models import Fragment, RegDocument, RuleCandidate
 
 router = APIRouter(prefix="/api/regulations", tags=["regulations"])
 
-ALLOWED_EXT = {".pdf", ".docx"}
+ALLOWED_EXT = {".pdf", ".docx", ".rtf"}
 MAX_BYTES = min(config.MAX_UPLOAD_BYTES, 50 * 1024 * 1024)
 
 _SAFE_NAME = re.compile(r"[^\w.\-]+", re.UNICODE)
@@ -43,6 +43,8 @@ def _validate_signature(data: bytes, ext: str) -> None:
         _err(422, "UNSUPPORTED_FORMAT", "File does not look like a PDF (no %PDF signature).")
     if ext == ".docx" and not head.startswith(b"PK"):
         _err(422, "UNSUPPORTED_FORMAT", "File does not look like a DOCX (not a zip archive).")
+    if ext == ".rtf" and not head.startswith(b"{\\rtf"):
+        _err(422, "UNSUPPORTED_FORMAT", "File does not look like an RTF (no {\\rtf signature).")
 
 
 def _doc_response(doc: dict) -> dict:
@@ -61,7 +63,7 @@ async def upload_document(file: UploadFile = File(...)):
     fname = _sanitize_filename(file.filename or "upload")
     ext = Path(fname).suffix.lower()
     if ext not in ALLOWED_EXT:
-        _err(422, "UNSUPPORTED_FORMAT", f"Only .pdf/.docx supported, got '{ext}'.")
+        _err(422, "UNSUPPORTED_FORMAT", f"Only .pdf/.docx/.rtf supported, got '{ext}'.")
     data = await file.read()
     if len(data) > MAX_BYTES:
         _err(413, "FILE_TOO_LARGE", "Upload exceeds size limit.")

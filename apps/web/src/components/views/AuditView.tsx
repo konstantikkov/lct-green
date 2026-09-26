@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { normalizeCheckResult, parseRegulatoryVerdict } from "../../api/types";
 import type { ComplianceAudit, CompliancePlacement } from "../../api/types";
 import { loadAudit, selectAuditPlacement, setNav, setWorkspaceTab } from "../../state/actions";
 import { useApp } from "../../state/store";
+import { RegulatoryVerdictBlock } from "../regulatory";
 import { Badge, Btn, Checkbox, Spinner } from "../ui";
 
 const PAGE = 500;
@@ -16,8 +18,19 @@ function SourceBadge({ source }: { source: string }) {
 
 function AuditSummary({ audit }: { audit: ComplianceAudit }) {
   const s = audit.summary;
+  const verdict = parseRegulatoryVerdict(audit.regulatory);
   return (
     <div className="rounded-sm border border-ink-600 bg-ink-900 p-3" data-testid="audit-summary">
+      {/* Deterministic regulatory verdict for the audited iteration. */}
+      <div className="mb-2 border-b border-ink-700 pb-2">
+        <RegulatoryVerdictBlock verdict={verdict} />
+        {verdict && (
+          <div className="mt-1 font-mono text-2xs text-ink-500">
+            {verdict.checkCounts.pass} PASS · {verdict.checkCounts.fail} FAIL ·{" "}
+            {verdict.checkCounts.unverified} UNVERIFIED · {verdict.checkCounts.notApplicable} N/A
+          </div>
+        )}
+      </div>
       <div className="text-sm leading-relaxed text-ink-100">
         <span className="font-mono font-semibold">{s.placements}</span> посадок
         <span className="text-ink-600"> · </span>
@@ -53,6 +66,7 @@ function ByDocumentTable({ audit }: { audit: ComplianceAudit }) {
               <th className="px-2 py-1 font-medium">Документ</th>
               <th className="px-2 py-1 text-right font-medium">Проверок</th>
               <th className="px-2 py-1 text-right font-medium">Пройдено</th>
+              <th className="px-2 py-1 text-right font-medium" title="Проверки по неверифицированным (демо) значениям">Не вериф.</th>
               <th className="px-2 py-1 text-right font-medium">Нарушений</th>
             </tr>
           </thead>
@@ -62,6 +76,11 @@ function ByDocumentTable({ audit }: { audit: ComplianceAudit }) {
                 <td className="max-w-[380px] truncate px-2 py-1 text-2xs text-ink-200" title={doc}>{doc}</td>
                 <td className="px-2 py-1 text-right font-mono text-2xs text-ink-300">{st.checks}</td>
                 <td className="px-2 py-1 text-right font-mono text-2xs text-ink-300">{st.passed}</td>
+                <td className={`px-2 py-1 text-right font-mono text-2xs ${
+                  (st.unverified ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-ink-500"
+                }`}>
+                  {st.unverified ?? "—"}
+                </td>
                 <td className={`px-2 py-1 text-right font-mono text-2xs ${
                   st.failed > 0 ? "font-semibold text-red-600 dark:text-red-400" : "text-ink-500"
                 }`}>
@@ -97,6 +116,11 @@ function RuleRow({ ruleId, audit }: { ruleId: string; audit: ComplianceAudit }) 
         <td className="px-2 py-1"><SourceBadge source={st.effectiveSource} /></td>
         <td className="px-2 py-1 text-right font-mono text-2xs text-ink-300">{st.passed}</td>
         <td className={`px-2 py-1 text-right font-mono text-2xs ${
+          (st.unverified ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-ink-500"
+        }`}>
+          {st.unverified ?? "—"}
+        </td>
+        <td className={`px-2 py-1 text-right font-mono text-2xs ${
           st.failed > 0 ? "font-semibold text-red-600 dark:text-red-400" : "text-ink-500"
         }`}>
           {st.failed}
@@ -104,10 +128,11 @@ function RuleRow({ ruleId, audit }: { ruleId: string; audit: ComplianceAudit }) 
       </tr>
       {expanded && (
         <tr className="border-b border-ink-700/60 bg-ink-950/50 last:border-0">
-          <td colSpan={5} className="px-2 py-1.5 pl-7 text-2xs text-ink-400">
+          <td colSpan={6} className="px-2 py-1.5 pl-7 text-2xs text-ink-400">
             <div>Документ: <span className="text-ink-200">{st.document}</span></div>
             <div className="mt-0.5 font-mono text-ink-500">
-              {st.checks} проверок · {st.passed} пройдено · {st.failed} нарушений
+              {st.checks} проверок · {st.passed} пройдено
+              {st.unverified != null ? ` · ${st.unverified} не вериф.` : ""} · {st.failed} нарушений
             </div>
           </td>
         </tr>
@@ -130,6 +155,7 @@ function ByRuleTable({ audit }: { audit: ComplianceAudit }) {
               <th className="px-2 py-1 text-right font-medium">Мин. дист.</th>
               <th className="px-2 py-1 font-medium">Источник</th>
               <th className="px-2 py-1 text-right font-medium">Пройдено</th>
+              <th className="px-2 py-1 text-right font-medium" title="Проверки по неверифицированным (демо) значениям">Не вериф.</th>
               <th className="px-2 py-1 text-right font-medium">Нарушений</th>
             </tr>
           </thead>
@@ -148,6 +174,7 @@ function PlacementRow({ p }: { p: CompliancePlacement }) {
   const species = useApp((s) => s.species);
   const sp = species?.find((x) => x.id === p.speciesId);
   const bad = p.verdict === "VIOLATIONS";
+  const unverified = p.checks.filter((c) => normalizeCheckResult(c.result) === "UNVERIFIED").length;
   return (
     <div
       data-testid="audit-row"
@@ -168,6 +195,14 @@ function PlacementRow({ p }: { p: CompliancePlacement }) {
           title={p.failingRules.join(", ")}
         >
           {p.failingRules.join(" ")}
+        </span>
+      )}
+      {unverified > 0 && (
+        <span
+          className="whitespace-nowrap font-mono text-2xs text-amber-600 dark:text-amber-400"
+          title="Проверки по неверифицированным (демо) значениям"
+        >
+          {unverified} не вериф.
         </span>
       )}
       <Badge tone={bad ? "red" : "green"}>{p.verdict}</Badge>

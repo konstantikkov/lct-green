@@ -8,6 +8,7 @@ import {
   setRegFilter, uploadRegDocument, verifyRegCandidate,
 } from "../../state/regulations";
 import { useApp } from "../../state/store";
+import { RuleRoleBadge, ruleConditionNote } from "../regulatory";
 import { Badge, Btn, Spinner, TextInput } from "../ui";
 
 // --- Status presentation -----------------------------------------------------
@@ -432,6 +433,7 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink-200" title={rule.id}>
           {rule.id}
         </span>
+        <RuleRoleBadge role={rule.role} />
         {inactive ? (
           <Badge tone="grey" title={`Inactive: ${rule.status === "missing_source_data" ? "missing_source_data" : "disabled"}`}>
             INACTIVE
@@ -450,6 +452,11 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
         <span className="font-mono">
           {rule.effectiveDistanceM != null ? `${rule.effectiveDistanceM} m` : "—"}
         </span>
+        {ruleConditionNote(rule) && (
+          <span className="shrink-0 text-ink-500" title="Условие применимости правила">
+            {ruleConditionNote(rule)}
+          </span>
+        )}
         <span className="truncate" title={rule.source.title}>
           {rule.source.document}{rule.source.clause ? ` · ${rule.source.clause}` : ""}
         </span>

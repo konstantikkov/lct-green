@@ -5,7 +5,11 @@ judge can make must point at evidence IDs minted here (quadrants, clusters,
 underused zones, uncertain layers). The packet is kept small (< ~700 tokens
 serialized): numbers are rounded, lists capped by salience.
 
-Schema version: "judge-packet-1" (bump on any structural change).
+Schema version: "judge-packet-2" (bump on any structural change).
+v2 adds `regulatoryCoverage` (0..1, deterministic share of verified-passable
+hard checks) and `parserCoverage` flags from the validator's regulatory
+verdict — the judge's confidence is capped in code by regulatoryCoverage and
+its robustness assessment is bounded by parser coverage.
 """
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ from shapely.ops import unary_union
 from .geometry import as_polygon_list
 from .optimizer import OptimizerParams
 
-PACKET_SCHEMA_VERSION = "judge-packet-1"
+PACKET_SCHEMA_VERSION = "judge-packet-2"
 
 # Whitelisted optimizer parameters the judge may propose changes for.
 # min/max are absolute bounds; maxDeltaPerIteration bounds a single step.
@@ -198,6 +202,17 @@ def quality_components(metrics: dict, full_stats: dict) -> dict:
 # packet
 # ---------------------------------------------------------------------------
 
+def _regulatory_coverage(validation: dict) -> float | None:
+    reg = validation.get("regulatory") or {}
+    cov = (reg.get("coverage") or {}).get("regulatoryCoverage")
+    return _round(cov) if cov is not None else None
+
+
+def _parser_flags(validation: dict) -> dict | None:
+    reg = validation.get("regulatory") or {}
+    parser = (reg.get("coverage") or {}).get("parser")
+    return dict(parser) if parser else None
+
 def build_judge_packet(objective: str, iteration: int, max_iterations: int,
                        params: OptimizerParams, validation: dict, allowed_area,
                        placements: list, spacing_m: float,
@@ -255,6 +270,11 @@ def build_judge_packet(objective: str, iteration: int, max_iterations: int,
             "hardViolations": len(validation.get("hardViolations", [])),
             "warnings": len(validation.get("warnings", [])),
         },
+        # deterministic regulatory coverage (validator) — used in code to cap
+        # judge confidence at 0.3 + 0.7*coverage and to bound the robustness
+        # dimension; None when the validation carries no regulatory block
+        "regulatoryCoverage": _regulatory_coverage(validation),
+        "parserCoverage": _parser_flags(validation),
         "spatialDiagnostics": diagnostics,
         "classificationUncertainty": uncertainty,
         "previousIteration": previous,

@@ -173,7 +173,7 @@ def test_llm_response_evidence_stripping(packet, monkeypatch):
     assert report["issues"][0]["evidenceIds"] == [valid_id]
     assert [c["parameter"] for c in report["parameterChanges"]] == ["distributionWeight"]
     # observability of every judgment
-    assert report["promptVersion"] == "v1"
+    assert report["promptVersion"] == "v2"
     assert report["inputSchemaVersion"] == PACKET_SCHEMA_VERSION
     assert report["judgeInputHash"] == packet_hash(packet)
     assert report["temperature"] == 0.1
@@ -255,16 +255,128 @@ def test_heuristic_evidence_ids_are_real(packet):
 
 
 # ---------------------------------------------------------------------------
+# regulatory separation: confidence cap + sanity pass (iteration 5)
+# ---------------------------------------------------------------------------
+
+def _packet_with_regulatory(packet, coverage, boundary_detected=True):
+    p = dict(packet)
+    p["regulatoryCoverage"] = coverage
+    p["parserCoverage"] = {"siteBoundaryDetected": boundary_detected,
+                           "utilitiesTypedShare": 1.0, "roadsClassified": True,
+                           "existingVegetationDetected": True,
+                           "crossingsDetected": 0}
+    return p
+
+
+def _llm_report(monkeypatch, packet, response):
+    async def fake_reachable(self):
+        return True
+
+    async def fake_generate(self, schema, messages):
+        return response
+
+    monkeypatch.setattr(LocalLLM, "is_reachable", fake_reachable)
+    monkeypatch.setattr(LocalLLM, "structured_generate", fake_generate)
+    return asyncio.run(judge_iteration(LocalLLM(enabled=True), packet, 0, 3))
+
+
+def test_confidence_capped_by_regulatory_coverage(packet, monkeypatch):
+    p = _packet_with_regulatory(packet, coverage=0.2)
+    report = _llm_report(monkeypatch, p, JudgeResponseV2(
+        decision="ACCEPT", confidence=0.95, summary="great"))
+    # cap = 0.3 + 0.7*0.2 = 0.44 — the LLM can never sound more sure than
+    # the verified share of hard checks supports
+    assert report["confidence"] == pytest.approx(0.44)
+
+    p2 = _packet_with_regulatory(packet, coverage=1.0)
+    report2 = _llm_report(monkeypatch, p2, JudgeResponseV2(
+        decision="ACCEPT", confidence=0.95, summary="great"))
+    assert report2["confidence"] == pytest.approx(0.95)
+
+
+def test_noop_parameter_change_reasons_dropped(packet):
+    apc = packet["allowedParameterChanges"]
+    changes = [
+        {"parameter": "distributionWeight",
+         "proposedValue": apc["distributionWeight"]["current"] + 0.2,
+         "reason": "the plan не требует изменений", "evidenceIds": []},
+        {"parameter": "coverageWeight",
+         "proposedValue": apc["coverageWeight"]["current"] + 0.2,
+         "reason": "No change needed here", "evidenceIds": []},
+        {"parameter": "candidateDensity",
+         "proposedValue": apc["candidateDensity"]["current"] + 0.5,
+         "reason": "denser sampling fills the north", "evidenceIds": []},
+    ]
+    out = sanitize_parameter_changes(changes, packet)
+    assert [c["parameter"] for c in out] == ["candidateDensity"]
+
+
+def test_deterministic_issue_when_dim_not_good_and_no_issues(packet, monkeypatch):
+    report = _llm_report(monkeypatch, packet, JudgeResponseV2(
+        decision="ACCEPT", confidence=0.5,
+        assessment=AssessmentV2(distribution=Dimension(status="IMPROVABLE")),
+        issues=[], summary="fine"))
+    assert report["issues"], "non-GOOD dimension with empty issues must gain one"
+    issue = report["issues"][0]
+    assert issue["type"] == "quality_dimension"
+    assert issue["severity"] == "LOW"
+    assert "IMPROVABLE" in issue["description"]
+
+
+def test_robustness_bounded_by_coverage_and_boundary(packet, monkeypatch):
+    good = AssessmentV2(robustnessToUncertainty=Dimension(status="GOOD"))
+    # low coverage → at most IMPROVABLE
+    p = _packet_with_regulatory(packet, coverage=0.4)
+    r = _llm_report(monkeypatch, p, JudgeResponseV2(
+        decision="ACCEPT", assessment=good, summary="s"))
+    assert r["assessment"]["robustnessToUncertainty"]["status"] == "IMPROVABLE"
+    # unknown site boundary → at most IMPROVABLE even with high coverage
+    p = _packet_with_regulatory(packet, coverage=0.9, boundary_detected=False)
+    r = _llm_report(monkeypatch, p, JudgeResponseV2(
+        decision="ACCEPT", assessment=good, summary="s"))
+    assert r["assessment"]["robustnessToUncertainty"]["status"] == "IMPROVABLE"
+    # high coverage + detected boundary → GOOD allowed
+    p = _packet_with_regulatory(packet, coverage=0.9)
+    r = _llm_report(monkeypatch, p, JudgeResponseV2(
+        decision="ACCEPT", assessment=good, summary="s"))
+    assert r["assessment"]["robustnessToUncertainty"]["status"] == "GOOD"
+    # POOR is never upgraded
+    p = _packet_with_regulatory(packet, coverage=0.1)
+    r = _llm_report(monkeypatch, p, JudgeResponseV2(
+        decision="ACCEPT",
+        assessment=AssessmentV2(robustnessToUncertainty=Dimension(status="POOR")),
+        summary="s"))
+    assert r["assessment"]["robustnessToUncertainty"]["status"] == "POOR"
+
+
+def test_packet_carries_regulatory_coverage(pipe):
+    """build_judge_packet lifts the validator's regulatory coverage + parser
+    flags into the packet (judge-packet-2)."""
+    doc, idx, registry, cons, placements, validation = pipe
+    params = OptimizerParams.for_strategy("balanced")
+    pkt = build_judge_packet(
+        objective="balanced", iteration=0, max_iterations=3, params=params,
+        validation=validation, allowed_area=cons.allowed_area,
+        placements=placements, spacing_m=5.0)
+    assert pkt["schemaVersion"] == "judge-packet-2"
+    reg = validation["regulatory"]
+    assert pkt["regulatoryCoverage"] == pytest.approx(
+        reg["coverage"]["regulatoryCoverage"], abs=1e-3)
+    assert pkt["parserCoverage"]["siteBoundaryDetected"] is True
+    assert pkt["parserCoverage"]["crossingsDetected"] == 0
+
+
+# ---------------------------------------------------------------------------
 # precondition: judge only on valid plans; deterministic repair first
 # ---------------------------------------------------------------------------
 
 def test_deterministic_repair_removes_violators(pipe):
     from app.pipeline import deterministic_repair
     doc, idx, registry, cons, placements, _ = pipe
-    # duplicate an existing tree on top of itself → guaranteed spacing violation
-    p0 = placements[0]
-    broken = placements + [Placement(id="dup_0", kind="TREE", speciesId=p0.speciesId,
-                                     x=p0.x, y=p0.y, crownRadiusM=p0.crownRadiusM)]
+    # a tree 1 m from the building wall → guaranteed min-distance violation
+    # (spacing is a design heuristic now: warnings, never hardViolations)
+    broken = placements + [Placement(id="bad_0", kind="TREE", speciesId="tree_linden",
+                                     x=29.0, y=95.0, crownRadiusM=3.5)]
     validation = validate_plan(broken, idx, registry, cons.site_boundary, cons.allowed_area)
     assert not validation["valid"]
 
@@ -273,7 +385,7 @@ def test_deterministic_repair_removes_violators(pipe):
     assert validation2["valid"]
     assert info["removed"] >= 1
     assert 1 <= info["passes"] <= 3
-    assert all(p.id not in {"dup_0"} or True for p in repaired)  # violator gone
+    assert all(p.id != "bad_0" for p in repaired)  # violator gone
     assert len(repaired) < len(broken)
 
 
@@ -324,8 +436,8 @@ def test_pipeline_skips_judge_on_unrepairable_plan(monkeypatch, tmp_path):
     from app import pipeline
     real_validate = pipeline.validate_plan
 
-    def always_invalid(placements, idx, registry, site_boundary, allowed_area):
-        v = real_validate(placements, idx, registry, site_boundary, allowed_area)
+    def always_invalid(placements, idx, registry, site_boundary, allowed_area, **kw):
+        v = real_validate(placements, idx, registry, site_boundary, allowed_area, **kw)
         if placements:  # persistent fake violation → repair can never converge
             v["hardViolations"] = list(v["hardViolations"]) + [{
                 "plantingId": placements[0].id, "ruleId": "FAKE_RULE",
@@ -376,12 +488,16 @@ def test_retention_rule():
 # prompt versioning
 # ---------------------------------------------------------------------------
 
-def test_prompt_loader_default_v1():
+def test_prompt_loader_default_v2():
     version, text = load_judge_prompt()
-    assert version == "v1"
+    assert version == "v2"
     assert "spatial-optimization reviewer" in text
     assert "MANUAL_REVIEW" in text
     assert "allowedParameterChanges" in text
+    # regulatory separation: never legal-compliance wording, decision =
+    # optimization continuation only
+    assert "NEVER claim" in text
+    assert "further optimization iteration" in text
 
 
 def test_prompt_loader_env_override(monkeypatch):

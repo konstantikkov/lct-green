@@ -171,10 +171,17 @@ def save_fragments(doc_id: str, fragments: list[dict]) -> None:
     _ensure()
     if _use_pg():
         base_store._pg_exec("DELETE FROM reg_fragments WHERE document_id=%s", (doc_id,))
-        for f in fragments:
+        # batched multi-VALUES inserts: the PG instance may be cross-region
+        # (~150 ms RTT) — per-row inserts serialize the shared connection for
+        # minutes on large documents and starve every other request
+        rows = [(doc_id, f["id"], f.get("order", 0),
+                 json.dumps(f, ensure_ascii=False)) for f in fragments]
+        for i in range(0, len(rows), 200):
+            chunk = rows[i:i + 200]
+            placeholders = ",".join(["(%s,%s,%s,%s)"] * len(chunk))
+            flat = [v for row in chunk for v in row]
             base_store._pg_exec(
-                "INSERT INTO reg_fragments VALUES (%s,%s,%s,%s)",
-                (doc_id, f["id"], f.get("order", 0), json.dumps(f, ensure_ascii=False)))
+                f"INSERT INTO reg_fragments VALUES {placeholders}", tuple(flat))
         return
     with _lock, _sqlite() as c:
         c.execute("DELETE FROM reg_fragments WHERE document_id=?", (doc_id,))

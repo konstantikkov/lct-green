@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
-  ALL_CATEGORIES, type Category, type IterationSummary, type JudgeParameterChange,
-  type JudgeReport, type LayerInfo, type RuleCandidate, type Strategy,
+  ALL_CATEGORIES, parseRegulatoryVerdict, type Category, type IterationSummary,
+  type JudgeParameterChange, type JudgeReport, type LayerInfo, type RuleCandidate,
+  type Strategy,
 } from "../api/types";
 import {
   buildConstraints, generateNow, loadAudit, openAudit, overrideLayerCategory,
@@ -13,6 +14,7 @@ import {
   wizardParseText, wizardRejectCandidate, wizardUploadConditionDoc,
 } from "../state/wizard";
 import { getState, useApp, type WizardStep } from "../state/store";
+import { RegulatoryVerdictBlock, RuleRoleBadge, ruleConditionNote } from "./regulatory";
 import { Badge, Btn, MetricBar, Select, Spinner, TextInput } from "./ui";
 import { StageChecklist } from "./panels/GeneratePanel";
 
@@ -193,6 +195,10 @@ function Step1Constraints() {
                   <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink-300" title={r.id}>
                     {r.id}
                   </span>
+                  {ruleConditionNote(r) && (
+                    <span className="shrink-0 text-2xs text-ink-500">{ruleConditionNote(r)}</span>
+                  )}
+                  <RuleRoleBadge role={r.role} />
                   <span className="shrink-0 font-mono text-2xs text-ink-400">
                     {r.effectiveDistanceM != null ? `${r.effectiveDistanceM} м` : "—"}
                   </span>
@@ -746,7 +752,10 @@ function Step4Summary() {
     <div className="space-y-3" data-testid="wizard-step-4">
       {/* Result metrics */}
       <section className="rounded-sm border border-ink-600 bg-ink-950/40 p-2.5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {/* TOP: deterministic regulatory verdict — separate from the judge chip below. */}
+        <RegulatoryVerdictBlock verdict={parseRegulatoryVerdict(it.regulatory)} />
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-ink-700 pt-2">
           <span className="font-mono text-sm text-ink-100">
             {it.metrics.treeCount} <span className="text-2xs text-ink-400">деревьев</span>
           </span>
@@ -758,13 +767,25 @@ function Step4Summary() {
           </Badge>
           {it.judge && (
             <span className="ml-auto flex items-center gap-1.5">
-              <Badge tone={it.judge.decision === "ACCEPT" ? "green" : it.judge.decision === "RERUN" ? "amber" : "violet"}>
-                {it.judge.decision === "MANUAL_REVIEW" ? "REVIEW" : it.judge.decision}
+              <Badge
+                tone={it.judge.decision === "ACCEPT" ? "green" : it.judge.decision === "RERUN" ? "amber" : "violet"}
+                title="Решение LLM-судьи об оптимизации — не юридический вердикт"
+              >
+                {it.judge.decision === "ACCEPT"
+                  ? "Оптимизация: завершена"
+                  : it.judge.decision === "RERUN"
+                    ? "Оптимизация: можно улучшить"
+                    : "Требуется ручная проверка"}
               </Badge>
               <Badge tone="grey">{it.judge.mode === "llm" ? "LLM" : "heuristic"}</Badge>
             </span>
           )}
         </div>
+        {it.judge && (
+          <div className="mt-0.5 text-right text-2xs italic text-ink-500">
+            оценка качества размещения, НЕ юридическое соответствие
+          </div>
+        )}
         <div className="mt-2 space-y-1">
           {bars.map((b) => (
             <MetricBar key={b.label} label={b.label} value={b.value} invert={"invert" in b ? b.invert : false} />

@@ -3,7 +3,9 @@ import type {
   AssessmentDimension, AssessmentKey, IterationSummary, JudgeIssueV2,
   JudgeParameterChange, JudgeReport,
 } from "../../api/types";
+import { parseRegulatoryVerdict } from "../../api/types";
 import { useApp } from "../../state/store";
+import { RegulatoryVerdictBlock } from "../regulatory";
 import { Badge, MetricBar, Section } from "../ui";
 
 const ASSESSMENT_LABELS: Record<AssessmentKey, string> = {
@@ -57,10 +59,15 @@ function normalizeJudge(it: IterationSummary) {
   return { judge: j, bars, overall, issues, changes, summary, assessment };
 }
 
+/** Judge decision chip — optimization meaning ONLY, never legal compliance. */
 function DecisionChip({ judge }: { judge: JudgeReport }) {
-  if (judge.decision === "ACCEPT") return <Badge tone="green">ACCEPT</Badge>;
-  if (judge.decision === "RERUN") return <Badge tone="amber">RERUN</Badge>;
-  return <Badge tone="violet" title="The judge abstained — a human should look at this plan">needs human review</Badge>;
+  if (judge.decision === "ACCEPT") {
+    return <Badge tone="green" title="Судья не видит смысла в дополнительных итерациях оптимизации">Оптимизация: завершена</Badge>;
+  }
+  if (judge.decision === "RERUN") {
+    return <Badge tone="amber" title="Судья рекомендует ещё одну итерацию оптимизации">Оптимизация: можно улучшить</Badge>;
+  }
+  return <Badge tone="violet" title="Судья воздержался — план стоит посмотреть человеку">Требуется ручная проверка</Badge>;
 }
 
 function DimensionRow({ name, dim }: { name: AssessmentKey; dim: AssessmentDimension }) {
@@ -162,7 +169,10 @@ export function QualityCard() {
   return (
     <Section title="Quality review">
       <div data-testid="quality-card">
-        <div className="flex items-center gap-1.5">
+        {/* Deterministic regulatory verdict — separate from the judge below. */}
+        <RegulatoryVerdictBlock verdict={parseRegulatoryVerdict(it.regulatory)} />
+
+        <div className="mt-2 flex items-center gap-1.5">
           {hardPassed ? (
             <span className="text-2xs font-semibold text-emerald-600 dark:text-emerald-400">
               ✓ Hard constraints passed
@@ -195,6 +205,9 @@ export function QualityCard() {
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <DecisionChip judge={judge} />
               <Badge tone="grey">{judge.mode === "llm" ? "LLM" : "heuristic"}</Badge>
+            </div>
+            <div className="mt-0.5 text-2xs italic text-ink-500">
+              оценка качества размещения, НЕ юридическое соответствие
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-2xs text-ink-400">
               <span>

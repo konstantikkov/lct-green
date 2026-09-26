@@ -157,7 +157,9 @@ def get_run_status(run_id: str) -> dict | None:
 
 def deterministic_repair(placements: list[Placement], idx: GeometryIndex,
                          registry: RuleRegistry, site_boundary, allowed_area,
-                         validation: dict, max_passes: int = 3
+                         validation: dict, max_passes: int = 3,
+                         site_boundary_source: str = "detected",
+                         visibility_zones: list | None = None
                          ) -> tuple[list[Placement], dict, dict]:
     """Removes placements named in hardViolations and revalidates, up to
     `max_passes` times or until valid. The judge runs only on valid plans;
@@ -172,7 +174,10 @@ def deterministic_repair(placements: list[Placement], idx: GeometryIndex,
         placements = [p for p in placements if p.id not in bad]
         removed += before - len(placements)
         passes += 1
-        validation = validate_plan(placements, idx, registry, site_boundary, allowed_area)
+        validation = validate_plan(placements, idx, registry, site_boundary,
+                                   allowed_area,
+                                   site_boundary_source=site_boundary_source,
+                                   visibility_zones=visibility_zones)
     return placements, validation, {"removed": removed, "passes": passes}
 
 
@@ -361,15 +366,20 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
 
             # --- validate ---
             _set_stage(run_id, "VALIDATING", "active")
+            vis_zones = constraints.visibility_zones()
             validation = validate_plan(all_placements, idx, registry,
-                                       constraints.site_boundary, allowed)
+                                       constraints.site_boundary, allowed,
+                                       site_boundary_source=constraints.site_boundary_kind,
+                                       visibility_zones=vis_zones)
             # precondition for the judge: valid plans only. Hard violations are
             # repaired deterministically (drop violators, revalidate, ≤3 passes).
             repair_info = None
             if validation["hardViolations"]:
                 all_placements, validation, repair_info = deterministic_repair(
                     all_placements, idx, registry, constraints.site_boundary,
-                    allowed, validation)
+                    allowed, validation,
+                    site_boundary_source=constraints.site_boundary_kind,
+                    visibility_zones=vis_zones)
             _set_stage(run_id, "VALIDATING", "done",
                        f"{len(validation['hardViolations'])} hard violations"
                        + (f" (repair removed {repair_info['removed']})" if repair_info else ""))
@@ -400,6 +410,10 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 "selected": False,
                 "parameters": params.to_api(), "seed": it_seed,
                 "metrics": {**validation["metrics"]},
+                # deterministic regulatory verdict (validator) — the judge can
+                # never change it; UI/report labels derive from this, not from
+                # the judge summary
+                "regulatory": validation.get("regulatory"),
                 "judge": judge_report,
                 "judgeSkipped": judge_skipped,
                 "deterministicRepair": repair_info,

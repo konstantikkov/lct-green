@@ -99,6 +99,83 @@ export interface ChunkInfo {
   textLabels: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Regulatory verdict separation (iteration 5) — docs/API_CONTRACT.md, FROZEN.
+// The regulatory verdict is DETERMINISTIC and fully separate from the LLM
+// judge decision (which now only means "further optimization useful?").
+// ---------------------------------------------------------------------------
+
+export type RegulatoryStatus = "COMPLIANT" | "NON_COMPLIANT" | "NEEDS_REVIEW";
+
+/** New uppercase per-check results (old stored data may still hold
+ *  lowercase "passed" / "failed" / "n/a" — use normalizeCheckResult). */
+export type CheckResult = "PASS" | "FAIL" | "UNVERIFIED" | "NOT_APPLICABLE";
+
+export interface RegulatoryVerdict {
+  status: RegulatoryStatus;
+  /** e.g. "SITE_BOUNDARY_UNKNOWN", "UNVERIFIED_HARD_RULES:19" */
+  blockers: string[];
+  coverage: {
+    /** verified applicable hard checks / applicable hard checks, 0..1 */
+    regulatoryCoverage: number;
+    parser: {
+      siteBoundaryDetected: boolean;
+      utilitiesTypedShare: number | null;
+      roadsClassified: boolean;
+      existingVegetationDetected: boolean;
+      crossingsDetected: number;
+    };
+  };
+  checkCounts: { pass: number; fail: number; unverified: number; notApplicable: number };
+}
+
+/** Defensive: maps both the new uppercase and the legacy lowercase
+ *  per-check result values onto the frozen 4-status model. */
+export function normalizeCheckResult(r: string | null | undefined): CheckResult {
+  switch (r) {
+    case "PASS": case "passed": return "PASS";
+    case "FAIL": case "failed": return "FAIL";
+    case "UNVERIFIED": return "UNVERIFIED";
+    default: return "NOT_APPLICABLE"; // "NOT_APPLICABLE", legacy "n/a", unknown
+  }
+}
+
+/** Defensive parser: old iterations / audits have no `regulatory` block at
+ *  all, and partially-migrated records may miss nested fields. Returns null
+ *  when there is no usable verdict (UI then shows "не рассчитан"). */
+export function parseRegulatoryVerdict(v: unknown): RegulatoryVerdict | null {
+  if (v == null || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const status = o.status;
+  if (status !== "COMPLIANT" && status !== "NON_COMPLIANT" && status !== "NEEDS_REVIEW") return null;
+  const cov = (o.coverage ?? {}) as Record<string, unknown>;
+  const parser = (cov.parser ?? {}) as Record<string, unknown>;
+  const counts = (o.checkCounts ?? {}) as Record<string, unknown>;
+  const num = (x: unknown, fallback = 0) => (typeof x === "number" && Number.isFinite(x) ? x : fallback);
+  return {
+    status,
+    blockers: Array.isArray(o.blockers) ? o.blockers.filter((b): b is string => typeof b === "string") : [],
+    coverage: {
+      regulatoryCoverage: Math.max(0, Math.min(1, num(cov.regulatoryCoverage))),
+      parser: {
+        siteBoundaryDetected: parser.siteBoundaryDetected === true,
+        utilitiesTypedShare: typeof parser.utilitiesTypedShare === "number" ? parser.utilitiesTypedShare : null,
+        roadsClassified: parser.roadsClassified === true,
+        existingVegetationDetected: parser.existingVegetationDetected === true,
+        crossingsDetected: num(parser.crossingsDetected),
+      },
+    },
+    checkCounts: {
+      pass: num(counts.pass),
+      fail: num(counts.fail),
+      unverified: num(counts.unverified),
+      notApplicable: num(counts.notApplicable),
+    },
+  };
+}
+
+export type RuleRole = "regulatory" | "safe_buffer" | "design_heuristic";
+
 export interface RegulatoryRule {
   id: string;
   enabled: boolean;
@@ -125,6 +202,12 @@ export interface RegulatoryRule {
   } | null;
   effectiveDistanceM: number | null;
   effectiveSource: "verified" | "assumption" | "inactive";
+  /** Iteration 5: what kind of rule this is. Absent on old payloads;
+   *  treat missing as "regulatory". safe_buffer / design_heuristic are
+   *  NOT legal norms and are shown with a muted role badge. */
+  role?: RuleRole;
+  /** Iteration 5: applicability condition, e.g. {crownDiameterMaxM: 5}. */
+  condition?: { crownDiameterMaxM?: number | null } | null;
 }
 
 export interface SpeciesInfo {
@@ -279,6 +362,9 @@ export interface IterationSummary {
   judgeSkipped?: "hard_violations" | null;
   deterministicRepair?: { removed: number; passes: number } | null;
   needsManualReview?: boolean;
+  /** Iteration 5: deterministic regulatory verdict. Absent on old records —
+   *  the UI shows "статус не рассчитан" then. Parse with parseRegulatoryVerdict. */
+  regulatory?: RegulatoryVerdict | null;
 }
 
 export interface Placement {
@@ -291,10 +377,20 @@ export interface Placement {
   distances: Record<string, number | null>;
 }
 
+/** Iteration 5: structured design-heuristic warning. Old stored reports may
+ *  still contain plain strings — the union below handles both. */
+export interface ValidationWarning {
+  plantingId: string;
+  ruleId: string;
+  actual: number;
+  requiredM: number;
+  kind: "design_heuristic";
+}
+
 export interface ValidationReport {
   valid: boolean;
   hardViolations: { plantingId: string; ruleId: string; actual: number; requiredM: number; obstacle: string }[];
-  warnings: string[];
+  warnings: (string | ValidationWarning)[];
   metrics: { plantingCount: number; validCount: number; coverageScore: number; distributionScore: number };
 }
 
@@ -307,7 +403,9 @@ export type IterationDetail = IterationSummary & {
 
 export interface ExplanationCheck {
   ruleId: string;
-  result: "passed" | "n/a";
+  /** New data: uppercase CheckResult; OLD stored data: lowercase legacy
+   *  values. Always render via normalizeCheckResult. */
+  result: CheckResult | "passed" | "failed" | "n/a";
   actualM: number | null;
   requiredM: number | null;
   comparator: ">=";
@@ -358,6 +456,9 @@ export interface ComplianceDocStat {
   checks: number;
   passed: number;
   failed: number;
+  /** Iteration 5 columns; absent on old cached audits. */
+  unverified?: number;
+  notApplicable?: number;
 }
 
 export interface ComplianceRuleStat extends ComplianceDocStat {
@@ -386,6 +487,9 @@ export interface ComplianceAudit {
   byDocument: Record<string, ComplianceDocStat>;
   byRule: Record<string, ComplianceRuleStat>;
   placements: CompliancePlacement[];
+  /** Iteration 5: deterministic regulatory verdict for the audited iteration.
+   *  Absent on old audits. Parse with parseRegulatoryVerdict. */
+  regulatory?: RegulatoryVerdict | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -73,3 +73,23 @@
   document upload.
 - Verified live: Playwright 9/9 across 3 viewports; audit shows 531/531
   compliant, 3318 checks on the example project.
+
+## Iteration 5 (external audit response) — DONE
+- Regulatory verdict separated from judge: per-check PASS/FAIL/UNVERIFIED/N_A;
+  deterministic COMPLIANT/NON_COMPLIANT/NEEDS_REVIEW with blockers
+  (SITE_BOUNDARY_UNKNOWN, UNVERIFIED_HARD_RULES:N); judge decision = optimization
+  continuation only, confidence capped by regulatoryCoverage; contradictory LLM
+  output sanitized in code.
+- Fixes per audit: drainage 2.0 (дренаж/канализация split), crown ≤5 м condition
+  on табл. 9.1 rules (bigger crowns -> UNVERIFIED), extents boundary tagged
+  INFERRED_DRAWING_EXTENT (blocker), generic utility = tree-only safe_buffer,
+  spacing rules = design_heuristic warnings, visibility-triangle exclusions at
+  road crossings (assumed 8x40), canonical rule merge (no REG_ duplicates),
+  hierarchy-agreement gate + title sanitization, RTF ingestion (striprtf),
+  batched PG fragment inserts.
+- Live proof: СП 42 RTF (Приказ 1034) -> 2295 fragments -> Table 9.1 extracted
+  with path "9 > 9.6 > Таблица 9.1" and exact row excerpt -> human approve ->
+  TREE_BUILDING_MIN_DISTANCE patched to verified 5.0 м (0 duplicates). Real
+  project regenerated: REGULATORY STATUS = NEEDS_REVIEW, blockers set, coverage
+  0.04, judge confidence capped 0.33, 8 PASS checks (verified building rule,
+  rowan crown ≤5 м). Tests: 96 api + 105 root + 241 eval checks green.

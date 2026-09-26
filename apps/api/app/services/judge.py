@@ -13,14 +13,21 @@ heuristic emits the same v2 schema (mode="heuristic_fallback") so the pipeline
 stays functional. No cloud fallback exists by design.
 
 Prompts are versioned files: prompts/judge/{version}.md, selected via the
-JUDGE_PROMPT_VERSION env var (default "v1"). Every stored judgment records
+JUDGE_PROMPT_VERSION env var (default "v2"). Every stored judgment records
 promptVersion, model, temperature, inputSchemaVersion and judgeInputHash.
+
+Regulatory separation (iteration 5): ACCEPT never means regulatory validity —
+that verdict is computed deterministically by the validator. In code, judge
+confidence is capped at 0.3 + 0.7*regulatoryCoverage, robustness is bounded
+by parser coverage, no-op parameter changes are dropped, and a deterministic
+issue is added when a non-GOOD dimension comes with an empty issue list.
 """
 from __future__ import annotations
 
 import json
 import math
 import os
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -39,6 +46,15 @@ ASSESSMENT_DIMENSIONS = ("coverage", "distribution", "clustering",
 # selection/retention policy for judge-triggered reruns
 RERUN_MIN_OBJECTIVE_GAIN = 0.02
 RERUN_MAX_COMPONENT_DROP = 0.05
+
+# deterministic confidence cap: the judge can never be more confident than
+# what the verified share of hard regulatory checks supports
+CONFIDENCE_CAP_BASE = 0.3
+CONFIDENCE_CAP_SLOPE = 0.7
+ROBUSTNESS_COVERAGE_THRESHOLD = 0.5
+
+# LLM parameter-change reasons that are effectively no-ops → dropped in code
+_NOOP_REASON_RE = re.compile(r"no change|не требует|не нужн", re.IGNORECASE)
 
 
 class JudgePromptError(RuntimeError):
@@ -95,9 +111,11 @@ class JudgeResponseV2(BaseModel):
 
 def load_judge_prompt(version: str | None = None) -> tuple[str, str]:
     """Returns (version, prompt_text). Version comes from JUDGE_PROMPT_VERSION
-    (default "v1"); the file is prompts/judge/{version}.md at the repo root.
-    A missing file is a hard, clearly-worded error — never a silent default."""
-    version = version or os.environ.get("JUDGE_PROMPT_VERSION", "v1")
+    (default config.JUDGE_PROMPT_VERSION_DEFAULT, currently "v2"); the file is
+    prompts/judge/{version}.md at the repo root. A missing file is a hard,
+    clearly-worded error — never a silent default."""
+    version = version or os.environ.get(
+        "JUDGE_PROMPT_VERSION", config.JUDGE_PROMPT_VERSION_DEFAULT)
     path = config.REPO_ROOT / "prompts" / "judge" / f"{version}.md"
     if not path.exists():
         raise JudgePromptError(
@@ -115,13 +133,17 @@ def sanitize_parameter_changes(changes: list, packet: dict) -> list[dict]:
 
     Non-whitelisted parameters are dropped; proposals are clamped to the
     absolute [min, max] range and then to current ± maxDeltaPerIteration.
-    No-op results (proposal == current) are dropped."""
+    No-op results (proposal == current) are dropped, as are changes whose
+    stated reason is itself a no-op phrase ("no change", "не требует",
+    "не нужно" …) — a sanity pass over LLM output."""
     allowed = packet.get("allowedParameterChanges", {})
     valid_ids = collect_evidence_ids(packet)
     out: list[dict] = []
     for ch in changes or []:
         d = ch.model_dump() if isinstance(ch, BaseModel) else dict(ch)
         name = d.get("parameter")
+        if _NOOP_REASON_RE.search(str(d.get("reason") or "")):
+            continue
         bounds = allowed.get(name) or PARAMETER_WHITELIST.get(name)
         if bounds is None:
             continue
@@ -171,9 +193,46 @@ def _sanitize_issues(issues: list[IssueV2], valid_ids: set[str]) -> list[dict]:
 # report assembly (v2, with backward-compatible keys for the current frontend)
 # ---------------------------------------------------------------------------
 
+def _apply_regulatory_bounds(confidence: float, assessment: dict,
+                             issues: list[dict], packet: dict
+                             ) -> tuple[float, dict, list[dict]]:
+    """Deterministic post-processing of any judge output (LLM or heuristic):
+
+    * confidence is capped at 0.3 + 0.7*regulatoryCoverage — the judge can
+      never be more confident than the verified share of hard checks allows;
+    * robustnessToUncertainty is at most IMPROVABLE when regulatoryCoverage
+      < 0.5 or the site boundary was not detected;
+    * if any assessment dimension != GOOD while issues == [], a deterministic
+      issue is appended so the report never reads as flawless."""
+    coverage = packet.get("regulatoryCoverage")
+    parser = packet.get("parserCoverage") or {}
+    if coverage is not None:
+        confidence = min(float(confidence),
+                         CONFIDENCE_CAP_BASE + CONFIDENCE_CAP_SLOPE * float(coverage))
+    boundary_unknown = parser.get("siteBoundaryDetected") is False
+    if ((coverage is not None and coverage < ROBUSTNESS_COVERAGE_THRESHOLD)
+            or boundary_unknown):
+        dim = assessment.get("robustnessToUncertainty")
+        if dim and dim.get("status") == "GOOD":
+            dim["status"] = "IMPROVABLE"
+    if not issues:
+        for name in ASSESSMENT_DIMENSIONS:
+            dim = assessment.get(name) or {}
+            status = dim.get("status", "GOOD")
+            if status != "GOOD":
+                issues = issues + [{
+                    "type": "quality_dimension", "severity": "LOW",
+                    "evidenceIds": list(dim.get("evidence") or []),
+                    "description": f"{name} оценён как {status} — см. evidence",
+                }]
+    return confidence, assessment, issues
+
+
 def _report(mode: str, decision: str, confidence: float, assessment: dict,
             issues: list[dict], parameter_changes: list[dict], summary: str,
             packet: dict, llm_model: str | None, prompt_version: str | None) -> dict:
+    confidence, assessment, issues = _apply_regulatory_bounds(
+        confidence, assessment, issues, packet)
     return {
         "schemaVersion": REPORT_SCHEMA_VERSION,
         "mode": mode,

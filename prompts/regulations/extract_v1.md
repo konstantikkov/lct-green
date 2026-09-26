@@ -29,6 +29,9 @@ For every candidate emit:
 
 - `fragmentIds`: the EXACT ids of the fragment(s) the rule comes from. Only
   ids that appear in the input. Never invent ids.
+- `title` (optional): a short human-readable rule name in Russian, e.g.
+  «Дерево — стена здания». NEVER a bare number or table-cell value; the
+  server replaces digits-only/too-short titles with a synthesized one.
 - `constraintType`: MIN_DISTANCE | MIN_SPACING | OTHER.
 - `subject`: what is being planted, uppercase English token (TREE, SHRUB).
 - `referenceObject`: uppercase English token for the reference object, e.g.

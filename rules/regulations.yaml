@@ -85,13 +85,19 @@ documents:
 
 # ----------------------------------------------------------------------------
 # Spatial rules. severity: hard  → violation invalidates a placement.
-#                 severity: recommended → affects scoring only.
+#                 severity: recommended → affects scoring / warnings only.
+# role: regulatory       → правовая норма (участвует в regulatory-вердикте)
+#       safe_buffer      → консервативный технологический отступ, НЕ норматив
+#       design_heuristic → проектная эвристика; нарушения = warnings
+# condition: { crown_diameter_max_m: 5.0 } — применимость СП 42 табл. 9.1
+#   ограничена деревьями с кроной ≤ 5 м; для больших крон проверка UNVERIFIED.
 # ----------------------------------------------------------------------------
 rules:
   - id: TREE_BUILDING_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [BUILDING] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source:
       document: sp_42_13330_2016
       clause: null
@@ -100,6 +106,8 @@ rules:
       excerpt: null
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption:
       assumed_distance_m: 5.0
       enabled: true
@@ -109,153 +117,212 @@ rules:
     enabled: true
     applies_to: { planting_type: [SHRUB], obstacle_type: [BUILDING] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source:
       document: sp_42_13330_2016
       clause: null
       title: "Расстояние от наружной стены здания до кустарника"
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_ROAD_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [ROAD, CURB] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source:
       document: sp_42_13330_2016
       clause: null
       title: "Расстояние от края проезжей части до оси ствола дерева"
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: SHRUB_ROAD_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [SHRUB], obstacle_type: [ROAD, CURB] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края проезжей части до кустарника" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_SIDEWALK_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [SIDEWALK] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края тротуара/садовой дорожки до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 0.7, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: SHRUB_SIDEWALK_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [SHRUB], obstacle_type: [SIDEWALK] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края тротуара до кустарника" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 0.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_WATER_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_WATER] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от водопровода до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_SEWER_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_SEWER] }
     constraint: { type: min_distance, distance_m: null, units: m }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от канализации до оси ствола дерева" }
+    condition: { crown_diameter_max_m: 5.0 }
+    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от канализации (включая ливневую) до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: >
+      табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние
+      должно быть увеличено. Ливневая канализация (дождевая сеть, К2) относится
+      к семантике «канализация» (1.5 м), а не к дренажу (2.0 м).
     assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_GAS_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_GAS] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от газопровода до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_HEAT_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_HEAT] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от тепловой сети до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_ELECTRICITY_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_ELECTRICITY] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от силового кабеля до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: SHRUB_UTILITY_ELECTRICITY_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [SHRUB], obstacle_type: [UTILITY_ELECTRICITY] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от силового кабеля до кустарника" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 0.7, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_COMMUNICATION_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_COMMUNICATION] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от кабеля связи до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_UTILITY_DRAINAGE_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_DRAINAGE] }
     constraint: { type: min_distance, distance_m: null, units: m }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от дренажа/ливневой канализации до оси ствола дерева" }
+    condition: { crown_diameter_max_m: 5.0 }
+    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от дренажа до оси ствола дерева" }
     status: missing_source_data
     severity: hard
-    assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    role: regulatory
+    note: >
+      СП 42 табл. 9.1 разделяет: «водопровод, дренаж» — 2.0 м; «канализация» —
+      1.5 м. Ливневая канализация (дождевая сеть) относится к семантике
+      «канализация» и проверяется правилом TREE_UTILITY_SEWER_MIN_DISTANCE;
+      это правило покрывает только дренаж (UTILITY_DRAINAGE). табл. 9.1
+      применима к деревьям с кроной ≤5 м; для больших крон расстояние должно
+      быть увеличено.
+    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение по строке «водопровод, дренаж» табл. 9.1 (2.0 м), требует верификации." }
 
   - id: TREE_UTILITY_GENERIC_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [UTILITY] }
+    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY] }
     constraint: { type: min_distance, distance_m: null, units: m }
     source:
       document: sp_42_13330_2016
       clause: null
-      title: "Неопознанная подземная сеть — консервативный отступ до уточнения типа сети"
+      title: "Консервативный технологический отступ от неопознанной сети (НЕ нормативная проверка)"
     status: missing_source_data
     severity: hard
+    role: safe_buffer
+    note: >
+      Технологический буфер до уточнения типа сети; не является правовой нормой
+      и никогда не даёт PASS. Применяется только к деревьям — кустарники не
+      проверяются против «древесного» правила.
     assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение: максимум по типовым сетям, применяется пока тип сети не уточнен." }
 
   - id: TREE_LIGHTING_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [LIGHTING] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от мачты/опоры осветительной сети до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 4.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
 
   - id: TREE_FENCE_MIN_DISTANCE
     enabled: true
     applies_to: { planting_type: [TREE], obstacle_type: [FENCE] }
     constraint: { type: min_distance, distance_m: null, units: m }
+    condition: { crown_diameter_max_m: 5.0 }
     source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от ограждения до оси ствола дерева" }
     status: missing_source_data
     severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: { assumed_distance_m: 2.0, enabled: false, note: "ДЕМО-значение; по умолчанию выключено (зависит от высоты ограждения)." }
 
   - id: TREE_TREE_MIN_SPACING
@@ -267,7 +334,9 @@ rules:
       clause: null
       title: "Минимальное расстояние между деревьями в ряду/группе"
     status: missing_source_data
-    severity: hard
+    severity: recommended
+    role: design_heuristic
+    note: "проектная эвристика, не правовая норма; источник не установлен"
     assumption: { assumed_distance_m: 5.0, enabled: true, note: "ДЕМО-значение, требует верификации по ТСН 30-307-2002 / МГСН 1.02-02." }
 
   - id: SHRUB_SHRUB_MIN_SPACING
@@ -276,8 +345,30 @@ rules:
     constraint: { type: min_spacing, distance_m: null, units: m }
     source: { document: tsn_30_307_2002, clause: null, title: "Минимальное расстояние между кустарниками" }
     status: missing_source_data
-    severity: hard
+    severity: recommended
+    role: design_heuristic
+    note: "проектная эвристика, не правовая норма; источник не установлен"
     assumption: { assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+
+  - id: VISIBILITY_TRIANGLE_NO_TALL_PLANTS
+    enabled: true
+    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [ROAD] }
+    constraint: { type: custom_geometry, distance_m: null, units: m }
+    source:
+      document: tsn_30_307_2002
+      clause: null
+      title: "Треугольники видимости на пересечениях проездов: запрет насаждений выше 0.5 м"
+    status: missing_source_data
+    severity: hard
+    role: regulatory
+    note: >
+      В зоне треугольников видимости на нерегулируемых пересечениях запрещено
+      размещение зеленых насаждений высотой более 0.5 м. Деревья и кустарники
+      каталога выше 0.5 м по определению.
+    assumption:
+      assumed_distance_m: null
+      enabled: true
+      note: "треугольники видимости 8×40 м (40 км/ч) по московским правилам; категория/скорость улиц из чертежа не определяется — размеры ДЕМО"
 
   - id: TREE_EXISTING_TREE_MIN_DISTANCE
     enabled: true

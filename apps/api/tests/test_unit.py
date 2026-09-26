@@ -203,14 +203,21 @@ def test_validator_flags_violation(doc):
     assert any(v["ruleId"] == "TREE_BUILDING_MIN_DISTANCE" for v in report["hardViolations"])
 
 
-def test_validator_spacing(doc):
+def test_validator_spacing_is_design_heuristic_warning(doc):
+    """Tree-tree spacing is a design heuristic (no legal source established):
+    violations are structured warnings, never hardViolations."""
     idx = build_geometry_index(doc)
     reg = load_registry()
     res = build_constraints(doc, idx, reg)
     a = Placement(id="a", kind="TREE", speciesId="tree_linden", x=170, y=90, crownRadiusM=3.5)
     b = Placement(id="b", kind="TREE", speciesId="tree_linden", x=172, y=90, crownRadiusM=3.5)
     report = validate_plan([a, b], idx, reg, res.site_boundary, res.allowed_area)
-    assert any(v["ruleId"] == "TREE_TREE_MIN_SPACING" for v in report["hardViolations"])
+    assert not any(v["ruleId"] == "TREE_TREE_MIN_SPACING" for v in report["hardViolations"])
+    w = [w for w in report["warnings"] if w["ruleId"] == "TREE_TREE_MIN_SPACING"]
+    assert w and w[0]["kind"] == "design_heuristic"
+    assert w[0]["actual"] == pytest.approx(2.0)
+    assert w[0]["requiredM"] == pytest.approx(5.0)
+    assert report["valid"] is True  # warnings never invalidate the plan
 
 
 def test_validator_outside_site(doc):

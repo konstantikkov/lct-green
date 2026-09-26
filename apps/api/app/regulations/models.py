@@ -83,6 +83,8 @@ class RuleCandidate(BaseModel):
     id: str
     documentId: str
     ruleVersion: int = 1
+    # human-readable name; server-sanitized (never a bare number, audit item 3)
+    title: Optional[str] = None
     source: CandidateSource
     applicability: Applicability = Field(default_factory=Applicability)
     constraint: Constraint = Field(default_factory=Constraint)
@@ -103,8 +105,10 @@ class RuleCandidate(BaseModel):
 
 class LLMCandidate(BaseModel):
     """What the extraction model is allowed to emit. Provenance text is NOT
-    taken from the model — sourceText is copied server-side from fragments."""
+    taken from the model — sourceText is copied server-side from fragments;
+    title is sanitized server-side (digits-only/short titles replaced)."""
     fragmentIds: list[str] = Field(default_factory=list)
+    title: Optional[str] = None
     constraintType: Literal["MIN_DISTANCE", "MIN_SPACING", "OTHER"] = "OTHER"
     subject: str = ""
     referenceObject: str = ""
