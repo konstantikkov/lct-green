@@ -123,6 +123,36 @@ def _mk_candidate(doc: dict, frag: dict, value=5.0, unit="м", conf=0.9,
 
 
 # ---------------------------------------------------------------------------
+# upload hygiene
+# ---------------------------------------------------------------------------
+
+def test_sanitize_filename_keeps_extension_on_long_names():
+    """Real acts have long names; truncation must not eat the suffix.
+
+    This 138-char name is the actual docs.cntd.ru export of ППМ № 369-ПП; it
+    used to be shortened to 120 chars, lose ".pdf" and be rejected as an
+    unsupported format.
+    """
+    from app.regulations.router import ALLOWED_EXT, _sanitize_filename
+    long_name = ("О мерах по регулированию распространения и численности "
+                 "инвазивных растений на территории города Москвы "
+                 "от 03 марта 2026 - docs.cntd.ru.pdf")
+    assert len(long_name) > 120
+    safe = _sanitize_filename(long_name)
+    assert len(safe) <= 120
+    assert Path(safe).suffix.lower() == ".pdf"
+    assert Path(safe).suffix.lower() in ALLOWED_EXT
+
+
+def test_sanitize_filename_strips_paths_and_rejects_extensionless():
+    from app.regulations.router import ALLOWED_EXT, _sanitize_filename
+    assert _sanitize_filename("../../etc/../evil.pdf") == "evil.pdf"
+    assert "/" not in _sanitize_filename("a/b/c.docx")
+    assert Path(_sanitize_filename("no_extension")).suffix.lower() not in ALLOWED_EXT
+    assert Path(_sanitize_filename("ФАЙЛ.PDF")).suffix.lower() == ".pdf"
+
+
+# ---------------------------------------------------------------------------
 # docparse: hierarchy, stable ids, provenance
 # ---------------------------------------------------------------------------
 

@@ -19,9 +19,23 @@ CLAUSE_RE = re.compile(r"^(\d+(?:\.\d+)+)[.)]?\s+")
 TABLE_CAPTION_RE = re.compile(r"^Таблица\s+(\d+(?:\.\d+)?)", re.IGNORECASE)
 # OCR/PDF/RTF line that opens a numbered top-level section ("9 Насаждения…")
 SECTION_HEADING_RE = re.compile(r"^(\d+)\s+[А-ЯЁA-Z][^.]{2,80}$")
+
+# Number sign as it actually appears in Russian normative texts. Official
+# publications and КонсультантПлюс/docs.cntd exports write Latin "N" far more
+# often than "№"; Cyrillic "Н" also turns up in OCR output.
+_NUMSIGN = r"(?:№|N|Н)"
 DOCNUM_RE = re.compile(
-    r"(СП\s*[\d.]+\d|ГОСТ\s*[\d.\-]+\d|СНиП\s*[\d.\-]+\d|"
-    r"ППМ\s*№?\s*[\d\-]+(?:-ПП)?|№\s*\d+-ПП)", re.IGNORECASE)
+    r"(СП\s*[\d.]+\d"
+    r"|ГОСТ(?:\s*Р)?\s*[\d.\-]+\d"
+    r"|СНиП\s*[\d.\-]+\d"
+    r"|(?:ТСН|МГСН)\s*[\d.\-]+\d"
+    # ППМ № 743-ПП / ПОСТАНОВЛЕНИЕ … N 743-ПП / just "623-ПП"
+    rf"|ППМ\s*{_NUMSIGN}?\s*[\d\-]+(?:-ПП)?"
+    rf"|{_NUMSIGN}\s*\d+\s*-\s*ПП"
+    r"|\b\d{2,4}-ПП\b"
+    # Закон города Москвы № 18 — no -ПП suffix, so anchor on the word "закон"
+    rf"|ЗАКОН[^\n]{{0,60}}?{_NUMSIGN}\s*\d+"
+    r")", re.IGNORECASE)
 NOTE_RE = re.compile(r"^(примечани|прим\.)", re.IGNORECASE)
 HEADING_STYLE_RE = re.compile(r"^(?:Heading|Заголовок)\s*(\d)", re.IGNORECASE)
 
@@ -51,12 +65,32 @@ def slugify(text: str, max_len: int = 24) -> str:
     return slug[:max_len].strip("-.") or "x"
 
 
+def normalize_doc_number(raw: str) -> str:
+    """Canonical form of a detected number, so the docKey is stable and readable.
+
+    The same act is printed as "N 743-ПП", "№ 743-ПП" or "743-ПП" depending on
+    the publisher; all three must collapse to one key, because the key prefixes
+    every fragment id.
+
+        "N 743-ПП"                          → "743-ПП"
+        "Закон Москвы от 30.04.2014 г. № 18" → "Закон № 18"
+    """
+    s = re.sub(r"\s+", " ", raw).strip()
+    m = re.match(rf"^ЗАКОН.*?{_NUMSIGN}\s*(\d+)$", s, re.IGNORECASE)
+    if m:
+        return f"Закон № {m.group(1)}"
+    # drop a leading number sign ("N", "№", "Н") and tighten "743 - ПП"
+    s = re.sub(rf"^(?:ППМ\s*)?{_NUMSIGN}\s*", "", s)
+    s = re.sub(r"\s*-\s*ПП$", "-ПП", s, flags=re.IGNORECASE)
+    return s.strip()
+
+
 def detect_doc_number(texts: list[str]) -> str | None:
     """Scan the first pages/paragraphs for a normative document number."""
     for t in texts[:60]:
         m = DOCNUM_RE.search(t or "")
         if m:
-            return re.sub(r"\s+", " ", m.group(1)).strip()
+            return normalize_doc_number(m.group(1))
     return None
 
 

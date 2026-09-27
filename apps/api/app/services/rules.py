@@ -77,10 +77,25 @@ class RegulatoryRule(BaseModel):
         return None
 
     @property
+    def _has_operative_value(self) -> bool:
+        """Whether the rule carries the value it needs to be enforceable.
+
+        Distance rules need constraint.distance_m; a species_blacklist is
+        driven by constraint.species instead and would otherwise be reported
+        as inactive even when verified and actively rejecting species.
+        """
+        if self.constraint.get("distance_m") is not None:
+            return True
+        ctype = self.constraint.get("type")
+        if ctype == "species_blacklist":
+            return bool(self.constraint.get("species"))
+        return False
+
+    @property
     def effective_source(self) -> str:
         if not self.enabled:
             return "inactive"
-        if self.status == "verified" and self.constraint.get("distance_m") is not None:
+        if self.status == "verified" and self._has_operative_value:
             return "verified"
         if self.assumption and self.assumption.enabled and self.assumption.assumedDistanceM is not None:
             return "assumption"

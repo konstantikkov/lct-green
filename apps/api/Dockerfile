@@ -1,7 +1,9 @@
 # --- builder: compile LibreDWG (free DWG→DXF converter) ---------------------
 FROM debian:bookworm-slim AS libredwg
+# build-essential, not bare gcc: bookworm-slim ships no libc headers, so a
+# lone gcc fails ./configure with "C compiler cannot create executables".
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc make curl ca-certificates && rm -rf /var/lib/apt/lists/*
+    build-essential curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN curl -sL -o /tmp/libredwg.tar.gz \
       https://github.com/LibreDWG/libredwg/releases/download/0.13.3/libredwg-0.13.3.tar.gz \
  && tar xzf /tmp/libredwg.tar.gz -C /tmp \

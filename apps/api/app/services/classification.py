@@ -19,8 +19,13 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"границ[а-я]*\s*(растительн|леса|газон)", "GREEN_AREA", 0.92),
     (r"границ[а-я]*\s*улиц", "ROAD", 0.91),
     (r"номер\s*(дома|строен|здан)|номер\b", "ANNOTATION", 0.86),
+    # "Кабель связи" is a comms cable, but bare 'кабел' (electricity, 0.86)
+    # outscores bare 'связ' (0.84), so name the combination explicitly.
+    (r"кабел[а-я]*\s*(связи|телефон|телеграф)|волоконно[\s-]*оптич", "UTILITY_COMMUNICATION", 0.88),
     # --- site boundary ---
-    (r"границ|отвод|красн[аы]|благоустройств[а-я]*\s*границ|гпзу|land\s*boundary|site.?bound", "SITE_BOUNDARY", 0.9),
+    # \bотвод, not bare 'отвод': without the word boundary it swallows
+    # "Водоотводные лотки" (a drain) and files it as a site boundary.
+    (r"границ|\bотвод|красн[аы]|благоустройств[а-я]*\s*границ|гпзу|land\s*boundary|site.?bound", "SITE_BOUNDARY", 0.9),
     # --- buildings ---
     (r"здан|строен|сооруж|корпус|дом[а-я]*\b|фундамент|отмостк|крыльц|build|wall|house", "BUILDING", 0.85),
     (r"кровл|контур\s*здан", "BUILDING", 0.8),
@@ -34,13 +39,15 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"водопров|водоснабж|\bв1\b|\bхвс\b|\bгвс\b|water", "UTILITY_WATER", 0.86),
     (r"газопров|газоснабж|\bгаз\b|gas", "UTILITY_GAS", 0.86),
     # ливневая (дождевая) канализация К2 = канализация по семантике СП 42
-    # табл. 9.1 (1.5 м), НЕ дренаж (2.0 м) — держим её в UTILITY_SEWER
-    (r"канализ|\bк1\b|\bк2\b|фекальн|бытов[а-я]*\s*сток|ливн|дожд|sewer|storm|хозбыт", "UTILITY_SEWER", 0.86),
+    # табл. 9.1 (1.5 м), НЕ дренаж (2.0 м) — держим её в UTILITY_SEWER.
+    # 'водосток' — так Мосгеотрест подписывает ту же ливнёвку; это самый
+    # крупный слой в выгрузке ИРД «up» (существующие подземные сети).
+    (r"канализ|\bк1\b|\bк2\b|фекальн|бытов[а-я]*\s*сток|ливн|дожд|водосток|sewer|storm|хозбыт", "UTILITY_SEWER", 0.86),
     (r"дренаж|водоотвод|drain", "UTILITY_DRAINAGE", 0.84),
     (r"теплосет|теплотрасс|тепло|\bтс\b|heat", "UTILITY_HEAT", 0.84),
     (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|лэп|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
     (r"связ|телефон|телеграф|тлф|слаботоч|волокон|вол[сc]|telecom|comm", "UTILITY_COMMUNICATION", 0.84),
-    (r"сет[ии]|коммуникац|инжен|колодц|люк[и]?\b|utility", "UTILITY", 0.55),
+    (r"сет[ии]|коммуникац|инжен|колодц|люк[и]?\b|коллектор|трубопровод|utility", "UTILITY", 0.55),
     # --- vegetation ---
     (r"дерев|деревья|сущ[а-я.]*\s*(зелен|насажд)|tree", "EXISTING_TREE", 0.85),
     (r"кустарн|куст|shrub|bush", "EXISTING_SHRUB", 0.85),

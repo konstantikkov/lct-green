@@ -289,7 +289,8 @@ def compliance_audit(pid: str):
         placements_out.append({
             "id": p["id"], "kind": p["kind"], "speciesId": p["speciesId"],
             "position": p["position"], "verdict": verdict,
-            "failingRules": failing, "checks": checks,
+            "failingRules": failing,
+            "checks": checks,
         })
 
     # deterministic regulatory verdict, recomputed against the CURRENT

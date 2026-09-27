@@ -32,9 +32,20 @@ def _err(status: int, code: str, message: str):
     raise HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
+MAX_NAME_LEN = 120
+
+
 def _sanitize_filename(name: str) -> str:
-    name = Path(name).name
-    return _SAFE_NAME.sub("_", name)[:120] or "upload"
+    """Strip the path, replace unsafe characters, shorten — but never lose the
+    extension: the caller validates the format by suffix, and real normative
+    files have names long enough to be truncated past it, e.g.
+    "О мерах по регулированию ... от 03 марта 2026 - docs.cntd.ru.pdf" (138
+    chars) used to come out extensionless and get rejected as unsupported.
+    """
+    p = Path(Path(name).name)
+    suffix = _SAFE_NAME.sub("_", p.suffix)[:16]
+    stem = _SAFE_NAME.sub("_", p.stem)[:MAX_NAME_LEN - len(suffix)]
+    return (stem + suffix) or "upload"
 
 
 def _validate_signature(data: bytes, ext: str) -> None:

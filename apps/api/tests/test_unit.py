@@ -83,6 +83,45 @@ def test_layer_classification(layer, expected):
     assert classification.classify_layer_name(layer).category == expected
 
 
+@pytest.mark.parametrize("layer,expected", [
+    # Layer names taken verbatim from the Мосгеотрест ИРД exports of the
+    # "Пилотный проект 20 улиц" dataset (files output[..]_3_ДЖКХ-*up/tp/pp).
+    # Водосток = ливневая канализация (К2): по табл. 9.1 это «канализация»
+    # (1,5 м), а не «дренаж» (2,0 м). Largest layer in the "up" file.
+    ("Водосток", "UTILITY_SEWER"),
+    ("Водосток проектный", "UTILITY_SEWER"),
+    ("Кабель электрический", "UTILITY_ELECTRICITY"),
+    ("Кабель связи", "UTILITY_COMMUNICATION"),
+    ("Канализация самотёчная", "UTILITY_SEWER"),
+    ("Канализация напорная", "UTILITY_SEWER"),
+    ("Водопровод", "UTILITY_WATER"),
+    ("Газопровод", "UTILITY_GAS"),
+    ("Теплосеть", "UTILITY_HEAT"),
+    ("Дренаж", "UTILITY_DRAINAGE"),
+    ("Общий коллектор", "UTILITY"),
+    ("Трубопроводы", "UTILITY"),
+    ("Отдельно стоящее дерево", "EXISTING_TREE"),
+    ("Полоса деревьев", "EXISTING_TREE"),
+    ("Бортовой камень", "CURB"),
+    ("Граница улицы", "ROAD"),
+    ("Граница растительности и грунта", "GREEN_AREA"),
+    ("Красные линии", "SITE_BOUNDARY"),
+    ("Граница заказа", "SITE_BOUNDARY"),
+])
+def test_real_geotrest_layer_names(layer, expected):
+    assert classification.classify_layer_name(layer).category == expected
+
+
+def test_vodootvod_is_a_drain_not_a_boundary():
+    """Regression: bare 'отвод' in the SITE_BOUNDARY pattern matched
+    "Водоотводные лотки" mid-word and filed a drain as a site boundary."""
+    assert classification.classify_layer_name(
+        "ДВ_ГП_П_Водоотводные_лотки").category == "UTILITY_DRAINAGE"
+    # the land-allocation sense must still resolve to a boundary
+    assert classification.classify_layer_name("Отвод земель").category == "SITE_BOUNDARY"
+    assert classification.classify_layer_name("Граница отвода").category == "SITE_BOUNDARY"
+
+
 def test_uncertainty_not_hidden():
     cls = classification.classify_layer_name("СЕТИ_1")
     assert cls.category in ("UTILITY", "UNKNOWN")
@@ -99,12 +138,71 @@ def test_rule_registry_loads():
 
 
 def test_missing_source_data_not_silently_verified():
+    """A rule whose clause was never located must never report as verified.
+
+    Checked against every unverified rule in the registry rather than one
+    hard-coded id, so verifying more clauses cannot quietly void this test.
+    """
     reg = load_registry()
-    r = reg.get("TREE_BUILDING_MIN_DISTANCE")
-    assert r.status == "missing_source_data"
-    assert r.constraint.get("distance_m") is None
-    # enforced value comes from an explicitly flagged assumption, never "verified"
-    assert r.effective_source in ("assumption", "inactive")
+    unverified = [r for r in reg.rules if r.status == "missing_source_data"]
+    assert unverified, "registry must keep declaring what is not yet sourced"
+    for r in unverified:
+        assert r.constraint.get("distance_m") is None
+        assert r.effective_source in ("assumption", "inactive")
+        assert r.source.clause is None
+
+
+def test_verified_rules_carry_full_provenance():
+    """The flip side: a verified distance is worthless without a citation."""
+    reg = load_registry()
+    verified = [r for r in reg.rules
+                if r.status == "verified" and r.constraint.get("distance_m") is not None
+                and r.source.document != "project_geometry"]
+    assert len(verified) >= 17
+    for r in verified:
+        assert r.source.clause, f"{r.id}: verified without a clause"
+        assert r.source.excerpt, f"{r.id}: verified without a source excerpt"
+        assert r.source.url, f"{r.id}: verified without a document reference"
+
+
+def test_table_9_1_values():
+    """Spot-check transcription of СП 42.13330.2016 table 9.1 (п. 9.6)."""
+    reg = load_registry()
+    expected = {
+        "TREE_BUILDING_MIN_DISTANCE": 5.0,
+        "SHRUB_BUILDING_MIN_DISTANCE": 1.5,
+        "TREE_ROAD_MIN_DISTANCE": 2.0,
+        "TREE_SIDEWALK_MIN_DISTANCE": 0.7,
+        "TREE_UTILITY_WATER_MIN_DISTANCE": 2.0,
+        # дренаж shares the водопровод row at 2,0 m — regression guard for the
+        # 1,5 m value this rule was assumed to have before verification
+        "TREE_UTILITY_DRAINAGE_MIN_DISTANCE": 2.0,
+        "TREE_UTILITY_GAS_MIN_DISTANCE": 1.5,
+        "TREE_UTILITY_SEWER_MIN_DISTANCE": 1.5,
+        "TREE_UTILITY_HEAT_MIN_DISTANCE": 2.0,
+        "SHRUB_UTILITY_HEAT_MIN_DISTANCE": 1.0,
+        "TREE_UTILITY_ELECTRICITY_MIN_DISTANCE": 2.0,
+        "SHRUB_UTILITY_ELECTRICITY_MIN_DISTANCE": 0.7,
+        "TREE_LIGHTING_MIN_DISTANCE": 4.0,
+    }
+    for rule_id, distance in expected.items():
+        r = reg.get(rule_id)
+        assert r is not None, rule_id
+        assert r.effective_distance_m == distance, rule_id
+        assert r.effective_source == "verified", rule_id
+        assert "9.1" in (r.source.clause or ""), rule_id
+
+
+def test_unmodelled_categories_are_documented_but_disabled():
+    """Table rows we cannot classify yet are cited, disabled, and never silent."""
+    reg = load_registry()
+    for rule_id in ("TREE_TRAM_TRACK_MIN_DISTANCE", "TREE_SLOPE_TOE_MIN_DISTANCE",
+                    "TREE_RETAINING_WALL_MIN_DISTANCE", "TREE_LKS_TMK_MIN_DISTANCE"):
+        r = reg.get(rule_id)
+        assert r is not None, rule_id
+        assert r.enabled is False, rule_id
+        assert r.effective_distance_m is None, rule_id
+        assert r.source.clause and r.source.excerpt, rule_id
 
 
 def test_disabled_assumption_makes_rule_inactive():
@@ -114,20 +212,41 @@ def test_disabled_assumption_makes_rule_inactive():
     assert r.effective_source == "inactive"
 
 
-def test_invasive_blacklist_not_invented():
+def test_invasive_blacklist_is_sourced_not_invented():
+    """The list is now transcribed from ППМ № 369-ПП приложение 1.
+
+    Whatever its contents, it may only be present together with a citation —
+    a populated blacklist without provenance is the failure mode to catch.
+    """
     reg = load_registry()
     r = reg.get("INVASIVE_SPECIES_BLACKLIST")
-    assert r.constraint.get("species") is None  # list absent in source data
-    ok, rule = blacklist_check(reg, "tree_linden", "Tilia cordata")
-    assert ok  # nothing can be rejected without the verified list
+    species = r.constraint.get("species")
+    if species:
+        assert r.status == "verified"
+        assert r.source.clause and r.source.excerpt and r.source.url
+        assert len(species) >= 30
+    else:
+        assert r.status == "missing_source_data"
 
 
-def test_blacklist_enforced_once_list_provided():
+def test_blacklist_rejects_invasive_and_passes_natives():
     reg = load_registry()
-    r = reg.get("INVASIVE_SPECIES_BLACKLIST")
-    r.constraint["species"] = ["Acer negundo"]
-    ok, rule_id = blacklist_check(reg, "tree_boxelder", "Acer negundo")
-    assert not ok and rule_id == "INVASIVE_SPECIES_BLACKLIST"
+    for latin in ("Acer negundo", "Quercus rubra", "Cornus albus",
+                  "Heracleum sosnowskyi", "Physocarpus opulifolius"):
+        ok, rule_id = blacklist_check(reg, "x", latin)
+        assert not ok and rule_id == "INVASIVE_SPECIES_BLACKLIST", latin
+    # Acer platanoides is native; only Acer negundo is listed — no genus-wide ban
+    for latin in ("Tilia cordata", "Acer platanoides", "Sorbus aucuparia"):
+        ok, _ = blacklist_check(reg, "x", latin)
+        assert ok, latin
+
+
+def test_no_project_species_is_invasive():
+    """Guards the catalog itself: shipping an invasive default would be a defect."""
+    reg = load_registry()
+    for s in load_species():
+        ok, rule_id = blacklist_check(reg, s["id"], s["latin"])
+        assert ok, f"{s['id']} ({s['latin']}) is on the ППМ 369-ПП list"
 
 
 # ---- geometry ---------------------------------------------------------------

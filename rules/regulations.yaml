@@ -14,7 +14,33 @@
 #   fill constraint.distance_m, set status: verified and add source.clause /
 #   source.url / source.excerpt. No code changes are required.
 # ============================================================================
-version: "0.1.0"
+# VERIFICATION LOG
+#   2026-09-26 — СП 42.13330.2016, п. 9.6, таблица 9.1 verified against the
+#   primary document text (dataset/госты/Приказ Минстроя РФ от 30.12.2016
+#   N 1034ПР ... СП 42.13330 СНиП 2.07.01-89.pdf, pages 51-53; text layer
+#   present, no OCR). All 12 table rows transcribed; every value below carries
+#   the literal excerpt it came from. Table redaction: Изменение N 3, утв.
+#   Приказом Минстроя РФ от 09.06.2022 N 473/пр.
+#
+#   2026-09-26 — ППМ № 369-ПП, приложение 1 verified against the primary
+#   document text (dataset/госты/О мерах по регулированию ... 369-ПП.pdf,
+#   pages 4-5). Full list of 31 invasive taxa transcribed into
+#   INVASIVE_SPECIES_BLACKLIST.
+#
+#   NOT verified (documents absent from dataset/госты/ or clause not located):
+#     ТСН 30-307-2002 (spacing rules), СП 59.13330 (МГН clearance),
+#     743-ПП (existing-tree protection zone), ограждение / generic utility.
+#     These stay on flagged DEMO values.
+#
+#   NOT MODELLED — table 9.1 rows whose obstacle category does not exist in
+#   models/ir.py Category yet. Recorded with full citation, enabled: false,
+#   so the registry is normatively complete without pretending to enforce:
+#     трамвайное полотно, подошва откоса, подпорная стенка, ЛКС ТМК.
+#   2026-09-27 — merged onto Iteration 5: base structure (role, condition,
+#   VISIBILITY_TRIANGLE_NO_TALL_PLANTS) kept from Iteration 5; the table 9.1
+#   note-1 crown limit is expressed as condition.crown_diameter_max_m.
+# ----------------------------------------------------------------------------
+version: "0.2.0"
 
 documents:
   - key: ppm_743_2002
@@ -23,61 +49,70 @@ documents:
     title: "Об утверждении Правил создания, содержания и охраны зеленых насаждений и природных сообществ города Москвы"
     mandatory: true
     active: true
-    note: "Основной московский акт по созданию, содержанию, охране зеленых насаждений (из реестра)."
+    note: "Основной московский акт по созданию, содержанию, охране зеленых насаждений. Текст получен (417 стр.); конкретные пункты по защитным зонам еще не локализованы."
+    local_source: dataset/госты/743-pp.pdf
   - key: ppm_515_2017
     number: "ППМ № 515-ПП"
     date: "2017-08-08"
     title: "Базовые требования к благоустройству территории жилой застройки при реализации Программы реновации"
     mandatory: true
     active: true
-    note: "Включает рекомендуемый ассортимент растений (текст ассортимента в исходных данных отсутствует)."
+    note: "Включает рекомендуемый ассортимент растений."
+    local_source: dataset/госты/515-PP(2).pdf
   - key: ppm_369_2026
     number: "ППМ № 369-ПП"
     date: "2026-03-03"
     title: "О мерах по регулированию распространения и численности инвазивных растений на территории города Москвы"
     mandatory: true
     active: true
-    note: "Устанавливает перечень инвазивных видов растений. Сам перечень в исходных данных отсутствует."
+    note: "Перечень инвазивных видов ВЕРИФИЦИРОВАН по приложению 1 (31 таксон, 4 группы)."
+    local_source: dataset/госты/О мерах по регулированию распространения и численности инвазивных растений на территории города Москвы от 03 марта 2026 - docs.cntd.ru.pdf
   - key: moscow_law_18_2014
     number: "Закон г. Москвы № 18"
     date: "2014-04-30"
     title: "О благоустройстве в городе Москве"
     mandatory: true
     active: true
+    local_source: dataset/госты/О благоустройстве в городе Москве.pdf
   - key: sp_82_13330_2016
     number: "СП 82.13330.2016"
-    date: null
+    date:
     title: "Благоустройство территорий"
     mandatory: true
     active: true
+    local_source: dataset/госты/sp_82.13330.2016_blagoustroystvo_territoriy.pdf
   - key: sp_42_13330_2016
     number: "СП 42.13330.2016"
-    date: null
+    date: '2016-12-30'
     title: "Градостроительство. Планировка и застройка городских и сельских поселений"
     mandatory: true
     active: true
-    note: "Планировочные ограничения; содержит нормируемые расстояния от зеленых насаждений до зданий и сооружений (точные значения не входят в исходные данные)."
+    note: "Утвержден Приказом Минстроя РФ от 30.12.2016 N 1034/пр. Таблица 9.1 (п. 9.6) — основной источник нормируемых расстояний, ВЕРИФИЦИРОВАНА, в ред. Изменения N 3 от 09.06.2022 N 473/пр."
+    local_source: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf
   - key: sp_59_13330
     number: "СП 59.13330"
-    date: null
+    date:
     title: "Доступность зданий и сооружений для маломобильных групп населения"
     mandatory: true
     active: true
+    note: Текст документа отсутствует в исходных данных.
   - key: ppm_623
     number: "ППМ № 623-ПП"
-    date: null
+    date: '2002-08-06'
     title: "Требования города Москвы к размещению зеленых насаждений и их согласованию"
     mandatory: true
     active: true
+    local_source: dataset/госты/postanovlenie_pravitelstva_moskvy_ot_06_08_2002_n_623_pp_r.pdf
   - key: tsn_30_307_2002
     number: "ТСН 30-307-2002 г. Москвы (МГСН 1.02-02)"
-    date: null
+    date:
     title: "Нормы и правила проектирования комплексного благоустройства на территории города Москвы"
     mandatory: true
     active: true
+    note: Текст документа отсутствует в исходных данных.
   - key: gost_21_508_2020
     number: "ГОСТ 21.508-2020"
-    date: null
+    date:
     title: "СПДС. Правила выполнения рабочей документации генеральных планов"
     mandatory: true
     active: true
@@ -95,184 +130,218 @@ documents:
 rules:
   - id: TREE_BUILDING_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [BUILDING] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
+    applies_to: {planting_type: [TREE], obstacle_type: [BUILDING]}
+    constraint: {type: min_distance, distance_m: 5.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
     source:
       document: sp_42_13330_2016
-      clause: null
+      clause: п. 9.6, таблица 9.1
       title: "Расстояние от наружной стены здания до оси ствола дерева"
-      url: null
-      excerpt: null
-    status: missing_source_data
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
+      excerpt: Наружная стена здания и сооружения — 5,0 (до оси ствола дерева)
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption:
       assumed_distance_m: 5.0
-      enabled: true
-      note: "ДЕМО-значение. Проверить по СП 42.13330.2016 (таблица нормируемых расстояний) перед производственным применением."
+      enabled: false
+      note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."
 
   - id: SHRUB_BUILDING_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [SHRUB], obstacle_type: [BUILDING] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
+    applies_to: {planting_type: [SHRUB], obstacle_type: [BUILDING]}
+    constraint: {type: min_distance, distance_m: 1.5, units: m}
+    condition: {crown_diameter_max_m: 5.0}
     source:
       document: sp_42_13330_2016
-      clause: null
+      clause: п. 9.6, таблица 9.1
       title: "Расстояние от наружной стены здания до кустарника"
-    status: missing_source_data
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
+      excerpt: Наружная стена здания и сооружения — 1,5 (до кустарника)
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 1.5, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_ROAD_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [ROAD, CURB] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
+    applies_to: {planting_type: [TREE], obstacle_type: [ROAD, CURB]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
     source:
       document: sp_42_13330_2016
-      clause: null
+      clause: п. 9.6, таблица 9.1
       title: "Расстояние от края проезжей части до оси ствола дерева"
-    status: missing_source_data
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: Край проезжей части улиц, обочины дороги или бровка канавы, или кювета — 2,0 (до оси ствола дерева)
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: SHRUB_ROAD_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [SHRUB], obstacle_type: [ROAD, CURB] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края проезжей части до кустарника" }
-    status: missing_source_data
+    applies_to: {planting_type: [SHRUB], obstacle_type: [ROAD, CURB]}
+    constraint: {type: min_distance, distance_m: 1.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края проезжей части до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край проезжей части улиц, обочины дороги или бровка канавы, или кювета — 1,0 (до кустарника)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 1.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_SIDEWALK_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [SIDEWALK] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края тротуара/садовой дорожки до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [SIDEWALK]}
+    constraint: {type: min_distance, distance_m: 0.7, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края тротуара/садовой дорожки до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край тротуара и садовой дорожки — 0,7 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 0.7, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 0.7, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: SHRUB_SIDEWALK_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [SHRUB], obstacle_type: [SIDEWALK] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от края тротуара до кустарника" }
-    status: missing_source_data
+    applies_to: {planting_type: [SHRUB], obstacle_type: [SIDEWALK]}
+    constraint: {type: min_distance, distance_m: 0.5, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края тротуара до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край тротуара и садовой дорожки — 0,5 (до кустарника)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 0.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 0.5, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_WATER_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_WATER] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от водопровода до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_WATER]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от водопровода до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - водопровод, дренаж — 2,0 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_SEWER_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_SEWER] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от канализации (включая ливневую) до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_SEWER]}
+    constraint: {type: min_distance, distance_m: 1.5, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от канализации (включая ливневую) до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - газопровод, канализация — 1,5 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: >
       табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние
       должно быть увеличено. Ливневая канализация (дождевая сеть, К2) относится
       к семантике «канализация» (1.5 м), а не к дренажу (2.0 м).
-    assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 1.5, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_GAS_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_GAS] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от газопровода до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_GAS]}
+    constraint: {type: min_distance, distance_m: 1.5, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от газопровода до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - газопровод, канализация — 1,5 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 1.5, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 1.5, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_HEAT_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_HEAT] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от тепловой сети до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_HEAT]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от тепловой сети до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - тепловая сеть (стенка канала, тоннеля или оболочка при бесканальной прокладке) — 2,0 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
+  - id: SHRUB_UTILITY_HEAT_MIN_DISTANCE
+    enabled: true
+    applies_to: {planting_type: [SHRUB], obstacle_type: [UTILITY_HEAT]}
+    constraint: {type: min_distance, distance_m: 1.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от тепловой сети до кустарника
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: 'Подземные сети: - тепловая сеть (стенка канала, тоннеля или оболочка при бесканальной прокладке) — 1,0 (до кустарника)'
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Правило добавлено при верификации таблицы 9.1 — ранее отсутствовало, кустарники у теплосети не проверялись.
 
   - id: TREE_UTILITY_ELECTRICITY_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_ELECTRICITY] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от силового кабеля до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_ELECTRICITY]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от силового кабеля до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 2,0 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: SHRUB_UTILITY_ELECTRICITY_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [SHRUB], obstacle_type: [UTILITY_ELECTRICITY] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от силового кабеля до кустарника" }
-    status: missing_source_data
+    applies_to: {planting_type: [SHRUB], obstacle_type: [UTILITY_ELECTRICITY]}
+    constraint: {type: min_distance, distance_m: 0.7, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от силового кабеля до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 0,7 (до кустарника)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 0.7, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 0.7, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_COMMUNICATION_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_COMMUNICATION] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от кабеля связи до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_COMMUNICATION]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от кабеля связи до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 2,0 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
+  - id: SHRUB_UTILITY_COMMUNICATION_MIN_DISTANCE
+    enabled: true
+    applies_to: {planting_type: [SHRUB], obstacle_type: [UTILITY_COMMUNICATION]}
+    constraint: {type: min_distance, distance_m: 0.7, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от кабеля связи до кустарника
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: 'Подземные сети: - силовой кабель и кабель связи — 0,7 (до кустарника)'
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Правило добавлено при верификации таблицы 9.1 — ранее отсутствовало.
 
   - id: TREE_UTILITY_DRAINAGE_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY_DRAINAGE] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от дренажа до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_DRAINAGE]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от дренажа до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - водопровод, дренаж — 2,0 (до оси ствола дерева)'}
+    status: verified
     severity: hard
     role: regulatory
     note: >
@@ -282,15 +351,15 @@ rules:
       это правило покрывает только дренаж (UTILITY_DRAINAGE). табл. 9.1
       применима к деревьям с кроной ≤5 м; для больших крон расстояние должно
       быть увеличено.
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение по строке «водопровод, дренаж» табл. 9.1 (2.0 м), требует верификации." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
 
   - id: TREE_UTILITY_GENERIC_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [UTILITY] }
-    constraint: { type: min_distance, distance_m: null, units: m }
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY]}
+    constraint: {type: min_distance, distance_m: null, units: m}
     source:
       document: sp_42_13330_2016
-      clause: null
+      clause:
       title: "Консервативный технологический отступ от неопознанной сети (НЕ нормативная проверка)"
     status: missing_source_data
     severity: hard
@@ -299,64 +368,139 @@ rules:
       Технологический буфер до уточнения типа сети; не является правовой нормой
       и никогда не даёт PASS. Применяется только к деревьям — кустарники не
       проверяются против «древесного» правила.
-    assumption: { assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение: максимум по типовым сетям, применяется пока тип сети не уточнен." }
+    assumption: {assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение: максимум по типовым сетям, применяется пока тип сети не уточнен."}
 
   - id: TREE_LIGHTING_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [LIGHTING] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от мачты/опоры осветительной сети до оси ствола дерева" }
-    status: missing_source_data
+    applies_to: {planting_type: [TREE], obstacle_type: [LIGHTING]}
+    constraint: {type: min_distance, distance_m: 4.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от мачты/опоры осветительной сети до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Мачта и опора осветительной сети, трамвая, мостовая опора и эстакада — 4,0 (до оси ствола дерева); для кустарника норма не установлена (-)'}
+    status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 4.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 4.0, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
+  - id: TREE_TRAM_TRACK_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [TREE], obstacle_type: [TRAM_TRACK]}
+    constraint: {type: min_distance, distance_m: 5.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от края трамвайного полотна до оси ствола дерева
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
+      excerpt: Край трамвайного полотна — 5,0 (до оси ствола дерева), 3,0 (до кустарника)
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Категория TRAM_TRACK не реализована в классификаторе — правило выключено.
+  - id: SHRUB_TRAM_TRACK_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [SHRUB], obstacle_type: [TRAM_TRACK]}
+    constraint: {type: min_distance, distance_m: 3.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от края трамвайного полотна до кустарника
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
+      excerpt: Край трамвайного полотна — 3,0 (до кустарника)
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Категория TRAM_TRACK не реализована в классификаторе — правило выключено.
+  - id: TREE_SLOPE_TOE_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [TREE], obstacle_type: [SLOPE_TOE]}
+    constraint: {type: min_distance, distance_m: 1.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от подошвы откоса/террасы до оси ствола дерева
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: Подошва откоса, террасы и др. — 1,0 (до оси ствола дерева), 0,5 (до кустарника)
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Категория SLOPE_TOE не реализована в классификаторе — правило выключено.
+  - id: TREE_RETAINING_WALL_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [TREE], obstacle_type: [RETAINING_WALL]}
+    constraint: {type: min_distance, distance_m: 3.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от подошвы/внутренней грани подпорной стенки до оси ствола дерева
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: Подошва или внутренняя грань подпорной стенки — 3,0 (до оси ствола дерева), 1,0 (до кустарника)
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Категория RETAINING_WALL не реализована в классификаторе — правило выключено.
+  - id: TREE_LKS_TMK_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_LKS_TMK]}
+    constraint: {type: min_distance, distance_m: 1.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: sp_42_13330_2016
+      clause: п. 9.6, таблица 9.1
+      title: Расстояние от ЛКС ТМК до оси ствола дерева
+      url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
+      excerpt: 'Подземные сети: - ЛКС ТМК — 1,0 (до оси ствола дерева), 0,5 (до кустарника)'
+    status: verified
+    severity: hard
+    role: regulatory
+    note: "ЛКС ТМК — линейно-кабельные сооружения телекоммуникаций. Отдельной категории нет; такие сети сейчас попадают в UTILITY_COMMUNICATION с более строгим отступом 2,0 м, что консервативно и безопасно.\n"
 
   - id: TREE_FENCE_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [FENCE] }
-    constraint: { type: min_distance, distance_m: null, units: m }
-    condition: { crown_diameter_max_m: 5.0 }
-    source: { document: sp_42_13330_2016, clause: null, title: "Расстояние от ограждения до оси ствола дерева" }
+    applies_to: {planting_type: [TREE], obstacle_type: [FENCE]}
+    constraint: {type: min_distance, distance_m: null, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: null, title: "Расстояние от ограждения до оси ствола дерева"}
     status: missing_source_data
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: { assumed_distance_m: 2.0, enabled: false, note: "ДЕМО-значение; по умолчанию выключено (зависит от высоты ограждения)." }
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "ДЕМО-значение. В табл. 9.1 СП 42.13330.2016 строки «ограждение» НЕТ — ближайшая по смыслу «подпорная стенка» (3,0 м) к ограждениям не относится. Источник не найден."}
 
   - id: TREE_TREE_MIN_SPACING
     enabled: true
-    applies_to: { planting_type: [TREE], obstacle_type: [PLANTING_TREE, EXISTING_TREE] }
-    constraint: { type: min_spacing, distance_m: null, units: m }
+    applies_to: {planting_type: [TREE], obstacle_type: [PLANTING_TREE, EXISTING_TREE]}
+    constraint: {type: min_spacing, distance_m: null, units: m}
     source:
       document: tsn_30_307_2002
-      clause: null
+      clause:
       title: "Минимальное расстояние между деревьями в ряду/группе"
     status: missing_source_data
     severity: recommended
     role: design_heuristic
     note: "проектная эвристика, не правовая норма; источник не установлен"
-    assumption: { assumed_distance_m: 5.0, enabled: true, note: "ДЕМО-значение, требует верификации по ТСН 30-307-2002 / МГСН 1.02-02." }
+    assumption: {assumed_distance_m: 5.0, enabled: true, note: "ДЕМО-значение, требует верификации по ТСН 30-307-2002 / МГСН 1.02-02."}
 
   - id: SHRUB_SHRUB_MIN_SPACING
     enabled: true
-    applies_to: { planting_type: [SHRUB], obstacle_type: [PLANTING_SHRUB, EXISTING_SHRUB] }
-    constraint: { type: min_spacing, distance_m: null, units: m }
-    source: { document: tsn_30_307_2002, clause: null, title: "Минимальное расстояние между кустарниками" }
+    applies_to: {planting_type: [SHRUB], obstacle_type: [PLANTING_SHRUB, EXISTING_SHRUB]}
+    constraint: {type: min_spacing, distance_m: null, units: m}
+    source: {document: tsn_30_307_2002, clause: null, title: "Минимальное расстояние между кустарниками"}
     status: missing_source_data
     severity: recommended
     role: design_heuristic
     note: "проектная эвристика, не правовая норма; источник не установлен"
-    assumption: { assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации." }
+    assumption: {assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации."}
 
   - id: VISIBILITY_TRIANGLE_NO_TALL_PLANTS
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [ROAD] }
-    constraint: { type: custom_geometry, distance_m: null, units: m }
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [ROAD]}
+    constraint: {type: custom_geometry, distance_m: null, units: m}
     source:
       document: tsn_30_307_2002
-      clause: null
+      clause:
       title: "Треугольники видимости на пересечениях проездов: запрет насаждений выше 0.5 м"
     status: missing_source_data
     severity: hard
@@ -366,60 +510,58 @@ rules:
       размещение зеленых насаждений высотой более 0.5 м. Деревья и кустарники
       каталога выше 0.5 м по определению.
     assumption:
-      assumed_distance_m: null
+      assumed_distance_m:
       enabled: true
       note: "треугольники видимости 8×40 м (40 км/ч) по московским правилам; категория/скорость улиц из чертежа не определяется — размеры ДЕМО"
 
   - id: TREE_EXISTING_TREE_MIN_DISTANCE
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [EXISTING_TREE] }
-    constraint: { type: min_distance, distance_m: null, units: m }
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [EXISTING_TREE]}
+    constraint: {type: min_distance, distance_m: null, units: m}
     source:
       document: ppm_743_2002
-      clause: null
+      clause:
       title: "Защита существующих зеленых насаждений при новых посадках"
     status: missing_source_data
     severity: hard
-    assumption: { assumed_distance_m: 3.0, enabled: true, note: "ДЕМО-значение: защитная зона существующего дерева, требует верификации." }
+    assumption: {assumed_distance_m: 3.0, enabled: true, note: "ДЕМО-значение: защитная зона существующего дерева, требует верификации."}
 
   - id: PLANTING_INSIDE_SITE_BOUNDARY
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [SITE_BOUNDARY] }
-    constraint: { type: inside, distance_m: 0.0, units: m }
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [SITE_BOUNDARY]}
+    constraint: {type: inside, distance_m: 0.0, units: m}
     source:
       document: project_geometry
-      clause: null
+      clause:
       title: "Посадки размещаются в границах участка благоустройства (границы из чертежа)"
     status: verified   # structural/geometric constraint of this project, not a legal citation
     severity: hard
-    assumption: null
+    assumption:
 
   - id: INVASIVE_SPECIES_BLACKLIST
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [] }
-    constraint: { type: species_blacklist, species: null, units: null }
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: []}
+    constraint: {type: species_blacklist, species: [Ailanthus altissima, Heracleum sosnowskyi, Solidago canadensis, Solidago gigantea, Lupinus polyphyllus, Reynoutria, Acer negundo, Amorpha fruticosa, Parthenocissus inserta, Cornus albus, Quercus rubra, Amelanchier spicata, Amelanchier alnifolia, Hippophae rhamnoides, Juglans mandshurica, Physocarpus opulifolius, Robinia pseudoacacia, Rosa rugosa, Sorbaria sorbifolia, Prunus virginiana, Fraxinus pennsylvanica, Petasites hybridus, Veronica filiformis, Erigeron canadensis, Impatiens glandulifera, Impatiens parviflora, Helianthus tuberosus, Adenocaulon adhaerescens, Zizania latifolia, Bidens frondosa, Elodea canadensis, Echinocystis lobata], units: null}
     source:
       document: ppm_369_2026
-      clause: null
+      clause: приложение 1
       title: "Перечень инвазивных видов растений, запрещенных к посадке"
-      url: null
-      excerpt: null
-    status: missing_source_data
+      url: dataset/госты/О мерах по регулированию распространения и численности инвазивных растений на территории города Москвы от 03 марта 2026 - docs.cntd.ru.pdf#page=4
+      excerpt: 'Перечень инвазивных видов растений, в отношении которых применяются меры по регулированию распространения и численности: 1. группа I — Айлант высочайший Ailanthus altissima (Mill.) Swingle; Борщевик Сосновского Heracleum sosnowskyi Manden; Золотарники канадский и гигантский Solidago canadensis, gigantea; Люпин многолистный Lupinus polyphyllus Lindl.; Рейнутрия Reynoutria ssp. 2. группа II — Клен ясенелистный Acer negundo L. ...'
+    status: verified
     severity: hard
-    assumption: null
+    assumption:
     note: >
-      Архитектурно готово: как только верифицированный перечень видов будет добавлен в
-      constraint.species (список species id или латинских названий), движок автоматически
-      отклонит эти виды. Перечень НЕ придуман и не заполнен, т.к. отсутствует в исходных данных.
+      Верифицировано по приложению 1 к ППМ № 369-ПП: 31 таксон в четырех группах. Авторские цитаты (L., Maxim., Michx. и др.) отброшены, оставлены биномены — сопоставление в blacklist_check идет по латинскому названию без авторства. «Рейнутрия Reynoutria ssp.» в акте задана на уровне рода, поэтому в списке стоит только род. ОГОВОРКА: у позиции 3.7 «Облепиха крушиновидная» извлечение PDF потеряло название рода (в тексте осталось лишь "rhamnoides L"); биномен восстановлен как Hippophae rhamnoides — русское название в акте однозначно. Проверить при следующей сверке по бумажному тексту. ВАЖНО: акт устанавливает меры по РЕГУЛИРОВАНИЮ распространения, а не прямой запрет посадки. Правило трактует это как запрет на проектирование новых посадок этих видов — трактовка проекта, а не дословная норма.
 
   - id: ACCESSIBILITY_ROUTE_CLEARANCE
     enabled: true
-    applies_to: { planting_type: [TREE, SHRUB], obstacle_type: [ACCESS_ROUTE] }
-    constraint: { type: min_distance, distance_m: null, units: m }
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [ACCESS_ROUTE]}
+    constraint: {type: min_distance, distance_m: null, units: m}
     source:
       document: sp_59_13330
-      clause: null
+      clause:
       title: "Свободная ширина путей движения МГН не должна сокращаться посадками"
     status: missing_source_data
     severity: hard
-    assumption: { assumed_distance_m: 1.2, enabled: false, note: "ДЕМО-значение; выключено по умолчанию — требуемая ширина пути не верифицирована." }
+    assumption: {assumed_distance_m: 1.2, enabled: false, note: "ДЕМО-значение; выключено по умолчанию — требуемая ширина пути не верифицирована."}

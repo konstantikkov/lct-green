@@ -21,8 +21,10 @@ echo "==> provisioning"
 $SSH 'bash -s' <<'REMOTE'
 set -euo pipefail
 sudo apt-get update -qq
+# libc6-dev is explicit on purpose: bare gcc cannot link, and relying on
+# another package to pull the headers in breaks on slim base images.
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    python3-venv python3-pip nginx gcc make curl > /dev/null
+    python3-venv python3-pip nginx gcc make libc6-dev curl > /dev/null
 
 sudo mkdir -p /opt/greenplan && sudo chown "$USER" /opt/greenplan
 tar xzf /tmp/greenplan_api.tar.gz -C /opt/greenplan
