@@ -104,6 +104,17 @@ def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
     return out_path
 
 
+def empty_like(scale_to_meters: float, out_path: Path) -> Path:
+    """An empty DXF in the source drawing's units (the scale the parser
+    settled on) — the base for a result-only export: AI_GREENING_* layers in
+    the source coordinates, attachable to the general plan as an xref."""
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = {1.0: 6, 0.01: 5, 0.001: 4}.get(round(scale_to_meters, 6), 6)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.saveas(str(out_path))
+    return out_path
+
+
 def export_report(out_path: Path, report: dict) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from . import config, pipeline, store
 from .models.ir import CATEGORIES, CadDocument, LayerClassification
-from .services import classification, dxf_export
+from .services import cad_package, classification, dxf_export
 from .services.dwg_converter import DwgConversionError, DwgConverter, detect_converter
 from .services.explain import build_explanation
 from .services.geometry import as_polygon_list
@@ -69,7 +69,10 @@ def _sanitize_filename(name: str) -> str:
 
 def _validate_signature(path: Path, ext: str) -> None:
     head = path.open("rb").read(256)
-    if ext == ".dwg":
+    if ext == ".zip":
+        if not head.startswith(b"PK\x03\x04"):
+            _err(422, "INVALID_FILE", "File does not look like a ZIP archive.")
+    elif ext == ".dwg":
         if not head.startswith(b"AC10") and not head.startswith(b"AC1."):
             _err(422, "INVALID_FILE", "File does not look like a DWG (bad signature).")
     else:
@@ -80,9 +83,46 @@ def _validate_signature(path: Path, ext: str) -> None:
             _err(422, "INVALID_FILE", "File does not look like a DXF (no SECTION header).")
 
 
+# what the viewer must show first when a drawing exceeds the render cap
+_RENDER_PRIORITY = ["SITE_BOUNDARY", "UTILITY_HEAT", "UTILITY_GAS", "UTILITY_WATER",
+                    "UTILITY_SEWER", "UTILITY_DRAINAGE", "UTILITY_ELECTRICITY",
+                    "UTILITY_COMMUNICATION", "UTILITY", "BUILDING", "GREEN_AREA", "ROAD",
+                    "SIDEWALK", "CURB", "PARKING", "EXISTING_TREE", "EXISTING_SHRUB",
+                    "LIGHTING", "FENCE", "ACCESS_ROUTE", "UNKNOWN", "ANNOTATION"]
+
+
+def _render_selection(doc: CadDocument) -> list:
+    """≤ MAX_RENDER_ENTITIES entities for the viewer. Small drawings go out
+    whole and in order; merged xref packages (300k+ entities) are cut by
+    category priority — boundary and utilities first, contour lines last —
+    and the category that crosses the cap is thinned evenly, not truncated,
+    so it still covers the whole site."""
+    cap = config.MAX_RENDER_ENTITIES
+    if len(doc.entities) <= cap:
+        return doc.entities
+    lm = doc.layer_map()
+    by_cat: dict[str, list] = {}
+    for e in doc.entities:
+        li = lm.get(e.layer)
+        by_cat.setdefault(li.classification.category if li else "UNKNOWN", []).append(e)
+    order = _RENDER_PRIORITY + [c for c in by_cat if c not in _RENDER_PRIORITY]
+    out: list = []
+    for cat in order:
+        ents = by_cat.get(cat, [])
+        room = cap - len(out)
+        if room <= 0:
+            break
+        if len(ents) <= room:
+            out.extend(ents)
+        else:
+            step = len(ents) / room
+            out.extend(ents[int(i * step)] for i in range(room))
+    return out
+
+
 def _document_response(pid: str, doc: CadDocument, state: str) -> dict:
     ents = []
-    for e in doc.entities[:config.MAX_RENDER_ENTITIES]:
+    for e in _render_selection(doc):
         g = e.geometry
         item: dict = {"id": e.id, "sourceHandle": e.sourceHandle, "type": e.type,
                       "layer": e.layer, "kind": e.kind}
@@ -113,6 +153,8 @@ def _document_response(pid: str, doc: CadDocument, state: str) -> dict:
         "layers": [l.model_dump() for l in doc.layers],
         "entities": ents,
         "conversionLog": doc.conversionLog,
+        # eTransmit package composition (sources, what merged, clip region)
+        "package": store.load_json(pid, "package"),
     }
 
 
@@ -121,7 +163,7 @@ async def create_project(file: UploadFile = File(...)):
     fname = _sanitize_filename(file.filename or "upload")
     ext = Path(fname).suffix.lower()
     if ext not in config.ALLOWED_EXTENSIONS:
-        _err(422, "UNSUPPORTED_EXTENSION", f"Only .dxf/.dwg supported, got '{ext}'.")
+        _err(422, "UNSUPPORTED_EXTENSION", f"Only .dxf/.dwg/.zip supported, got '{ext}'.")
 
     config.ensure_dirs()
     tmp_name = f"{uuid.uuid4().hex}{ext}"
@@ -137,14 +179,34 @@ async def create_project(file: UploadFile = File(...)):
             out.write(chunk)
     _validate_signature(upload_path, ext)
 
-    fmt = "DWG" if ext == ".dwg" else "DXF"
+    fmt = {".dwg": "DWG", ".zip": "PACKAGE"}.get(ext, "DXF")
     pid = store.create_project(Path(fname).stem, fname, fmt, str(upload_path),
                                pipeline.file_hash(upload_path))
 
     # convert if needed
     dxf_path = upload_path
     conversion_log: list[str] = []
-    if fmt == "DWG":
+    package: cad_package.PackageResult | None = None
+    if fmt == "PACKAGE":
+        # base drawing + xrefs → one merged DXF clipped to the work boundary
+        store.update_project(pid, state="CONVERTING")
+        workdir = config.DATA_DIR / "uploads" / f"{uuid.uuid4().hex}_pkg"
+        try:
+            package = await asyncio.to_thread(cad_package.ingest_package, upload_path, workdir)
+        except cad_package.PackageError as exc:
+            store.update_project(pid, state="FAILED")
+            shutil.rmtree(workdir, ignore_errors=True)
+            _err(422, exc.code, str(exc))
+        except DwgConversionError as exc:
+            store.update_project(pid, state="FAILED")
+            shutil.rmtree(workdir, ignore_errors=True)
+            _err(422, exc.code, str(exc))
+        finally:
+            for tmp in ("unpacked", "converted"):
+                shutil.rmtree(workdir / tmp, ignore_errors=True)
+        dxf_path = package.merged_dxf
+        conversion_log.extend(package.log)
+    elif fmt == "DWG":
         store.update_project(pid, state="CONVERTING")
         converter = DwgConverter()
         target = config.DATA_DIR / "uploads" / f"{uuid.uuid4().hex}.dxf"
@@ -165,6 +227,9 @@ async def create_project(file: UploadFile = File(...)):
 
     store.update_project(pid, state="CLASSIFYING")
     classification.classify_document(doc)
+    if package is not None:
+        doc.conversionLog.extend(cad_package.apply_source_classification(doc, package.sources))
+        store.save_json(pid, "package", package.to_api())
     llm = LocalLLM()
     try:
         await asyncio.wait_for(classification.refine_with_llm(doc, llm), timeout=25)
@@ -566,7 +631,13 @@ def _selected_iteration(pid: str) -> dict:
 
 
 @app.get("/api/projects/{pid}/export/dxf")
-def export_dxf(pid: str):
+def export_dxf(pid: str, layers: str = "all"):
+    """layers=all — source drawing + AI_GREENING_* layers (for xref packages:
+    the merged, work-boundary-clipped underlay); layers=result — ONLY the
+    AI_GREENING_* layers in the same coordinates, to attach to the designer's
+    own general plan as an external reference."""
+    if layers not in ("all", "result"):
+        _err(422, "INVALID_PARAM", "layers must be 'all' or 'result'")
     rt = _get_rt(pid)
     proj = store.get_project(pid)
     rec = _selected_iteration(pid)
@@ -578,11 +649,16 @@ def export_dxf(pid: str):
                             crownRadiusM=p["crownRadiusM"], score=p["score"])
                   for p in rec["placements"]]
     stem = Path(proj["file_name"]).stem
-    out = config.OUTPUT_DIR / f"{stem}_greening.dxf"
-    src_dxf = Path(proj["dxf_path"])
-    if not src_dxf.exists():  # e.g. server disk replaced — restore from DB blob
-        if not store.restore_file_blob(pid, "source_dxf", src_dxf):
-            _err(409, "SOURCE_MISSING", "Original DXF unavailable for export.")
+    if layers == "result":
+        out = config.OUTPUT_DIR / f"{stem}_greening_layers.dxf"
+        src_dxf = dxf_export.empty_like(rt.doc.unitsScaleToMeters,
+                                        config.OUTPUT_DIR / f"{stem}_empty.dxf")
+    else:
+        out = config.OUTPUT_DIR / f"{stem}_greening.dxf"
+        src_dxf = Path(proj["dxf_path"])
+        if not src_dxf.exists():  # e.g. server disk replaced — restore from DB blob
+            if not store.restore_file_blob(pid, "source_dxf", src_dxf):
+                _err(409, "SOURCE_MISSING", "Original DXF unavailable for export.")
     dxf_export.export_greening_dxf(
         src_dxf, out, placements,
         constraints.allowed_area, constraints.exclusion_zones,

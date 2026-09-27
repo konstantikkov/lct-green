@@ -81,21 +81,86 @@ def build_geometry_index(doc: CadDocument) -> GeometryIndex:
     return idx
 
 
+def _as_polygon(coords: list) -> Polygon | None:
+    ring = Polygon(coords)
+    if ring.is_valid and ring.area > 0:
+        return ring
+    repaired = ring.buffer(0)
+    if isinstance(repaired, Polygon) and repaired.area > 0:
+        return repaired
+    if isinstance(repaired, MultiPolygon) and repaired.area > 0:
+        return max(repaired.geoms, key=lambda p: p.area)
+    return None
+
+
+def stitch_rings(lines: list[LineString], tol: float = 2.0) -> list[Polygon]:
+    """Join open polylines whose ends meet (within `tol` m) into closed rings.
+
+    A chain that cannot be closed but has ≥ 4 points is closed by its own
+    first-to-last segment — the long-standing behaviour for a single open
+    boundary polyline."""
+    import math
+    pool = [list(ln.coords) for ln in lines if len(ln.coords) >= 2]
+    out: list[Polygon] = []
+
+    def near(a, b) -> bool:
+        return math.dist(a[:2], b[:2]) <= tol
+
+    while pool:
+        chain = pool.pop(0)
+        grown = True
+        while grown and not (len(chain) >= 4 and near(chain[0], chain[-1])):
+            grown = False
+            for i, c in enumerate(pool):
+                if near(chain[-1], c[0]):
+                    chain = chain + c
+                elif near(chain[-1], c[-1]):
+                    chain = chain + c[::-1]
+                elif near(chain[0], c[-1]):
+                    chain = c + chain
+                elif near(chain[0], c[0]):
+                    chain = c[::-1] + chain
+                else:
+                    continue
+                pool.pop(i)
+                grown = True
+                break
+        if len(chain) >= 4:
+            poly = _as_polygon(chain)
+            if poly is not None:
+                out.append(poly)
+    return out
+
+
 def detect_site_boundary(doc: CadDocument, idx: GeometryIndex) -> tuple[Polygon | None, str]:
-    """Largest closed polygon on a SITE_BOUNDARY layer; fallback to drawing extents."""
+    """Largest closed polygon on a SITE_BOUNDARY layer; fallback to drawing extents.
+
+    A work boundary delivered in an xref package (layer classified with
+    source="package") is often several separate areas — there the site is
+    the union of all of them, not just the largest."""
     candidates: list[Polygon] = []
+    from_package: list[Polygon] = []
+    open_lines: dict[bool, list[LineString]] = {True: [], False: []}
+    lm = doc.layer_map()
     for eid in idx.by_category.get("SITE_BOUNDARY", []):
         g = idx.by_entity[eid]
+        li = lm.get(idx.entity_meta[eid].layer)
+        pkg = li is not None and li.classification.source == "package"
         if isinstance(g, Polygon) and g.area > 0:
             candidates.append(g)
-        elif isinstance(g, LineString) and len(g.coords) >= 4:
-            ring = Polygon(list(g.coords))
-            if ring.is_valid and ring.area > 0:
-                candidates.append(ring)
-            else:
-                repaired = ring.buffer(0)
-                if isinstance(repaired, Polygon) and repaired.area > 0:
-                    candidates.append(repaired)
+            if pkg:
+                from_package.append(g)
+        elif isinstance(g, LineString) and len(g.coords) >= 2:
+            open_lines[pkg].append(g)
+    # boundaries drawn as several open pieces (the Moscow work boundary is two
+    # halves meeting end to end): stitch them into rings first
+    for pkg, lines in open_lines.items():
+        for ring in stitch_rings(lines):
+            candidates.append(ring)
+            if pkg:
+                from_package.append(ring)
+    if from_package:
+        return unary_union(from_package), "detected"
     if candidates:
         return max(candidates, key=lambda p: p.area), "detected"
 

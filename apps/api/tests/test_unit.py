@@ -107,6 +107,21 @@ def test_layer_classification(layer, expected):
     ("Граница растительности и грунта", "GREEN_AREA"),
     ("Красные линии", "SITE_BOUNDARY"),
     ("Граница заказа", "SITE_BOUNDARY"),
+    # the rest of the topographic plan vocabulary (was 78 layers to review)
+    ("Навесы", "BUILDING"),
+    ("Павильоны", "BUILDING"),
+    ("Фонтаны", "BUILDING"),
+    ("Памятники", "BUILDING"),
+    ("Опоры контакной сети", "LIGHTING"),
+    ("Светофоры", "LIGHTING"),
+    ("Колодцы", "UTILITY"),
+    ("Люки", "UTILITY"),
+    ("Выгребные ямы", "UTILITY_SEWER"),
+    ("Указатель подз коммуникаций", "ANNOTATION"),
+    ("Откосы", "ANNOTATION"),
+    ("Геодезические пункты", "ANNOTATION"),
+    ("ДВ_ГП_П_МАФ", "ANNOTATION"),
+    ("_МАФ_вент. кожух", "ANNOTATION"),
 ])
 def test_real_geotrest_layer_names(layer, expected):
     assert classification.classify_layer_name(layer).category == expected

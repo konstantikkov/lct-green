@@ -36,7 +36,7 @@
         <bpmn:flowNodeRef>End_Output</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
-    <bpmn:startEvent id="Start_Input" name="Чертёж участка (DWG / DXF)">
+    <bpmn:startEvent id="Start_Input" name="Чертёж или пакет (DWG / DXF / ZIP)">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:userTask id="Task_Upload" name="Загрузить чертёж">
@@ -48,7 +48,7 @@
       <bpmn:outgoing>Flow_3</bpmn:outgoing>
       <bpmn:outgoing>Flow_4</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:serviceTask id="Task_Convert" name="Конвертировать DWG → DXF (LibreDWG / ODA)">
+    <bpmn:serviceTask id="Task_Convert" name="DWG → DXF; ZIP-пакет: собрать внешние ссылки в один DXF">
       <bpmn:incoming>Flow_3</bpmn:incoming>
       <bpmn:outgoing>Flow_5</bpmn:outgoing>
     </bpmn:serviceTask>
@@ -140,7 +140,7 @@
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_Input" targetRef="Task_Upload" />
     <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Upload" targetRef="Gw_Format" />
-    <bpmn:sequenceFlow id="Flow_3" name="DWG" sourceRef="Gw_Format" targetRef="Task_Convert" />
+    <bpmn:sequenceFlow id="Flow_3" name="DWG / ZIP" sourceRef="Gw_Format" targetRef="Task_Convert" />
     <bpmn:sequenceFlow id="Flow_4" name="DXF" sourceRef="Gw_Format" targetRef="Task_Parse" />
     <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_Convert" targetRef="Task_Parse" />
     <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_Parse" targetRef="Task_ReviewLayers" />
@@ -210,7 +210,7 @@
       <bpmndi:BPMNShape id="Ann_Explain_di" bpmnElement="Ann_Explain"><dc:Bounds x="2280" y="739" width="280" height="62" /></bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1"><di:waypoint x="198" y="95" /><di:waypoint x="275" y="95" /></bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2"><di:waypoint x="405" y="95" /><di:waypoint x="500" y="95" /><di:waypoint x="500" y="220" /></bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3"><di:waypoint x="525" y="245" /><di:waypoint x="595" y="245" /><bpmndi:BPMNLabel><dc:Bounds x="533" y="223" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3"><di:waypoint x="525" y="245" /><di:waypoint x="595" y="245" /><bpmndi:BPMNLabel><dc:Bounds x="533" y="223" width="58" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4"><di:waypoint x="500" y="270" /><di:waypoint x="500" y="300" /><di:waypoint x="820" y="300" /><di:waypoint x="820" y="285" /><bpmndi:BPMNLabel><dc:Bounds x="504" y="301" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5"><di:waypoint x="725" y="245" /><di:waypoint x="755" y="245" /></bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6"><di:waypoint x="885" y="245" /><di:waypoint x="980" y="245" /><di:waypoint x="980" y="135" /></bpmndi:BPMNEdge>

@@ -125,6 +125,17 @@ function MobileOverflowMenu() {
         <button
           className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={!canExport}
+          title="Только слои AI_GREENING_* в координатах исходного чертежа — подключить к генплану как внешнюю ссылку"
+          onClick={() => {
+            setOpen(false);
+            if (doc) window.open(api.exportDxfUrl(doc.projectId, "result"), "_blank");
+          }}
+        >
+          Экспорт DXF — только слои результата
+        </button>
+        <button
+          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={!canExport}
           onClick={() => {
             setOpen(false);
             if (doc) window.open(api.exportReportUrl(doc.projectId), "_blank");

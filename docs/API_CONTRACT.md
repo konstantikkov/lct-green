@@ -259,6 +259,21 @@ Invalidates cached constraints.
 
 ### `GET /api/projects/{id}/chunks` → `[{chunkId, bbox: [minx,miny,maxx,maxy], summary: {…counts by category}, textLabels: string[]}]`
 
+### xref packages (registry v0.3.0 iteration)
+`POST /api/projects` also accepts a `.zip` — an AutoCAD eTransmit package: base
+general plan + external references. It is merged into one DXF (xref layers
+renamed `<xref>$0$<layer>`, clipped to the work boundary + 15 m) and parsed as
+usual; `format` is `"PACKAGE"` and the response carries
+`package: {baseFile, clip: {mode, source?, marginM?, boundaryAreaM2?},
+sources: [{name, kind, title, file, prefix, status, entitiesIn, entitiesKept,
+detail}]}` (`kind`: base | tp | up | pp | kl | brd | work_boundary | curbs |
+covers | other; `status`: merged | missing | failed | empty). The same field
+is returned by `GET …/document` (null for single drawings). Layer
+classifications may have `source: "package"` (decided by the source file).
+`allowedBasis` gains `"cover_lawns"` (planting domain = project lawns of the
+cover plan inside the site). `GET …/export/dxf?layers=result` returns only the
+`AI_GREENING_*` layers in source coordinates, to attach as an xref.
+
 ### `GET /api/rules` → `RegulatoryRule[]`
 ```ts
 interface RegulatoryRule {

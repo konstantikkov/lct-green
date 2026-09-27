@@ -93,6 +93,26 @@ class ConstraintResult:
         }
 
 
+def _cover_plan_lawns(doc: CadDocument, idx: GeometryIndex):
+    """Union of lawn areas from a general-plan cover plan ("заливки": layers
+    like "_АБ ТР-ГЗН", classified GREEN_AREA with matchedKeyword "cover:…").
+    None when the drawing has no cover plan — a stray lawn polygon on an
+    ordinary drawing must not shrink the planting domain."""
+    lm = doc.layer_map()
+    polys = []
+    for eid in idx.by_category.get("GREEN_AREA", []):
+        li = lm.get(idx.entity_meta[eid].layer)
+        if li is None or not (li.classification.matchedKeyword or "").startswith("cover:"):
+            continue
+        g = idx.by_entity[eid]
+        if g.geom_type in ("Polygon", "MultiPolygon") and g.area > 0:
+            polys.append(g)
+    if not polys:
+        return None
+    u = unary_union(polys)
+    return u if u.is_valid else u.buffer(0)
+
+
 def detect_planting_domain(doc: CadDocument, idx: GeometryIndex, site: Polygon | None,
                            site_src: str, repair_log: list[str]):
     """Planting domain and its provenance.
@@ -106,6 +126,16 @@ def detect_planting_domain(doc: CadDocument, idx: GeometryIndex, site: Polygon |
     """
     import re as _re
     if site_src == "detected":
+        lawns = _cover_plan_lawns(doc, idx)
+        if lawns is not None:
+            dom = lawns.intersection(site)
+            if not dom.is_valid:
+                dom = dom.buffer(0)
+            if not dom.is_empty and dom.area > 1.0:
+                repair_log.append(
+                    f"planting domain: project lawns from the cover plan inside the site boundary "
+                    f"({dom.area:.0f} of {site.area:.0f} m²)")
+                return dom, "cover_lawns"
         return site, "site_boundary"
 
     evidence = []
