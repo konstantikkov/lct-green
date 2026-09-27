@@ -165,6 +165,101 @@ def test_site_is_the_stitched_work_boundary_and_domain_the_lawns(merged):
     assert cons.allowed_area.within(cons.planting_domain.buffer(0.01))
 
 
+def _dangling_pointers(path: Path) -> int:
+    """Pointer group codes naming objects the file does not define — AutoCAD
+    rejects such a file as damaged even though ezdxf reads it."""
+    pointer = set(range(320, 370)) | set(range(390, 400)) | {480, 481, 1005}
+    lines = [ln.rstrip("\r") for ln in path.read_text(encoding="utf-8").split("\n")]
+    defined, refs, section, prev = set(), [], None, None
+    for i in range(0, len(lines) - 1, 2):
+        code, val = int(lines[i]), lines[i + 1].strip()
+        if code == 2 and prev == "SECTION":
+            section = val
+        if code == 0:
+            prev = val
+            continue
+        if code in (5, 105) and section != "HEADER":
+            defined.add(val.upper())
+        elif code in pointer and val not in ("", "0"):
+            refs.append(val.upper())
+    return sum(1 for h in refs if h not in defined)
+
+
+def test_merged_package_is_autocad_safe(tmp_path):
+    """Associative hatches, layer material/plot-style handles and complex
+    linetypes keep SOURCE handles after merging — all must be re-pointed."""
+    root = tmp_path / "pkg"
+
+    def _tp_with_foreign_pointers(doc, msp):
+        _tp(doc, msp)
+        doc.layers.add("Леса и газоны")
+        boundary = msp.add_lwpolyline([(40, 30), (45, 30), (45, 35)], close=True,
+                                      dxfattribs={"layer": "Леса и газоны"})
+        h = msp.add_hatch(dxfattribs={"layer": "Леса и газоны"})
+        path = h.paths.add_polyline_path([(40, 30), (45, 30), (45, 35)], is_closed=True)
+        path.source_boundary_objects = [boundary.dxf.handle]
+        h.dxf.associative = 1
+        msp.delete_entity(boundary)            # boundary entity not merged
+        doc.layers.get("Леса и газоны").dxf.material_handle = "FFFF1"
+    z = _package(tmp_path)
+    # the same package with the tp swapped for a pointer-laden variant
+    name = f"Генплан_Тест - Standard/3ДЖКХ-25_00001/{TP}.dxf"
+    data = _dxf_bytes(_tp_with_foreign_pointers)
+    z2 = tmp_path / "package2.zip"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, data if info.filename == name else src.read(info))
+    res = cad_package.ingest_package(z2, root)
+    assert _dangling_pointers(res.merged_dxf) == 0
+    assert any("AutoCAD-safe" in m for m in res.log)
+
+
+def _complex_linetype(doc, name: str, shx: str) -> None:
+    """A topographic linetype like "Otkos ukrep": two shape elements, each
+    referencing the shape-file style by handle."""
+    from ezdxf.entities.ltype import LinetypePattern
+    from ezdxf.lldxf.tags import Tags
+    from ezdxf.lldxf.types import DXFTag
+    style = doc.styles.add_shx(shx)
+    lt = doc.linetypes.add(name, pattern=[1.0, 0.5, -0.5])
+    h = style.dxf.handle
+    lt.pattern_tags = LinetypePattern(Tags([
+        DXFTag(72, 65), DXFTag(73, 3), DXFTag(40, 1.0),
+        DXFTag(49, 0.0), DXFTag(74, 4), DXFTag(75, 50), DXFTag(340, h), DXFTag(46, 0.005),
+        DXFTag(50, 0.0), DXFTag(44, 0.0), DXFTag(45, 0.0),
+        DXFTag(49, 0.5), DXFTag(74, 4), DXFTag(75, 119), DXFTag(340, h), DXFTag(46, 0.005),
+        DXFTag(50, 0.0), DXFTag(44, 0.0), DXFTag(45, 0.0),
+        DXFTag(49, 0.5), DXFTag(74, 0)]))
+
+
+def test_complex_linetype_every_shape_element_repointed(tmp_path):
+    """Every shape element must reference the target's shape-file style —
+    the Importer re-points at most the first reference."""
+    shx = "dgnlstyle-lib500_top_пцо.shx"
+
+    def _tp_with_ltype(doc, msp):
+        _tp(doc, msp)
+        for _ in range(40):  # push the style handle away from the target's
+            doc.styles.add_shx(f"pad{_}.shx")
+        _complex_linetype(doc, "Otkos ukrep", shx)
+        msp.add_line((5, 40), (30, 40), dxfattribs={"layer": "Откосы", "linetype": "Otkos ukrep"})
+
+    name = f"Генплан_Тест - Standard/3ДЖКХ-25_00001/{TP}.dxf"
+    z, z2 = _package(tmp_path), tmp_path / "package3.zip"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, _dxf_bytes(_tp_with_ltype) if info.filename == name else src.read(info))
+    res = cad_package.ingest_package(z2, tmp_path / "w3")
+    doc = ezdxf.readfile(str(res.merged_dxf))
+    lt = doc.linetypes.get("Otkos ukrep")
+    refs = [t.value for t in lt.pattern_tags.tags if t.code == 340]
+    assert len(refs) == 2
+    for h in refs:
+        st = doc.entitydb[h]
+        assert st.dxftype() == "STYLE" and st.dxf.flags & 1 and st.dxf.font.lower() == shx.lower()
+    assert _dangling_pointers(res.merged_dxf) == 0
+
+
 def test_base_found_without_report(tmp_path):
     res = cad_package.ingest_package(_package(tmp_path, with_report=False), tmp_path / "w")
     assert res.base_file.endswith("_06_Генплан_Тест.dxf")

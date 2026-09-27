@@ -475,6 +475,12 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
                 msp.delete_entity(e)           # xref placeholders never merge as blocks
         if dropped:
             msgs.append(f"{src.name}: {dropped} block reference(s) without a block definition dropped")
+        dims = [e for e in msp.query("DIMENSION")
+                if not e.dxf.get("geometry") or e.dxf.geometry not in doc.blocks]
+        for e in dims:                         # LibreDWG leaves out anonymous *D blocks
+            msp.delete_entity(e)
+        if dims:
+            msgs.append(f"{src.name}: {len(dims)} dimension(s) without a geometry block dropped")
         if matrix is not None:
             for e in msp:
                 try:
@@ -485,11 +491,24 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         src.entities_in, src.entities_kept = total, len(selected)
         _prefix_layers(doc, selected, src.prefix)
         imp = Importer(doc, target)
+        before = {lt.dxf.name for lt in target.linetypes}
         imp.import_entities(selected, target.modelspace())
         imp.finalize()
+        # complex linetypes reference their shape/text STYLE by handle, one
+        # reference per element. Every Importer.finalize() re-points only the
+        # FIRST reference of ALL target linetypes through its own handle map
+        # (others fall back to STANDARD), so fixing them here would be undone
+        # by the next import: record what each element referenced and apply
+        # it once all sources are merged
+        for lt in target.linetypes:
+            if lt.dxf.name not in before and lt.pattern_tags.is_complex_type():
+                src_lt = doc.linetypes.get(lt.dxf.name) if lt.dxf.name in doc.linetypes else None
+                if src_lt is not None:
+                    ltype_styles[lt.dxf.name] = _linetype_style_refs(src_lt, doc)
 
     import time
     t0 = time.time()
+    ltype_styles: dict[str, list] = {}
     merge(base_doc, sources[0], None)
     for (src, path, ref), dxf, err in converted:
         if err is not None or dxf is None:
@@ -511,6 +530,11 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
             src.status, src.detail = "failed", f"merge failed: {exc}"
         loaded.pop(src.name, None)
 
+    for name, refs in ltype_styles.items():
+        _apply_linetype_styles(target.linetypes.get(name), refs, target)
+    fixes = make_autocad_safe(target)
+    if fixes:
+        msgs.append("package: made AutoCAD-safe — " + ", ".join(f"{k}: {v}" for k, v in fixes.items()))
     out = workdir / "merged.dxf"
     target.saveas(str(out))
     msgs.append(f"package: merge took {time.time() - t0:.0f} s")
@@ -523,6 +547,146 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
             msgs.append(f"package: {s.name} — {s.status}: {s.detail}")
     return PackageResult(merged_dxf=out, base_file=sources[0].file, sources=sources,
                          clip=clip, log=msgs)
+
+
+def _target_style(target, font: str, shape: bool) -> str:
+    """Handle of a target STYLE of this kind (shape file / text) and font
+    file; created when missing."""
+    if shape:  # ezdxf's own lookup: its add_shx() refuses what find_shx() finds
+        found = target.styles.find_shx(font)
+        return (found or target.styles.add_shx(font)).dxf.handle
+    for st in target.styles:
+        if not st.dxf.flags & 1 and (st.dxf.get("font") or "").lower() == font.lower():
+            return st.dxf.handle
+    name = "STYLE_" + (font.rsplit(".", 1)[0] or "txt")
+    while name in target.styles:
+        name += "_"
+    return target.styles.add(name, font=font or "txt").dxf.handle
+
+
+def _linetype_style_refs(src_lt, src_doc) -> list:
+    """(font, is_shape_file) of the STYLE each element of a SOURCE complex
+    linetype references; None when it does not resolve there either."""
+    out = []
+    for t in src_lt.pattern_tags.tags:
+        if t.code == 340:
+            st = src_doc.entitydb.get(t.value)
+            out.append((st.dxf.get("font") or "", bool(st.dxf.flags & 1))
+                       if st is not None and st.dxftype() == "STYLE" else None)
+    return out
+
+
+def _apply_linetype_styles(lt, refs: list, target) -> None:
+    """Point the k-th style reference of the merged linetype at a target
+    style with the font / kind the k-th source reference had."""
+    from ezdxf.lldxf.tags import Tags
+    from ezdxf.lldxf.types import DXFTag
+    out, k = [], 0
+    for t in lt.pattern_tags.tags:
+        if t.code == 340 and k < len(refs):
+            ref = refs[k]
+            k += 1
+            out.append(DXFTag(340, _target_style(target, *ref)) if ref else t)
+        else:
+            out.append(t)
+    lt.pattern_tags.tags = Tags(out)
+
+
+def _simplify_bad_linetype_elements(lt, db) -> int:
+    """Each shape element (74 & 4) must reference a shape-file STYLE, each
+    text element (74 & 2) a text STYLE; an element that does not becomes a
+    plain dash (the file stays valid, the symbol is lost)."""
+    from ezdxf.lldxf.tags import Tags
+    from ezdxf.lldxf.types import DXFTag
+    tags = list(lt.pattern_tags.tags)
+    head = []
+    while tags and tags[0].code != 49:
+        head.append(tags.pop(0))
+    elements, cur = [], None
+    for t in tags:
+        if t.code == 49:
+            cur = [t]
+            elements.append(cur)
+        elif cur is not None:
+            cur.append(t)
+    fixed = 0
+    out = list(head)
+    for el in elements:
+        flags = next((t.value for t in el if t.code == 74), 0)
+        if flags & 6:
+            h = next((t.value for t in el if t.code == 340), None)
+            st = db.get(h) if h else None
+            ok = (st is not None and st.dxftype() == "STYLE"
+                  and bool(st.dxf.flags & 1) == bool(flags & 4))
+            if not ok:
+                el = [el[0], DXFTag(74, 0)]
+                fixed += 1
+        out.extend(el)
+    if fixed:
+        lt.pattern_tags.tags = Tags(out)
+    return fixed
+
+
+def make_autocad_safe(doc) -> dict[str, int]:
+    """Repair what merging foreign drawings leaves behind and AutoCAD rejects
+    as file damage although ezdxf reads it: pointers to objects of the SOURCE
+    document. Returns counts of the repairs made.
+
+    * associative hatches keep handles of their boundary entities, which
+      mostly were not merged → drop associativity;
+    * layers keep material / plot-style handles of the source → the
+      target's defaults (those of layer "0");
+    * complex linetype elements whose style is not a STYLE of the right
+      kind (shape file for shapes, text style for text) → plain dashes;
+    * then ezdxf's own audit (invalid DIMENSIONs, owners, …)."""
+    fixes: dict[str, int] = {}
+    db = doc.entitydb
+
+    def resolves(handle, dxftype=None) -> bool:
+        e = db.get(handle) if handle else None
+        return e is not None and (dxftype is None or e.dxftype() == dxftype)
+
+    layouts = [doc.modelspace()] + [b for b in doc.blocks]
+    n = 0
+    for layout in layouts:
+        for e in layout.query("HATCH"):
+            if e.dxf.get("associative", 0) or any(p.source_boundary_objects for p in e.paths):
+                e.dxf.associative = 0
+                for p in e.paths:
+                    p.source_boundary_objects = []
+                n += 1
+    if n:
+        fixes["hatches made non-associative"] = n
+
+    zero = doc.layers.get("0")
+    plot, mat = zero.dxf.get("plotstyle_handle"), zero.dxf.get("material_handle")
+    n = 0
+    for layer in doc.layers:
+        changed = False
+        h = layer.dxf.get("plotstyle_handle")
+        # type-checked: a source handle may collide with an unrelated target object
+        if h and not resolves(h, "ACDBPLACEHOLDER"):
+            layer.dxf.plotstyle_handle = plot
+            changed = True
+        h = layer.dxf.get("material_handle")
+        if h and not resolves(h, "MATERIAL"):
+            layer.dxf.material_handle = mat
+            changed = True
+        n += changed
+    if n:
+        fixes["layer material/plot-style pointers reset"] = n
+
+    n = 0
+    for lt in doc.linetypes:
+        if lt.pattern_tags.is_complex_type():
+            n += _simplify_bad_linetype_elements(lt, db)
+    if n:
+        fixes["complex linetype elements without a valid style simplified to dashes"] = n
+
+    auditor = doc.audit()
+    if auditor.fixes:
+        fixes["ezdxf audit fixes"] = len(auditor.fixes)
+    return fixes
 
 
 def _safe_prefix(name: str) -> str:
