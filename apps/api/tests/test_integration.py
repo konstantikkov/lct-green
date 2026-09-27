@@ -127,8 +127,8 @@ def test_dxf_export_roundtrip(tmp_path):
 
 
 @pytest.mark.skipif(not detect_converter().available, reason="no DWG converter installed")
+@pytest.mark.skipif(not REAL_DWG.exists(), reason="fixtures/site_plan_real.dwg is not in the repo (*.dwg is gitignored)")
 def test_real_dwg_conversion(tmp_path):
-    assert REAL_DWG.exists()
     conv = DwgConverter()
     out = conv.convert_to_dxf(REAL_DWG, tmp_path / "real.dxf")
     doc = parse_dxf(out, "real-doc", REAL_DWG.name, "DWG")

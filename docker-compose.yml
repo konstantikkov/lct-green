@@ -13,7 +13,8 @@ services:
       - PLACEMENT_RANDOM_SEED=${PLACEMENT_RANDOM_SEED:-42}
     volumes:
       - ./rules:/repo/rules:ro
-      - ./fixtures:/repo/fixtures:ro
+      - ./prompts:/repo/prompts:ro
+      - ./fixtures:/repo/fixtures
       - api-data:/repo/data
       - ./outputs:/repo/outputs
     extra_hosts:

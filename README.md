@@ -1,5 +1,9 @@
 # GreenPlan — automatic urban greening placement from CAD drawings
 
+> **Документация для экспертов (на русском): [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)** —
+> назначение, архитектура, алгоритм, интерпретируемость, схема процесса BPMN
+> ([docs/bpmn/](docs/bpmn/)), инструкция по запуску и проверке, ограничения.
+
 GreenPlan takes a site plan (**DWG / DXF**), understands what is on it (buildings,
 roads, sidewalks, utilities, existing vegetation), builds **regulatory exclusion
 zones**, computes the **allowed planting area**, and generates an **optimized,
@@ -231,8 +235,11 @@ executed on the deployment host — screenshots at 1366/1440/1920).
 
 ## Limitations (explicit)
 
-* **Assumed distances.** All demo buffer distances are unverified assumptions
-  (see above). Do not use outputs for real approvals until rules are verified.
+* **Rule provenance.** 24 of 34 registry rules are verified against the primary
+  texts (СП 42.13330.2016, ППМ № 743-ПП, № 623-ПП, № 369-ПП) with clause,
+  excerpt and PDF page; the rest are flagged safe buffers or disabled. See the
+  verification log in `rules/regulations.yaml` and section 8 of
+  [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) for the remaining assumptions.
 * **Site boundary detection** requires a closed polyline on a boundary-like
   layer; otherwise the drawing extents are used (`siteBoundarySource:
   "extents_fallback"`) — visible in the UI, fixable by reclassifying a layer.
