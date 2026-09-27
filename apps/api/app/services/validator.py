@@ -256,7 +256,7 @@ def validate_plan(placements: list[Placement], idx: GeometryIndex,
         pt = Point(p.x, p.y)
 
         # --- min_distance rules (regulatory + safe_buffer roles) ------------
-        for rule in registry.rules_for(p.kind, {"min_distance"}):
+        for rule in registry.rules_for(p.kind, {"min_distance"}, species_id=p.speciesId):
             if rule.role == "design_heuristic":
                 continue  # handled with the heuristics below
             d = rule.effective_distance_m
@@ -304,7 +304,9 @@ def validate_plan(placements: list[Placement], idx: GeometryIndex,
                 tally.record(status, hard=True, rule_id=inside_rule.id,
                              verified_passable=boundary_detected)
 
-        # --- visibility triangles (assumed demo geometry — never PASS) ------
+        # --- visibility triangles (623-ПП п. 9.4.2) — never PASS: whether the
+        # crossing is unsignalized and its speed limit cannot be read from the
+        # drawing, so the rule's applicability stays unconfirmed ------------
         if vis_enforced and p.kind in vis_rule.appliesTo.get("planting_type", []):
             if not vis_prepared:
                 tally.record("NOT_APPLICABLE", hard=True, rule_id=VISIBILITY_RULE_ID,

@@ -8,7 +8,7 @@ import {
   setRegFilter, uploadRegDocument, verifyRegCandidate,
 } from "../../state/regulations";
 import { useApp } from "../../state/store";
-import { RuleRoleBadge, ruleConditionNote } from "../regulatory";
+import { alsoCitedText, alsoCitedTitle, RuleRoleBadge, ruleConditionNote } from "../regulatory";
 import { Badge, Btn, Spinner, TextInput } from "../ui";
 import { CONSTRAINT_TYPE_LABELS, DOC_STATUS_LABELS, VERDICT_LABELS } from "../../labels";
 
@@ -465,6 +465,11 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
           {rule.severity === "hard" ? "обязательное" : "рекомендуемое"}
         </span>
       </div>
+      {rule.alsoCited && rule.alsoCited.length > 0 && (
+        <div className="mt-0.5 truncate text-2xs text-ink-400" title={alsoCitedTitle(rule.alsoCited)}>
+          также: {alsoCitedText(rule.alsoCited)}
+        </div>
+      )}
       {rule.source.excerpt && (
         <div className="mt-0.5 truncate text-2xs italic text-ink-500" title={rule.source.excerpt}>
           “{rule.source.excerpt}”

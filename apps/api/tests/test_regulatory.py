@@ -22,6 +22,8 @@ from app.services.constraints import (build_constraints,  # noqa: E402
                                       visibility_triangle_polygons)
 from app.services.dxf_parser import parse_dxf  # noqa: E402
 from app.services.explain import build_explanation  # noqa: E402
+from app.services.candidates import Candidate  # noqa: E402
+from app.services.optimizer import hard_filter_candidates  # noqa: E402
 from app.services.geometry import GeometryIndex, build_geometry_index  # noqa: E402
 from app.services.rules import (RegulatoryRule, RuleAssumption,  # noqa: E402
                                 RuleRegistry, RuleSource, load_registry)
@@ -262,15 +264,19 @@ def test_rule_api_exposes_role_and_condition():
     assert reg.get("TREE_TREE_MIN_SPACING").to_api()["role"] == "design_heuristic"
 
 
-def test_visibility_rule_registered():
+def test_visibility_rule_verified_by_623_pp():
+    """623-ПП (МГСН 1.02-02) п. 9.4.2: 8 x 40 м at 40 km/h, plants ≤ 0,5 м."""
     reg = load_registry()
     r = reg.get("VISIBILITY_TRIANGLE_NO_TALL_PLANTS")
     assert r is not None
     assert r.constraint["type"] == "custom_geometry"
-    assert r.status == "missing_source_data"
+    assert r.status == "verified" and r.effective_source == "verified"
+    assert "623-ПП" in r.source.document and r.source.clause == "п. 9.4.2"
+    assert "8 x 40 м" in r.source.excerpt and "0,5 м" in r.source.excerpt
+    assert sorted(r.constraint["legs_m"]) == [8.0, 40.0]
     assert r.severity == "hard" and r.role == "regulatory"
-    assert r.assumption.enabled is True
-    assert "ДЕМО" in r.assumption.note
+    # speed / signalling are not in the drawing — applicability is a condition
+    assert set(r.condition) == {"unsignalized_crossing", "speed_limit_kmh_max"}
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +319,7 @@ def test_visibility_triangle_detection_and_validation(tmp_path):
     assert cons.site_boundary_kind == "detected"
     vis = cons.visibility_zones()
     assert len(vis) == 1
-    assert vis[0].effectiveSource == "assumption"
+    assert vis[0].effectiveSource == "verified"
     assert vis[0].ruleId == "VISIBILITY_TRIANGLE_NO_TALL_PLANTS"
     # zones join exclusion zones → the allowed area avoids them
     from shapely.geometry import Point
@@ -335,15 +341,112 @@ def test_visibility_triangle_detection_and_validation(tmp_path):
     assert r["coverage"]["parser"]["crossingsDetected"] == 1
     assert r["coverage"]["parser"]["roadsClassified"] is True
 
+    # outside the triangle the check is never PASS: the speed limit and
+    # signalling are unknown, so the verified norm's applicability is not
+    rowan = Placement(id="rowan", kind="TREE", speciesId="tree_rowan",
+                      x=30, y=170, crownRadiusM=2.5)
+    report = validate_plan([rowan], idx, reg, cons.site_boundary, cons.allowed_area,
+                           site_boundary_source=cons.site_boundary_kind,
+                           visibility_zones=vis)
+    assert report["valid"]
+    assert report["regulatory"]["status"] == "NEEDS_REVIEW"
+    assert report["regulatory"]["blockers"] == ["UNVERIFIED_HARD_RULES:1"]
 
-def test_visibility_disabled_when_assumption_off(tmp_path):
+
+def test_visibility_disabled_when_rule_off(tmp_path):
     doc = _crossing_doc(tmp_path)
     idx = build_geometry_index(doc)
     reg = load_registry()
-    rule = reg.get("VISIBILITY_TRIANGLE_NO_TALL_PLANTS")
-    rule.assumption.enabled = False
+    reg.get("VISIBILITY_TRIANGLE_NO_TALL_PLANTS").enabled = False
     cons = build_constraints(doc, idx, reg)
     assert cons.visibility_zones() == []
+
+
+# ---------------------------------------------------------------------------
+# 623-ПП п. 4.2.8 — species-specific setbacks from heat mains
+# ---------------------------------------------------------------------------
+
+def _heat_idx() -> GeometryIndex:
+    idx = GeometryIndex()
+    idx.by_entity["heat1"] = LineString([(60, 0), (60, 100)])
+    idx.by_category["UTILITY_HEAT"] = ["heat1"]
+    return idx
+
+
+def _violations(report, rule_id):
+    return [v["plantingId"] for v in report["hardViolations"] if v["ruleId"] == rule_id]
+
+
+def test_heat_main_species_rules_verified():
+    reg = load_registry()
+    r2 = reg.get("HEAT_MAIN_SENSITIVE_SPECIES_2M")
+    r4 = reg.get("HEAT_MAIN_SENSITIVE_SPECIES_4M")
+    for r in (r2, r4):
+        assert r.effective_source == "verified" and r.role == "regulatory"
+        assert "623-ПП" in r.source.document and r.source.clause == "п. 4.2.8"
+        assert "ближе 3-4 м" in r.source.excerpt
+        assert not r.condition, "п. 4.2.8 has no crown-diameter limit"
+    assert r2.effective_distance_m == 2.0 and r4.effective_distance_m == 4.0
+    assert {"Tilia", "Acer", "Syringa", "Lonicera"} == set(r2.species_genera)
+    assert {"Populus", "Crataegus", "Cotoneaster", "Larix", "Betula"} <= set(r4.species_genera)
+
+
+def test_heat_main_setback_depends_on_species():
+    """2,5 m from a heat main: fine for mock orange (general 1,0 m), a
+    violation for cotoneaster (4 m); lilac at 1,5 m breaks the 2 m rule."""
+    reg = load_registry()
+    idx = _heat_idx()
+    plan = [
+        Placement(id="cot", kind="SHRUB", speciesId="shrub_cotoneaster", x=62.5, y=20, crownRadiusM=0.8),
+        Placement(id="mock", kind="SHRUB", speciesId="shrub_mockorange", x=62.5, y=40, crownRadiusM=1.2),
+        Placement(id="lilac", kind="SHRUB", speciesId="shrub_lilac", x=61.5, y=60, crownRadiusM=1.5),
+        Placement(id="larch", kind="TREE", speciesId="tree_larch", x=63.0, y=80, crownRadiusM=3.0),
+    ]
+    report = validate_plan(plan, idx, reg, SITE, SITE)
+    assert _violations(report, "HEAT_MAIN_SENSITIVE_SPECIES_4M") == ["cot", "larch"]
+    assert _violations(report, "HEAT_MAIN_SENSITIVE_SPECIES_2M") == ["lilac"]
+    assert not _violations(report, "SHRUB_UTILITY_HEAT_MIN_DISTANCE")
+    assert "mock" not in {v["plantingId"] for v in report["hardViolations"]}
+
+
+def test_heat_main_species_check_in_explanation():
+    """A large-crown linden stays UNVERIFIED under табл. 9.1 but gets a real
+    PASS under 623-ПП п. 4.2.8, which has no crown limit."""
+    reg = load_registry()
+    idx = _heat_idx()
+    linden = Placement(id="lin", kind="TREE", speciesId="tree_linden", x=63.0, y=50, crownRadiusM=3.5)
+    e = build_explanation(linden, 0, reg, RuleDistanceOracle(idx), SITE)
+    by_id = {c["ruleId"]: c for c in e["checks"]}
+    assert by_id["HEAT_MAIN_SENSITIVE_SPECIES_2M"]["result"] == "PASS"
+    assert by_id["TREE_UTILITY_HEAT_MIN_DISTANCE"]["result"] == "UNVERIFIED"
+    assert "HEAT_MAIN_SENSITIVE_SPECIES_4M" not in by_id  # not a larch/birch/...
+
+    mock = Placement(id="m", kind="SHRUB", speciesId="shrub_mockorange", x=62.5, y=50, crownRadiusM=1.2)
+    e = build_explanation(mock, 0, reg, RuleDistanceOracle(idx), SITE)
+    assert not any(c["ruleId"].startswith("HEAT_MAIN_") for c in e["checks"])
+
+
+def test_species_rules_need_a_species():
+    """Kind-level callers (exclusion zones) never see a genus rule; an
+    unknown species is not exempt (safe direction)."""
+    reg = load_registry()
+    kind_level = {r.id for r in reg.rules_for("SHRUB", {"min_distance"})}
+    assert not any(rid.startswith("HEAT_MAIN_") for rid in kind_level)
+    unknown = {r.id for r in reg.rules_for("SHRUB", {"min_distance"}, species_id="not_in_catalog")}
+    assert {"HEAT_MAIN_SENSITIVE_SPECIES_2M", "HEAT_MAIN_SENSITIVE_SPECIES_4M"} <= unknown
+
+
+def test_hard_filter_applies_species_rules():
+    reg = load_registry()
+    oracle = RuleDistanceOracle(_heat_idx())
+    cands = [Candidate(id=0, x=62.5, y=20), Candidate(id=1, x=65.0, y=20)]
+    hard_filter_candidates(cands, "SHRUB", reg, oracle, species_id="shrub_cotoneaster")
+    assert [c.valid for c in cands] == [False, True]
+    assert cands[0].rejected_by == "HEAT_MAIN_SENSITIVE_SPECIES_4M"
+
+    cands = [Candidate(id=0, x=62.5, y=20)]
+    hard_filter_candidates(cands, "SHRUB", reg, oracle, species_id="shrub_mockorange")
+    assert cands[0].valid
 
 
 # ---------------------------------------------------------------------------

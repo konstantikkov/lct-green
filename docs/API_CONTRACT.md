@@ -39,6 +39,22 @@ Rule model gains `role: "regulatory" | "safe_buffer" | "design_heuristic"` and
 optional `condition: {crownDiameterMaxM?: number}`; design_heuristic violations
 are warnings, never hardViolations.
 
+Registry v0.3.0 (743-ПП / 623-ПП verification) adds, all optional:
+* `alsoCited: CitedSource[]` — further acts that set the same requirement
+  (743-ПП п. 3.6.3 табл. 3.6.1 repeats СП 42 табл. 9.1, `relation:
+  "same_value"`; 623-ПП п. 4.2.4 requires it by reference to табл. 7.6
+  МГСН 1.01-99, `relation: "reference"`). Explanation checks carry it as
+  `source.alsoCited: {document, clause, relation}[]`.
+* `appliesTo.speciesGenus: string[]` — species-specific rule (623-ПП п. 4.2.8,
+  heat mains): enforced only for placements whose catalog species belongs to
+  one of these Latin genera; an unknown species is not exempt. Such rules do
+  not produce exclusion zones (zones are per planting kind) — the candidate
+  filter, validator and explanation apply them per species.
+* `constraint.legsM: [short, long]` and `condition: {unsignalizedCrossing,
+  speedLimitKmhMax}` on VISIBILITY_TRIANGLE_NO_TALL_PLANTS (623-ПП п. 9.4.2,
+  8 x 40 м at 40 km/h). The norm is verified; its applicability is not
+  readable from the drawing, so the check stays UNVERIFIED, never PASS.
+
 
 
 ## Admin dashboard & compliance audit (iteration 3)
@@ -248,9 +264,10 @@ Invalidates cached constraints.
 interface RegulatoryRule {
   id: string;                       // e.g. "TREE_BUILDING_MIN_DISTANCE"
   enabled: boolean;
-  appliesTo: { plantingType: PlantKind[]; obstacleType: Category[] };
-  constraint: { type: "min_distance" | "min_spacing" | "inside" | "species_blacklist"; distanceM: number | null; units: "m" };
+  appliesTo: { plantingType: PlantKind[]; obstacleType: Category[]; speciesGenus: string[] | null };
+  constraint: { type: "min_distance" | "min_spacing" | "inside" | "species_blacklist" | "custom_geometry"; distanceM: number | null; legsM?: number[] | null; units: "m" };
   source: { document: string; documentDate: string | null; clause: string | null; title: string; url: string | null; excerpt: string | null };
+  alsoCited: { document: string; clause: string | null; url: string | null; excerpt: string | null; relation: "same_value" | "reference" | null }[];
   status: "verified" | "missing_source_data";
   severity: "hard" | "recommended";
   assumption: {                      // present when status = missing_source_data

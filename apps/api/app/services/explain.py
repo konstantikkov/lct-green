@@ -49,12 +49,14 @@ def build_explanation(p: Placement, iteration: int, registry: RuleRegistry,
     has_assumed = False
     has_unverified = False
 
-    for rule in registry.rules_for(p.kind, {"min_distance"}):
+    for rule in registry.rules_for(p.kind, {"min_distance"}, species_id=p.speciesId):
         if rule.role == "design_heuristic":
             continue  # heuristics are warnings, not regulatory checks
         d = rule.effective_distance_m
         src = {"document": rule.source.document, "clause": rule.source.clause,
-               "title": rule.source.title, "status": rule.status}
+               "title": rule.source.title, "status": rule.status,
+               "alsoCited": [{"document": c.document, "clause": c.clause,
+                              "relation": c.relation} for c in rule.alsoCited]}
         if d is None:
             continue
         res = oracle.nearest(rule.appliesTo.get("obstacle_type", []), pt)

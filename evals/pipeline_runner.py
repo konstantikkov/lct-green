@@ -129,7 +129,8 @@ def run_pipeline(dxf_path: Path, rules_config: dict | None = None,
         if not prepared.contains(Point(c.x, c.y)):
             c.valid = False
             c.rejected_by = "OUTSIDE_ALLOWED_AREA"
-    hard_filter_candidates(cands, species["kind"], registry, rule_oracle)
+    hard_filter_candidates(cands, species["kind"], registry, rule_oracle,
+                           species_id=species["speciesId"])
 
     params = OptimizerParams.for_strategy("balanced")
     area = sum(p.area for p in as_polygon_list(allowed))

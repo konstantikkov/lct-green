@@ -1,7 +1,9 @@
-import type { RegulatoryRule, RegulatoryStatus, RegulatoryVerdict, RuleRole } from "../api/types";
+import type {
+  CitedSource, RegulatoryRule, RegulatoryStatus, RegulatoryVerdict, RuleRole,
+} from "../api/types";
 import { normalizeCheckResult } from "../api/types";
 import { Badge } from "./ui";
-import { plural } from "../labels";
+import { genusList, plural } from "../labels";
 
 /**
  * Shared presentation of the DETERMINISTIC regulatory verdict (iteration 5).
@@ -128,8 +130,36 @@ export function RuleRoleBadge({ role }: { role?: RuleRole }) {
   return null;
 }
 
-/** Mini-note for conditional rules, e.g. condition {crownDiameterMaxM: 5}. */
-export function ruleConditionNote(rule: Pick<RegulatoryRule, "condition">): string | null {
-  const v = rule.condition?.crownDiameterMaxM;
-  return v != null ? `крона ≤ ${v} м` : null;
+/** Mini-note for conditional rules: crown limit (СП 42 табл. 9.1), crossing
+ *  type and speed (623-ПП п. 9.4.2), genus restriction (623-ПП п. 4.2.8). */
+export function ruleConditionNote(
+  rule: Pick<RegulatoryRule, "condition"> & { appliesTo?: RegulatoryRule["appliesTo"] },
+): string | null {
+  const parts: string[] = [];
+  const c = rule.condition;
+  if (c?.crownDiameterMaxM != null) parts.push(`крона ≤ ${c.crownDiameterMaxM} м`);
+  if (c?.unsignalizedCrossing) parts.push("нерегулируемый перекрёсток");
+  if (c?.speedLimitKmhMax != null) parts.push(`до ${c.speedLimitKmhMax} км/ч`);
+  const genera = rule.appliesTo?.speciesGenus;
+  if (genera?.length) parts.push(`только: ${genusList(genera)}`);
+  return parts.length ? parts.join(", ") : null;
+}
+
+/** "ППМ № 743-ПП · п. 3.6.3, таблица 3.6.1; ППМ № 623-ПП · п. 4.2.4" */
+export function alsoCitedText(list: Pick<CitedSource, "document" | "clause">[] | null | undefined): string | null {
+  if (!list?.length) return null;
+  return list.map((s) => (s.clause ? `${s.document} · ${s.clause}` : s.document)).join("; ");
+}
+
+const RELATION_HINTS: Record<string, string> = {
+  same_value: "устанавливает то же значение",
+  reference: "требует норму отсылкой к таблице МГСН 1.01-99",
+};
+
+/** Tooltip: one line per act with how it relates to the main source. */
+export function alsoCitedTitle(list: Pick<CitedSource, "document" | "clause" | "relation">[]): string {
+  return list
+    .map((s) => `${s.document}${s.clause ? ` · ${s.clause}` : ""}`
+      + (s.relation && RELATION_HINTS[s.relation] ? ` — ${RELATION_HINTS[s.relation]}` : ""))
+    .join("\n");
 }

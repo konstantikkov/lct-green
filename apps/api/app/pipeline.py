@@ -312,7 +312,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                     if allowed_prepared is None or not allowed_prepared.contains(_P(c.x, c.y)):
                         c.valid = False
                         c.rejected_by = "OUTSIDE_ALLOWED_AREA"
-                hard_filter_candidates(cands, kind, registry, rule_oracle)
+                hard_filter_candidates(cands, kind, registry, rule_oracle, species_id=sp["id"])
                 valid_n = sum(1 for c in cands if c.valid)
                 per_kind_valid[kind] = per_kind_valid.get(kind, 0) + valid_n
                 rejected_pts.extend([[round(c.x, 2), round(c.y, 2)] for c in cands if not c.valid][:4000])

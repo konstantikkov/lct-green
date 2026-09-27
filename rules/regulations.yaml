@@ -27,10 +27,19 @@
 #   pages 4-5). Full list of 31 invasive taxa transcribed into
 #   INVASIVE_SPECIES_BLACKLIST.
 #
+#   2026-09-27 — ППМ № 743-ПП п. 3.6.3 табл. 3.6.1 and п. 3.6.4 табл. 3.6.2,
+#   ППМ № 623-ПП (МГСН 1.02-02) пп. 4.2.4, 4.2.8, 4.8.14, 9.4.2 verified
+#   against the primary texts (dataset/госты/743-ПП.pdf, 623-ПП.pdf; text
+#   layer present, no OCR). Табл. 3.6.1 repeats СП 42 табл. 9.1 row for row
+#   (values equal — asserted at build time) and adds school/kindergarten
+#   10,0 м; it is recorded per rule as also_cited. 623-ПП п. 4.2.4 refers
+#   to табл. 7.6 МГСН 1.01-99, which 743-ПП табл. 3.6.1 reproduces.
+#   No 743-ПП clause sets a distance from a new planting to an EXISTING tree —
+#   TREE_EXISTING_TREE_MIN_DISTANCE is now a safe_buffer, not a citation.
+#
 #   NOT verified (documents absent from dataset/госты/ or clause not located):
-#     ТСН 30-307-2002 (spacing rules), СП 59.13330 (МГН clearance),
-#     743-ПП (existing-tree protection zone), ограждение / generic utility.
-#     These stay on flagged DEMO values.
+#     СП 59.13330 (МГН clearance), ограждение, generic utility buffer.
+#     These stay on flagged DEMO values or safe buffers.
 #
 #   NOT MODELLED — table 9.1 rows whose obstacle category does not exist in
 #   models/ir.py Category yet. Recorded with full citation, enabled: false,
@@ -40,7 +49,7 @@
 #   VISIBILITY_TRIANGLE_NO_TALL_PLANTS) kept from Iteration 5; the table 9.1
 #   note-1 crown limit is expressed as condition.crown_diameter_max_m.
 # ----------------------------------------------------------------------------
-version: "0.2.0"
+version: "0.3.0"
 
 documents:
   - key: ppm_743_2002
@@ -49,8 +58,8 @@ documents:
     title: "Об утверждении Правил создания, содержания и охраны зеленых насаждений и природных сообществ города Москвы"
     mandatory: true
     active: true
-    note: "Основной московский акт по созданию, содержанию, охране зеленых насаждений. Текст получен (417 стр.); конкретные пункты по защитным зонам еще не локализованы."
-    local_source: dataset/госты/743-pp.pdf
+    note: "Правила создания, содержания и охраны зеленых насаждений. ВЕРИФИЦИРОВАНЫ п. 3.6.3 табл. 3.6.1 (расстояния от сооружений до посадок, воспроизводит МГСН 1.01-99) и п. 3.6.4 табл. 3.6.2. Текст в ред. до постановления от 25.11.2019 N 1546-ПП."
+    local_source: dataset/госты/743-ПП.pdf
   - key: ppm_515_2017
     number: "ППМ № 515-ПП"
     date: "2017-08-08"
@@ -99,17 +108,19 @@ documents:
   - key: ppm_623
     number: "ППМ № 623-ПП"
     date: '2002-08-06'
-    title: "Требования города Москвы к размещению зеленых насаждений и их согласованию"
+    title: "Об утверждении Норм и правил проектирования комплексного благоустройства на территории города Москвы МГСН 1.02-02"
     mandatory: true
     active: true
-    local_source: dataset/госты/postanovlenie_pravitelstva_moskvy_ot_06_08_2002_n_623_pp_r.pdf
+    local_source: dataset/госты/623-ПП.pdf
+    note: Утверждает МГСН 1.02-02 (ТСН 30-307-2002). ВЕРИФИЦИРОВАНЫ пп. 4.2.4, 4.2.8, 4.8.14, 9.4.2. Текст КонсультантПлюс в ред. от 11.07.2006 N 497-ПП (сохранен 26.02.2013) — актуальность редакции на дату проекта не проверена.
   - key: tsn_30_307_2002
     number: "ТСН 30-307-2002 г. Москвы (МГСН 1.02-02)"
     date:
     title: "Нормы и правила проектирования комплексного благоустройства на территории города Москвы"
     mandatory: true
     active: true
-    note: Текст документа отсутствует в исходных данных.
+    note: Тот же документ, что приложение к ППМ № 623-ПП; правила ссылаются на ppm_623. Запись оставлена для совместимости ссылок.
+    local_source: dataset/госты/623-ПП.pdf
   - key: gost_21_508_2020
     number: "ГОСТ 21.508-2020"
     date:
@@ -139,6 +150,17 @@ rules:
       title: "Расстояние от наружной стены здания до оси ствола дерева"
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
       excerpt: Наружная стена здания и сооружения — 5,0 (до оси ствола дерева)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Наружная стена здания и сооружения — 5,0 (дерево) / 1,5 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -159,11 +181,37 @@ rules:
       title: "Расстояние от наружной стены здания до кустарника"
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
       excerpt: Наружная стена здания и сооружения — 1,5 (до кустарника)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Наружная стена здания и сооружения — 5,0 (дерево) / 1,5 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
     assumption: {assumed_distance_m: 1.5, enabled: false, note: "Заменено верифицированным значением первоисточника (см. source.excerpt)."}
+  - id: TREE_SCHOOL_BUILDING_MIN_DISTANCE
+    enabled: false
+    applies_to: {planting_type: [TREE], obstacle_type: [BUILDING_SCHOOL]}
+    constraint: {type: min_distance, distance_m: 10.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source:
+      document: ppm_743_2002
+      clause: п. 3.6.3, таблица 3.6.1
+      title: Расстояние от наружной стены школьного здания или детского сада до оси ствола дерева
+      url: dataset/госты/743-ПП.pdf#page=28
+      excerpt: Наружная стена школьного здания или здания детского сада — 10,0 (дерево) / 1,5 (кустарник)
+    status: verified
+    severity: hard
+    role: regulatory
+    note: Строка есть только в 743-ПП (в табл. 9.1 СП 42 ее нет). Назначение здания из чертежа не определяется — категории BUILDING_SCHOOL нет, правило выключено. Для кустарника 1,5 м — совпадает с общим SHRUB_BUILDING_MIN_DISTANCE.
 
   - id: TREE_ROAD_MIN_DISTANCE
     enabled: true
@@ -176,6 +224,17 @@ rules:
       title: "Расстояние от края проезжей части до оси ствола дерева"
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
       excerpt: Край проезжей части улиц, обочины дороги или бровка канавы, или кювета — 2,0 (до оси ствола дерева)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Край проезжей части улиц, кромка укрепленной полосы обочины дороги и бровка канавы — 2,0 (дерево) / 1,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -188,6 +247,17 @@ rules:
     constraint: {type: min_distance, distance_m: 1.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края проезжей части до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край проезжей части улиц, обочины дороги или бровка канавы, или кювета — 1,0 (до кустарника)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Край проезжей части улиц, кромка укрепленной полосы обочины дороги и бровка канавы — 2,0 (дерево) / 1,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -200,6 +270,17 @@ rules:
     constraint: {type: min_distance, distance_m: 0.7, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края тротуара/садовой дорожки до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край тротуара и садовой дорожки — 0,7 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Край тротуара и садовой дорожки — 0,7 (дерево) / 0,5 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -212,6 +293,17 @@ rules:
     constraint: {type: min_distance, distance_m: 0.5, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от края тротуара до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Край тротуара и садовой дорожки — 0,5 (до кустарника)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Край тротуара и садовой дорожки — 0,7 (дерево) / 0,5 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -224,6 +316,17 @@ rules:
     constraint: {type: min_distance, distance_m: 2.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от водопровода до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - водопровод, дренаж — 2,0 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: водопровод, дренаж — 2,0 (дерево) / - (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -236,6 +339,17 @@ rules:
     constraint: {type: min_distance, distance_m: 1.5, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от канализации (включая ливневую) до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - газопровод, канализация — 1,5 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: газопровод, канализация — 1,5 (дерево) / - (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -251,6 +365,17 @@ rules:
     constraint: {type: min_distance, distance_m: 1.5, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от газопровода до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - газопровод, канализация — 1,5 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: газопровод, канализация — 1,5 (дерево) / - (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -263,6 +388,17 @@ rules:
     constraint: {type: min_distance, distance_m: 2.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от тепловой сети до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - тепловая сеть (стенка канала, тоннеля или оболочка при бесканальной прокладке) — 2,0 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: теплопровод, трубопровод, теплосеть — 2,0 (дерево) / 1,0 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -279,17 +415,67 @@ rules:
       title: Расстояние от тепловой сети до кустарника
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
       excerpt: 'Подземные сети: - тепловая сеть (стенка канала, тоннеля или оболочка при бесканальной прокладке) — 1,0 (до кустарника)'
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: теплопровод, трубопровод, теплосеть — 2,0 (дерево) / 1,0 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
     note: Правило добавлено при верификации таблицы 9.1 — ранее отсутствовало, кустарники у теплосети не проверялись.
 
+  - id: HEAT_MAIN_SENSITIVE_SPECIES_2M
+    enabled: true
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [UTILITY_HEAT], species_genus: [Tilia, Acer, Syringa, Lonicera]}
+    constraint: {type: min_distance, distance_m: 2.0, units: m}
+    source:
+      document: ppm_623
+      clause: п. 4.2.8
+      title: Липа, клен, сирень, жимолость — не ближе 2 м к теплотрассе
+      url: dataset/госты/623-ПП.pdf#page=13
+      excerpt: '4.2.8. При посадке деревьев в зонах действия теплотрасс следует учитывать фактор прогревания почвы в обе стороны от оси теплотрассы ... У теплотрасс не следует размещать: липу, клен, сирень, жимолость ближе 2 м, тополь, боярышник, кизильник, дерен, лиственницу, березу - ближе 3-4 м.'
+    status: verified
+    severity: hard
+    role: regulatory
+    note: 'Породоспецифичная норма: действует только для перечисленных родов, независимо от диаметра кроны. Для кустарников (сирень, жимолость) строже общего 1,0 м по табл. 9.1.'
+  - id: HEAT_MAIN_SENSITIVE_SPECIES_4M
+    enabled: true
+    applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [UTILITY_HEAT], species_genus: [Populus, Crataegus, Cotoneaster, Cornus, Swida, Larix, Betula]}
+    constraint: {type: min_distance, distance_m: 4.0, units: m}
+    source:
+      document: ppm_623
+      clause: п. 4.2.8
+      title: Тополь, боярышник, кизильник, дерен, лиственница, береза — не ближе 3–4 м к теплотрассе
+      url: dataset/госты/623-ПП.pdf#page=13
+      excerpt: '4.2.8. При посадке деревьев в зонах действия теплотрасс следует учитывать фактор прогревания почвы в обе стороны от оси теплотрассы ... У теплотрасс не следует размещать: липу, клен, сирень, жимолость ближе 2 м, тополь, боярышник, кизильник, дерен, лиственницу, березу - ближе 3-4 м.'
+    status: verified
+    severity: hard
+    role: regulatory
+    note: 'В норме диапазон «ближе 3-4 м»; принято верхнее значение 4,0 м — при нем требование выполнено при любом прочтении диапазона. Дерен: роды Cornus и Swida (синоним).'
   - id: TREE_UTILITY_ELECTRICITY_MIN_DISTANCE
     enabled: true
     applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_ELECTRICITY]}
     constraint: {type: min_distance, distance_m: 2.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от силового кабеля до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 2,0 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: силовой кабель и кабель связи — 2,0 (дерево) / 0,7 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -302,6 +488,17 @@ rules:
     constraint: {type: min_distance, distance_m: 0.7, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от силового кабеля до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 0,7 (до кустарника)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: силовой кабель и кабель связи — 2,0 (дерево) / 0,7 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -314,6 +511,17 @@ rules:
     constraint: {type: min_distance, distance_m: 2.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от кабеля связи до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - силовой кабель и кабель связи — 2,0 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: силовой кабель и кабель связи — 2,0 (дерево) / 0,7 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -330,6 +538,17 @@ rules:
       title: Расстояние от кабеля связи до кустарника
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
       excerpt: 'Подземные сети: - силовой кабель и кабель связи — 0,7 (до кустарника)'
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: силовой кабель и кабель связи — 2,0 (дерево) / 0,7 (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -341,6 +560,17 @@ rules:
     constraint: {type: min_distance, distance_m: 2.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от дренажа до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подземные сети: - водопровод, дренаж — 2,0 (до оси ствола дерева)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: 'Подземные коммуникации: водопровод, дренаж — 2,0 (дерево) / - (кустарник)'
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -368,7 +598,7 @@ rules:
       Технологический буфер до уточнения типа сети; не является правовой нормой
       и никогда не даёт PASS. Применяется только к деревьям — кустарники не
       проверяются против «древесного» правила.
-    assumption: {assumed_distance_m: 2.0, enabled: true, note: "ДЕМО-значение: максимум по типовым сетям, применяется пока тип сети не уточнен."}
+    assumption: {assumed_distance_m: 2.0, enabled: true, note: "2,0 м — максимум по строкам «подземные сети» табл. 9.1 СП 42 и табл. 3.6.1 743-ПП (1,5 / 2,0 / 2,0 / 2,0): безопасен для любого типа сети, пока тип не уточнен."}
 
   - id: TREE_LIGHTING_MIN_DISTANCE
     enabled: true
@@ -376,6 +606,17 @@ rules:
     constraint: {type: min_distance, distance_m: 4.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
     source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от мачты/опоры осветительной сети до оси ствола дерева", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Мачта и опора осветительной сети, трамвая, мостовая опора и эстакада — 4,0 (до оси ствола дерева); для кустарника норма не установлена (-)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Мачта и опора осветительной сети, трамвая, колонны галерей и эстакад — 4,0 (дерево) / - (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.8.14
+        url: dataset/госты/623-ПП.pdf#page=26
+        excerpt: 4.8.14. ... Минимальные расстояния между опорой с любым осветительным прибором и корневыми шейками деревьев следует принимать согласно табл. 7.6 МГСН 1.01-99
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -392,6 +633,17 @@ rules:
       title: Расстояние от края трамвайного полотна до оси ствола дерева
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
       excerpt: Край трамвайного полотна — 5,0 (до оси ствола дерева), 3,0 (до кустарника)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Ось трамвайных путей — 5,0 (дерево) / 3,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -407,6 +659,17 @@ rules:
       title: Расстояние от края трамвайного полотна до кустарника
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=51
       excerpt: Край трамвайного полотна — 3,0 (до кустарника)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Ось трамвайных путей — 5,0 (дерево) / 3,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -422,6 +685,17 @@ rules:
       title: Расстояние от подошвы откоса/террасы до оси ствола дерева
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
       excerpt: Подошва откоса, террасы и др. — 1,0 (до оси ствола дерева), 0,5 (до кустарника)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Подошва откоса, террасы и др. — 1,0 (дерево) / 0,5 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -437,6 +711,17 @@ rules:
       title: Расстояние от подошвы/внутренней грани подпорной стенки до оси ствола дерева
       url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52
       excerpt: Подошва или внутренняя грань подпорной стенки — 3,0 (до оси ствола дерева), 1,0 (до кустарника)
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Подошва и внутренняя грань подпорных стенок — 3,0 (дерево) / 1,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
     status: verified
     severity: hard
     role: regulatory
@@ -467,53 +752,57 @@ rules:
     severity: hard
     role: regulatory
     note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
-    assumption: {assumed_distance_m: 2.0, enabled: false, note: "ДЕМО-значение. В табл. 9.1 СП 42.13330.2016 строки «ограждение» НЕТ — ближайшая по смыслу «подпорная стенка» (3,0 м) к ограждениям не относится. Источник не найден."}
+    assumption: {assumed_distance_m: 2.0, enabled: false, note: "ДЕМО-значение. Строки «ограждение» нет ни в табл. 9.1 СП 42.13330.2016, ни в табл. 3.6.1 743-ПП; «подпорная стенка» (3,0 м) к ограждениям не относится. Источник не найден."}
 
   - id: TREE_TREE_MIN_SPACING
     enabled: true
     applies_to: {planting_type: [TREE], obstacle_type: [PLANTING_TREE, EXISTING_TREE]}
-    constraint: {type: min_spacing, distance_m: null, units: m}
+    constraint: {type: min_spacing, distance_m: 5.0, units: m}
     source:
-      document: tsn_30_307_2002
-      clause:
-      title: "Минимальное расстояние между деревьями в ряду/группе"
-    status: missing_source_data
+      document: ppm_743_2002
+      clause: п. 3.6.4, таблица 3.6.2
+      title: Ориентировочное расстояние между деревьями (однорядная и групповая посадка)
+      url: dataset/госты/743-ПП.pdf#page=29
+      excerpt: '3.6.4. Расстояния между деревьями и кустарниками, высаживаемыми вдоль магистралей, определяются проектом в соответствии с табл. 3.6.2. Табл. 3.6.2 «Ориентировочные расстояния между деревьями и кустарниками на магистралях»: с однорядной посадкой деревьев — 5-6; с двухрядной посадкой деревьев — 7-8; с однорядной посадкой кустарников: высоких (более 1,8 м) — 0,5-1, средних и низких — 0,3-0,4; с групповой посадкой: деревьев — 5-7, кустарников — 0,3'
+    status: verified
     severity: recommended
     role: design_heuristic
-    note: "проектная эвристика, не правовая норма; источник не установлен"
-    assumption: {assumed_distance_m: 5.0, enabled: true, note: "ДЕМО-значение, требует верификации по ТСН 30-307-2002 / МГСН 1.02-02."}
+    note: "проектная эвристика, не правовая норма: табл. 3.6.2 743-ПП задает ОРИЕНТИРОВОЧНЫЕ расстояния, окончательно они «определяются проектом». 5,0 м — нижняя граница для однорядной (5-6) и групповой (5-7) посадки деревьев."
+    assumption: {assumed_distance_m: 5.0, enabled: false, note: Заменено значением из табл. 3.6.2 743-ПП (см. source.excerpt).}
 
   - id: SHRUB_SHRUB_MIN_SPACING
     enabled: true
     applies_to: {planting_type: [SHRUB], obstacle_type: [PLANTING_SHRUB, EXISTING_SHRUB]}
-    constraint: {type: min_spacing, distance_m: null, units: m}
-    source: {document: tsn_30_307_2002, clause: null, title: "Минимальное расстояние между кустарниками"}
-    status: missing_source_data
+    constraint: {type: min_spacing, distance_m: 1.0, units: m}
+    source:
+      document: ppm_743_2002
+      clause: п. 3.6.4, таблица 3.6.2
+      title: Ориентировочное расстояние между высокими кустарниками
+      url: dataset/госты/743-ПП.pdf#page=29
+      excerpt: '3.6.4. Расстояния между деревьями и кустарниками, высаживаемыми вдоль магистралей, определяются проектом в соответствии с табл. 3.6.2. Табл. 3.6.2 «Ориентировочные расстояния между деревьями и кустарниками на магистралях»: с однорядной посадкой деревьев — 5-6; с двухрядной посадкой деревьев — 7-8; с однорядной посадкой кустарников: высоких (более 1,8 м) — 0,5-1, средних и низких — 0,3-0,4; с групповой посадкой: деревьев — 5-7, кустарников — 0,3'
+    status: verified
     severity: recommended
     role: design_heuristic
-    note: "проектная эвристика, не правовая норма; источник не установлен"
-    assumption: {assumed_distance_m: 1.0, enabled: true, note: "ДЕМО-значение, требует верификации."}
+    note: "проектная эвристика, не правовая норма: табл. 3.6.2 743-ПП задает ОРИЕНТИРОВОЧНЫЕ расстояния. Кустарники каталога выше 1,8 м (строка «высоких» — 0,5-1); принята верхняя граница 1,0 м, чтобы кроны шириной 1,6-3 м не сливались в сплошную массу."
+    assumption: {assumed_distance_m: 1.0, enabled: false, note: Заменено значением из табл. 3.6.2 743-ПП (см. source.excerpt).}
 
   - id: VISIBILITY_TRIANGLE_NO_TALL_PLANTS
     enabled: true
     applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [ROAD]}
-    constraint: {type: custom_geometry, distance_m: null, units: m}
+    constraint: {type: custom_geometry, distance_m: null, units: m, legs_m: [8.0, 40.0]}
+    condition: {unsignalized_crossing: true, speed_limit_kmh_max: 40}
     source:
-      document: tsn_30_307_2002
-      clause:
-      title: "Треугольники видимости на пересечениях проездов: запрет насаждений выше 0.5 м"
-    status: missing_source_data
+      document: ppm_623
+      clause: п. 9.4.2
+      title: 'Треугольник видимости на улицах нерегулируемого движения: без насаждений выше 0,5 м'
+      url: dataset/госты/623-ПП.pdf#page=54
+      excerpt: '9.4.2. На улицах нерегулируемого движения следует обеспечивать треугольник видимости, в зоне которого не допускается размещение строений, некапитальных нестационарных сооружений, рекламных щитов, зеленых насаждений высотой более 0,5 м. Стороны треугольника следует принимать: 8 x 40 м при разрешенной скорости движения транспорта 40 км/ч; 10 x 50 м - при скорости 60 км/ч.'
+    status: verified
     severity: hard
     role: regulatory
-    note: >
-      В зоне треугольников видимости на нерегулируемых пересечениях запрещено
-      размещение зеленых насаждений высотой более 0.5 м. Деревья и кустарники
-      каталога выше 0.5 м по определению.
+    note: >-
+      Норма верифицирована, но условия применимости из чертежа не определяются: регулируемость перекрестка и разрешенная скорость. Треугольники строятся по минимальному варианту 8 x 40 м (40 км/ч) на каждом пересечении проездов, проверка всегда UNVERIFIED (не PASS). Для 60 км/ч нужны 10 x 50 м.
     assumption:
-      assumed_distance_m:
-      enabled: true
-      note: "треугольники видимости 8×40 м (40 км/ч) по московским правилам; категория/скорость улиц из чертежа не определяется — размеры ДЕМО"
-
   - id: TREE_EXISTING_TREE_MIN_DISTANCE
     enabled: true
     applies_to: {planting_type: [TREE, SHRUB], obstacle_type: [EXISTING_TREE]}
@@ -521,10 +810,12 @@ rules:
     source:
       document: ppm_743_2002
       clause:
-      title: "Защита существующих зеленых насаждений при новых посадках"
+      title: "Технологический буфер от существующего дерева (НЕ нормативная проверка)"
     status: missing_source_data
     severity: hard
-    assumption: {assumed_distance_m: 3.0, enabled: true, note: "ДЕМО-значение: защитная зона существующего дерева, требует верификации."}
+    role: safe_buffer
+    note: 'Нормы расстояния от новой посадки до существующего дерева в 743-ПП нет: пп. 3.6.3-3.6.4 регулируют отступы от сооружений и ориентировочный шаг посадки (табл. 3.6.2 — учтено в TREE_TREE_MIN_SPACING). Буфер 3 м защищает корни и крону существующего дерева; никогда не дает PASS.'
+    assumption: {assumed_distance_m: 3.0, enabled: true, note: "Технологическое значение проекта, не норма (пункт в 743-ПП не найден)."}
 
   - id: PLANTING_INSIDE_SITE_BOUNDARY
     enabled: true

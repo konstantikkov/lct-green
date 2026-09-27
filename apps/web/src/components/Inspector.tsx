@@ -4,7 +4,7 @@ import type { ExclusionZone, Explanation, Placement } from "../api/types";
 import { isDebug } from "../debug";
 import { select } from "../state/actions";
 import { useApp, type Selection } from "../state/store";
-import { CheckResultBadge } from "./regulatory";
+import { alsoCitedText, alsoCitedTitle, CheckResultBadge } from "./regulatory";
 import { Badge, KV, Spinner } from "./ui";
 import { categoryLabel, KIND_LABELS, plural, sourceStatusLabel } from "../labels";
 
@@ -90,6 +90,11 @@ function ChecksList({ explanation }: { explanation: Explanation }) {
             {c.source.document}
             {c.source.clause ? ` · ${c.source.clause}` : ""} · {sourceStatusLabel(c.source.status)}
           </div>
+          {c.source.alsoCited && c.source.alsoCited.length > 0 && (
+            <div className="mt-0.5 text-2xs leading-snug text-ink-500" title={alsoCitedTitle(c.source.alsoCited)}>
+              также: {alsoCitedText(c.source.alsoCited)}
+            </div>
+          )}
           {c.reason && (
             <div className="mt-0.5 text-2xs leading-snug text-amber-700 dark:text-amber-300/90">{c.reason}</div>
           )}

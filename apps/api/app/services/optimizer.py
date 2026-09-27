@@ -66,9 +66,14 @@ class PlantSpec:
 
 
 def hard_filter_candidates(cands: list[Candidate], kind: str,
-                           registry: RuleRegistry, oracle: RuleDistanceOracle) -> None:
-    """Marks candidates invalid when any effective hard min_distance rule fails."""
-    rules = [(r, r.effective_distance_m) for r in registry.rules_for(kind, {"min_distance"})
+                           registry: RuleRegistry, oracle: RuleDistanceOracle,
+                           species_id: str | None = None) -> None:
+    """Marks candidates invalid when any effective hard min_distance rule fails.
+
+    `species_id` adds the species-specific rules (e.g. 623-ПП п. 4.2.8 heat-main
+    setbacks per genus); without it only kind-level rules are checked."""
+    rules = [(r, r.effective_distance_m)
+             for r in registry.rules_for(kind, {"min_distance"}, species_id=species_id)
              if r.severity == "hard"]
     rules = [(r, d) for r, d in rules if d is not None]
     for c in cands:

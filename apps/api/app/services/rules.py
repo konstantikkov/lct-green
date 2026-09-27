@@ -9,11 +9,17 @@ resolves each rule to an *effective* distance:
 
 User overrides (enable/disable, assumption tweaks) are persisted separately in
 data/rule_overrides.json so the YAML registry stays authoritative source data.
+
+A rule may carry `also_cited` — further acts that set the same requirement
+(e.g. 743-ПП табл. 3.6.1 repeats СП 42 табл. 9.1) — and may be restricted to
+plant genera via `applies_to.species_genus` (e.g. 623-ПП п. 4.2.8 names
+species that must stay farther from heat mains).
 """
 from __future__ import annotations
 
 import json
 import threading
+from functools import lru_cache
 from typing import Any, Optional
 
 import yaml
@@ -39,6 +45,9 @@ class RuleSource(BaseModel):
     title: str = ""
     url: Optional[str] = None
     excerpt: Optional[str] = None
+    # only on also_cited entries: "same_value" — the act repeats the value;
+    # "reference" — the act requires the norm by reference to another table
+    relation: Optional[str] = None
 
 
 class RuleAssumption(BaseModel):
@@ -53,6 +62,7 @@ class RegulatoryRule(BaseModel):
     appliesTo: dict[str, list[str]] = Field(default_factory=dict)  # plantingType, obstacleType
     constraint: dict[str, Any] = Field(default_factory=dict)
     source: RuleSource
+    alsoCited: list[RuleSource] = Field(default_factory=list)
     status: str = "missing_source_data"
     severity: str = "hard"
     # role separates true regulatory constraints from engineering artifacts:
@@ -89,7 +99,24 @@ class RegulatoryRule(BaseModel):
         ctype = self.constraint.get("type")
         if ctype == "species_blacklist":
             return bool(self.constraint.get("species"))
+        if ctype == "custom_geometry":
+            return bool(self.constraint.get("legs_m"))
         return False
+
+    @property
+    def species_genera(self) -> list[str]:
+        return self.appliesTo.get("species_genus") or []
+
+    def applies_to_species(self, species_id: Optional[str]) -> bool:
+        """Genus filter for species-specific rules. A species missing from the
+        catalog cannot be ruled out, so the rule applies (safe direction)."""
+        genera = self.species_genera
+        if not genera:
+            return True
+        genus = species_genus(species_id) if species_id else None
+        if genus is None:
+            return True
+        return genus.lower() in {g.lower() for g in genera}
 
     @property
     def effective_source(self) -> str:
@@ -106,12 +133,15 @@ class RegulatoryRule(BaseModel):
             "id": self.id,
             "enabled": self.enabled,
             "appliesTo": {"plantingType": self.appliesTo.get("planting_type", []),
-                          "obstacleType": self.appliesTo.get("obstacle_type", [])},
+                          "obstacleType": self.appliesTo.get("obstacle_type", []),
+                          "speciesGenus": self.species_genera or None},
             "constraint": {"type": self.constraint.get("type"),
                            "distanceM": self.constraint.get("distance_m"),
                            "species": self.constraint.get("species"),
+                           "legsM": self.constraint.get("legs_m"),
                            "units": self.constraint.get("units", "m")},
             "source": self.source.model_dump(),
+            "alsoCited": [c.model_dump() for c in self.alsoCited],
             "status": self.status,
             "severity": self.severity,
             "role": self.role,
@@ -131,12 +161,19 @@ class RuleRegistry(BaseModel):
     def get(self, rule_id: str) -> Optional[RegulatoryRule]:
         return next((r for r in self.rules if r.id == rule_id), None)
 
-    def rules_for(self, planting_type: str, constraint_types: set[str] | None = None) -> list[RegulatoryRule]:
+    def rules_for(self, planting_type: str, constraint_types: set[str] | None = None,
+                  species_id: Optional[str] = None) -> list[RegulatoryRule]:
+        """Rules for a planting type. Species-specific rules (applies_to.
+        species_genus) are returned only when `species_id` is given and
+        matches: kind-level callers such as exclusion-zone building must not
+        impose one genus's setback on every species of that kind."""
         out = []
         for r in self.rules:
             if planting_type not in r.appliesTo.get("planting_type", []):
                 continue
             if constraint_types and r.constraint.get("type") not in constraint_types:
+                continue
+            if r.species_genera and (species_id is None or not r.applies_to_species(species_id)):
                 continue
             out.append(r)
         return out
@@ -166,22 +203,27 @@ def save_override(rule_id: str, patch: dict) -> None:
         _overrides_path().write_text(json.dumps(ov, ensure_ascii=False, indent=2))
 
 
+def _resolve_source(src: dict, docs: dict) -> RuleSource:
+    doc = docs.get(src.get("document"), {})
+    return RuleSource(
+        document=doc.get("number", src.get("document", "unknown")),
+        documentNumber=doc.get("number", ""),
+        documentDate=doc.get("date"),
+        clause=src.get("clause"),
+        title=src.get("title", ""),
+        url=src.get("url"),
+        excerpt=src.get("excerpt"),
+        relation=src.get("relation"),
+    )
+
+
 def load_registry() -> RuleRegistry:
     raw = yaml.safe_load(config.RULES_FILE.read_text(encoding="utf-8"))
     docs = {d["key"]: d for d in raw.get("documents", [])}
     rules: list[RegulatoryRule] = []
     for r in raw.get("rules", []):
-        src = r.get("source", {})
-        doc = docs.get(src.get("document"), {})
-        source = RuleSource(
-            document=doc.get("number", src.get("document", "unknown")),
-            documentNumber=doc.get("number", ""),
-            documentDate=doc.get("date"),
-            clause=src.get("clause"),
-            title=src.get("title", ""),
-            url=src.get("url"),
-            excerpt=src.get("excerpt"),
-        )
+        source = _resolve_source(r.get("source", {}), docs)
+        also_cited = [_resolve_source(c, docs) for c in r.get("also_cited") or []]
         assumption = None
         if r.get("assumption"):
             a = r["assumption"]
@@ -194,7 +236,8 @@ def load_registry() -> RuleRegistry:
             id=r["id"], enabled=bool(r.get("enabled", True)),
             appliesTo=r.get("applies_to", {}),
             constraint=r.get("constraint", {}),
-            source=source, status=r.get("status", "missing_source_data"),
+            source=source, alsoCited=also_cited,
+            status=r.get("status", "missing_source_data"),
             severity=r.get("severity", "hard"),
             role=r.get("role", "regulatory"),
             condition=r.get("condition") or {},
@@ -249,6 +292,17 @@ def load_species() -> list[dict]:
             "regulatoryStatus": "unknown",  # until ППМ 369-ПП list is verified
         })
     return out
+
+
+@lru_cache(maxsize=1)
+def _species_latin() -> dict[str, str]:
+    return {s["id"]: s["latin"] for s in load_species() if s.get("latin")}
+
+
+def species_genus(species_id: str) -> Optional[str]:
+    """Genus of a catalog species ("Tilia cordata" → "Tilia"); None if unknown."""
+    latin = _species_latin().get(species_id)
+    return latin.split()[0] if latin else None
 
 
 def blacklist_check(registry: RuleRegistry, species_id: str, latin: str) -> tuple[bool, Optional[str]]:

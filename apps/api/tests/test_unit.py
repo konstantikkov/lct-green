@@ -193,11 +193,71 @@ def test_table_9_1_values():
         assert "9.1" in (r.source.clause or ""), rule_id
 
 
+def test_743_pp_table_3_6_1_repeats_table_9_1():
+    """743-ПП п. 3.6.3 табл. 3.6.1 is cited next to СП 42 табл. 9.1 only where
+    the values agree — the cited row carries this rule's own number."""
+    import re
+    reg = load_registry()
+    cited = [r for r in reg.rules
+             if any("743-ПП" in c.document for c in r.alsoCited)]
+    assert len(cited) >= 21
+    for r in cited:
+        c743 = next(c for c in r.alsoCited if "743-ПП" in c.document)
+        assert c743.clause == "п. 3.6.3, таблица 3.6.1" and c743.relation == "same_value"
+        assert c743.url and c743.url.endswith("#page=28")
+        m = re.search(r"— ([\d,]+|-) \(дерево\) / ([\d,]+|-) \(кустарник\)", c743.excerpt)
+        assert m, r.id
+        kind = r.appliesTo["planting_type"][0]
+        value = m.group(1) if kind == "TREE" else m.group(2)
+        assert value.replace(",", ".") == f"{r.constraint['distance_m']:.1f}", r.id
+        # 623-ПП requires the same table by reference (табл. 7.6 МГСН 1.01-99)
+        c623 = next(c for c in r.alsoCited if "623-ПП" in c.document)
+        assert c623.relation == "reference" and "МГСН 1.01-99" in c623.excerpt
+    # ЛКС ТМК is a СП 42 row only
+    assert not reg.get("TREE_LKS_TMK_MIN_DISTANCE").alsoCited
+
+
+def test_all_three_tz_acts_are_cited():
+    """The ТЗ names СП 42.13330.2016, 743-ПП and 623-ПП/МГСН: each must back at
+    least one enforced, verified rule with a concrete clause."""
+    reg = load_registry()
+    cited: set[str] = set()
+    for r in reg.rules:
+        if not r.enabled or r.effective_source != "verified":
+            continue
+        for s in [r.source, *r.alsoCited]:
+            if s.clause:
+                cited.add(s.document)
+    for act in ("СП 42.13330.2016", "ППМ № 743-ПП", "ППМ № 623-ПП"):
+        assert act in cited, act
+
+
+def test_spacing_rules_sourced_from_743_table_3_6_2():
+    reg = load_registry()
+    for rid, d in (("TREE_TREE_MIN_SPACING", 5.0), ("SHRUB_SHRUB_MIN_SPACING", 1.0)):
+        r = reg.get(rid)
+        assert r.effective_source == "verified" and r.effective_distance_m == d, rid
+        assert r.source.clause == "п. 3.6.4, таблица 3.6.2", rid
+        # "ориентировочные … определяются проектом" — still a heuristic
+        assert r.role == "design_heuristic" and r.severity == "recommended", rid
+
+
+def test_existing_tree_buffer_is_not_a_citation():
+    """743-ПП has no new-planting-to-existing-tree distance: the buffer must
+    read as a technological safe buffer, never as a norm."""
+    reg = load_registry()
+    r = reg.get("TREE_EXISTING_TREE_MIN_DISTANCE")
+    assert r.role == "safe_buffer"
+    assert r.status == "missing_source_data" and r.source.clause is None
+    assert r.effective_source == "assumption"
+
+
 def test_unmodelled_categories_are_documented_but_disabled():
     """Table rows we cannot classify yet are cited, disabled, and never silent."""
     reg = load_registry()
     for rule_id in ("TREE_TRAM_TRACK_MIN_DISTANCE", "TREE_SLOPE_TOE_MIN_DISTANCE",
-                    "TREE_RETAINING_WALL_MIN_DISTANCE", "TREE_LKS_TMK_MIN_DISTANCE"):
+                    "TREE_RETAINING_WALL_MIN_DISTANCE", "TREE_LKS_TMK_MIN_DISTANCE",
+                    "TREE_SCHOOL_BUILDING_MIN_DISTANCE"):
         r = reg.get(rule_id)
         assert r is not None, rule_id
         assert r.enabled is False, rule_id

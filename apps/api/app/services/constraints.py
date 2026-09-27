@@ -30,6 +30,8 @@ VISIBILITY_RULE_ID = "VISIBILITY_TRIANGLE_NO_TALL_PLANTS"
 _VIS_MIN_ROAD_LEN_M = 10.0    # skip exploded dash segments of linetypes
 _VIS_CLUSTER_R_M = 15.0       # intersection points closer than this = one crossing
 _VIS_MAX_CROSSINGS = 50       # runtime cap for 12k-entity topo maps
+# fallback legs; the registry rule's constraint.legs_m (623-ПП п. 9.4.2:
+# 8 x 40 м at 40 km/h) takes precedence
 _VIS_LONG_M = 40.0            # sight leg along the priority direction (40 km/h)
 _VIS_SHORT_M = 8.0            # leg across the secondary direction
 
@@ -136,8 +138,8 @@ def detect_planting_domain(doc: CadDocument, idx: GeometryIndex, site: Polygon |
 
 
 # ---------------------------------------------------------------------------
-# Visibility triangles at road-road crossings (СП/местные правила — размеры
-# ДЕМО, treated as an explicit assumption; see VISIBILITY_TRIANGLE_NO_TALL_PLANTS)
+# Visibility triangles at road-road crossings (623-ПП / МГСН 1.02-02 п. 9.4.2;
+# see VISIBILITY_TRIANGLE_NO_TALL_PLANTS — speed and signalling are unknown)
 # ---------------------------------------------------------------------------
 
 def _intersection_points(geom) -> list[Point]:
@@ -250,19 +252,22 @@ def build_visibility_zones(idx: GeometryIndex, registry: RuleRegistry,
                            zone_seq_start: int) -> list[ExclusionZone]:
     """Visibility-triangle exclusion zones (one merged zone per crossing).
 
-    Active only while the rule's assumption is enabled; every zone is labeled
-    effectiveSource="assumption" — demo dimensions, never a verified norm."""
+    Active while the rule is verified or its assumption is enabled; leg
+    lengths come from the rule (constraint.legs_m), zones carry the rule's
+    effectiveSource."""
     rule = registry.get(VISIBILITY_RULE_ID)
     if rule is None or not rule.enabled:
         return []
     if rule.status != "verified" and not (rule.assumption and rule.assumption.enabled):
         return []
+    short_m, long_m = visibility_legs(rule)
+    effective = "verified" if rule.effective_source == "verified" else "assumption"
     zones: list[ExclusionZone] = []
     src = {"document": rule.source.document, "clause": rule.source.clause,
            "title": rule.source.title, "status": rule.status}
     seq = zone_seq_start
     for p, da, db in detect_road_crossings(idx):
-        tris = visibility_triangle_polygons(p, da, db)
+        tris = visibility_triangle_polygons(p, da, db, long_m=long_m, short_m=short_m)
         if not tris:
             continue
         geom = unary_union(tris)
@@ -273,8 +278,17 @@ def build_visibility_zones(idx: GeometryIndex, registry: RuleRegistry,
             id=f"excl_vis_{seq}", ruleId=VISIBILITY_RULE_ID,
             generatedFrom=f"road crossing at ({p.x:.1f}, {p.y:.1f})",
             sourceLayer="ROAD", obstacleCategory="ROAD", distanceM=0.0,
-            effectiveSource="assumption", geometry=geom, source=src))
+            effectiveSource=effective, geometry=geom, source=src))
     return zones
+
+
+def visibility_legs(rule) -> tuple[float, float]:
+    """(short, long) triangle legs in meters from the rule, else the fallback."""
+    legs = (rule.constraint.get("legs_m") or []) if rule is not None else []
+    if len(legs) == 2:
+        a, b = sorted(float(x) for x in legs)
+        return a, b
+    return _VIS_SHORT_M, _VIS_LONG_M
 
 
 def _obstacle_categories_present(rule_obstacles: list[str], idx: GeometryIndex) -> list[str]:
@@ -352,8 +366,10 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
     vis_zones = build_visibility_zones(idx, registry, zone_seq)
     if vis_zones:
         zones.extend(vis_zones)
+        short_m, long_m = visibility_legs(registry.get(VISIBILITY_RULE_ID))
         repair_log.append(f"visibility triangles: {len(vis_zones)} road crossing(s), "
-                          f"8×40 m demo dimensions (assumption)")
+                          f"{short_m:g}×{long_m:g} m (623-ПП п. 9.4.2, 40 km/h variant; "
+                          "speed and signalling not in the drawing)")
 
     # rules that never produced zones because they are inactive for other reasons
     for rule in registry.rules:

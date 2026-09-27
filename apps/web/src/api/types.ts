@@ -179,10 +179,14 @@ export type RuleRole = "regulatory" | "safe_buffer" | "design_heuristic";
 export interface RegulatoryRule {
   id: string;
   enabled: boolean;
-  appliesTo: { plantingType: PlantKind[]; obstacleType: Category[] };
+  /** speciesGenus: rule applies only to these Latin genera (e.g. 623-ПП
+   *  п. 4.2.8 — heat mains); absent/null for kind-wide rules. */
+  appliesTo: { plantingType: PlantKind[]; obstacleType: Category[]; speciesGenus?: string[] | null };
   constraint: {
-    type: "min_distance" | "min_spacing" | "inside" | "species_blacklist";
+    type: "min_distance" | "min_spacing" | "inside" | "species_blacklist" | "custom_geometry";
     distanceM: number | null;
+    /** custom_geometry (visibility triangle): [short, long] legs in meters. */
+    legsM?: number[] | null;
     units: "m";
   };
   source: {
@@ -193,6 +197,9 @@ export interface RegulatoryRule {
     url: string | null;
     excerpt: string | null;
   };
+  /** Further acts that set the same requirement (e.g. 743-ПП табл. 3.6.1
+   *  repeats СП 42 табл. 9.1). Absent on old payloads. */
+  alsoCited?: CitedSource[];
   status: "verified" | "missing_source_data";
   severity: "hard" | "recommended";
   assumption: {
@@ -207,7 +214,23 @@ export interface RegulatoryRule {
    *  NOT legal norms and are shown with a muted role badge. */
   role?: RuleRole;
   /** Iteration 5: applicability condition, e.g. {crownDiameterMaxM: 5}. */
-  condition?: { crownDiameterMaxM?: number | null } | null;
+  condition?: {
+    crownDiameterMaxM?: number | null;
+    unsignalizedCrossing?: boolean | null;
+    speedLimitKmhMax?: number | null;
+  } | null;
+}
+
+/** "same_value": the act repeats the value; "reference": the act requires
+ *  the norm by reference to another table. */
+export type CitationRelation = "same_value" | "reference";
+
+export interface CitedSource {
+  document: string;
+  clause: string | null;
+  url?: string | null;
+  excerpt?: string | null;
+  relation?: CitationRelation | null;
 }
 
 export interface SpeciesInfo {
@@ -411,7 +434,13 @@ export interface ExplanationCheck {
   comparator: ">=";
   obstacleCategory: string;
   effectiveSource: "verified" | "assumption";
-  source: { document: string; clause: string | null; title: string; status: string };
+  source: {
+    document: string;
+    clause: string | null;
+    title: string;
+    status: string;
+    alsoCited?: Pick<CitedSource, "document" | "clause" | "relation">[];
+  };
   /** Why a check is not PASS (Russian, from the backend), e.g. a large crown. */
   reason?: string | null;
 }

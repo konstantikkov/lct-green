@@ -87,6 +87,26 @@ export function categoryLabel(codes: string | null | undefined): string {
   return codes.split(",").map((c) => CATEGORY_LABELS[c.trim()] ?? c.trim()).join(", ");
 }
 
+/** Latin genera named by species-specific rules (623-ПП п. 4.2.8). */
+export const GENUS_LABELS: Record<string, string> = {
+  Tilia: "липа",
+  Acer: "клён",
+  Syringa: "сирень",
+  Lonicera: "жимолость",
+  Populus: "тополь",
+  Crataegus: "боярышник",
+  Cotoneaster: "кизильник",
+  Cornus: "дерен",
+  Swida: "дерен",
+  Larix: "лиственница",
+  Betula: "берёза",
+};
+
+/** ["Cornus", "Swida", "Larix"] → "дерен, лиственница" (duplicates merged). */
+export function genusList(genera: string[]): string {
+  return [...new Set(genera.map((g) => GENUS_LABELS[g] ?? g))].join(", ");
+}
+
 export const KIND_LABELS: Record<string, string> = {
   TREE: "ДЕРЕВО",
   SHRUB: "КУСТАРНИК",
