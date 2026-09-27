@@ -3,6 +3,7 @@ import type { IterationSummary, JudgeIssueV2 } from "../../api/types";
 import { loadIteration, setNav } from "../../state/actions";
 import { useApp } from "../../state/store";
 import { Badge, Spinner } from "../ui";
+import { JUDGE_DECISION_LABELS } from "../../labels";
 
 function issueText(i: string | JudgeIssueV2): string {
   return typeof i === "string" ? i : i.description;
@@ -19,12 +20,12 @@ function JudgeDetails({ it }: { it: IterationSummary }) {
   if (it.judgeSkipped === "hard_violations") {
     return (
       <div className="px-1 py-1 text-2xs text-ink-500">
-        Judge skipped — hard violations repaired deterministically
-        {it.deterministicRepair ? ` (removed ${it.deterministicRepair.removed})` : ""}.
+        Судья пропущен — жёсткие нарушения исправлены детерминированно
+        {it.deterministicRepair ? ` (удалено посадок: ${it.deterministicRepair.removed})` : ""}.
       </div>
     );
   }
-  if (!j) return <div className="px-1 py-1 text-2xs text-ink-500">no judge report</div>;
+  if (!j) return <div className="px-1 py-1 text-2xs text-ink-500">нет отчёта судьи</div>;
 
   const summary = j.summary ?? j.reasoningSummary ?? "";
   const issues = j.issues ?? [];
@@ -41,7 +42,7 @@ function JudgeDetails({ it }: { it: IterationSummary }) {
       )}
       {v2Changes.length > 0 ? (
         <div>
-          <div className="mb-0.5 uppercase tracking-wider text-ink-500">Parameter changes</div>
+          <div className="mb-0.5 uppercase tracking-wider text-ink-500">Изменения параметров</div>
           {v2Changes.map((ch) => (
             <div key={ch.parameter} className="flex items-center gap-1 font-mono text-ink-300">
               <span className="text-ink-400">{ch.parameter}</span>
@@ -54,7 +55,7 @@ function JudgeDetails({ it }: { it: IterationSummary }) {
         </div>
       ) : v1Changes.length > 0 ? (
         <div>
-          <div className="mb-0.5 uppercase tracking-wider text-ink-500">Recommended changes</div>
+          <div className="mb-0.5 uppercase tracking-wider text-ink-500">Рекомендованные изменения</div>
           {v1Changes.map(([param, next]) => {
             const old = it.parameters[param];
             return (
@@ -95,33 +96,33 @@ function IterationRow({ it }: { it: IterationSummary }) {
           #{it.index}{it.selected ? "★" : ""}
         </span>
         <span className="flex-1 font-mono text-2xs text-ink-200">
-          {it.metrics.treeCount}t/{it.metrics.shrubCount}s
+          {it.metrics.treeCount} д / {it.metrics.shrubCount} к
         </span>
         <span
           className={`font-mono text-2xs ${it.metrics.hardViolations > 0 ? "text-red-600 dark:text-red-400" : "text-ink-500"}`}
-          title="hard violations"
+          title="Жёсткие нарушения"
         >
-          {it.metrics.hardViolations}v
+          {it.metrics.hardViolations} н
         </span>
-        <span className="font-mono text-2xs text-ink-400" title="coverage / distribution">
+        <span className="font-mono text-2xs text-ink-400" title="Покрытие / распределение">
           {Math.round(it.metrics.coverageScore * 100)}/{Math.round(it.metrics.distributionScore * 100)}%
         </span>
         {loadingId === it.iterationId && <Spinner className="h-2.5 w-2.5" />}
         {it.judge && (
           <>
             <Badge tone={decisionTone(it.judge.decision)}>
-              {it.judge.decision === "MANUAL_REVIEW" ? "REVIEW" : it.judge.decision}
+              {JUDGE_DECISION_LABELS[it.judge.decision] ?? it.judge.decision}
             </Badge>
-            <Badge tone="grey">{it.judge.mode === "llm" ? "LLM" : "heuristic"}</Badge>
+            <Badge tone="grey">{it.judge.mode === "llm" ? "LLM" : "эвристика"}</Badge>
           </>
         )}
         {it.judgeSkipped === "hard_violations" && (
-          <Badge tone="grey" title="Judge skipped: repaired deterministically">skipped</Badge>
+          <Badge tone="grey" title="Судья пропущен: нарушения исправлены детерминированно">пропущено</Badge>
         )}
         <button
           className="px-0.5 text-ink-500 hover:text-ink-200"
           onClick={(e) => { e.stopPropagation(); setExpanded((x) => !x); }}
-          title="Details"
+          title="Подробности"
         >
           {expanded ? "▾" : "▸"}
         </button>
@@ -130,7 +131,7 @@ function IterationRow({ it }: { it: IterationSummary }) {
         <div className="px-1 pb-1.5">
           <JudgeDetails it={it} />
           <div className="mt-1 font-mono text-2xs text-ink-500">
-            seed {it.seed} · {Object.entries(it.parameters).map(([k, v]) => `${k}=${v}`).join(" · ")}
+            зерно {it.seed} · {Object.entries(it.parameters).map(([k, v]) => `${k}=${v}`).join(" · ")}
           </div>
         </div>
       )}
@@ -142,11 +143,11 @@ function IterationRow({ it }: { it: IterationSummary }) {
 export function RunsList() {
   const iterations = useApp((s) => s.iterations);
   if (iterations.length === 0) {
-    return <div className="p-3 text-xs text-ink-500">No runs yet — generate a plan first.</div>;
+    return <div className="p-3 text-xs text-ink-500">Запусков пока нет — сначала сгенерируйте план.</div>;
   }
   return (
     <div className="p-1">
-      <div className="px-1 pb-1 text-2xs text-ink-500">★ = selected final solution · click row to view on canvas</div>
+      <div className="px-1 pb-1 text-2xs text-ink-500">★ — выбранное итоговое решение · нажмите на строку, чтобы открыть его на плане</div>
       {iterations.map((it) => <IterationRow key={it.iterationId} it={it} />)}
     </div>
   );
@@ -159,14 +160,14 @@ export function RunsView() {
   return (
     <div className="h-full w-full overflow-y-auto bg-ink-950" data-testid="runs-view">
       <div className="mx-auto max-w-3xl px-4 py-6">
-        <h1 className="text-sm font-semibold uppercase tracking-wider text-ink-200">Runs</h1>
+        <h1 className="text-sm font-semibold uppercase tracking-wider text-ink-200">Запуски</h1>
         {iterations.length === 0 ? (
           <div className="mt-4 text-xs text-ink-500">
-            No runs yet.{" "}
+            Запусков пока нет.{" "}
             <button className="underline decoration-dotted hover:text-ink-200" onClick={() => setNav("plan")}>
-              Go to the plan
+              Перейдите к плану
             </button>{" "}
-            and generate a planting plan first.
+            и сгенерируйте план посадок.
           </div>
         ) : (
           <>
@@ -175,13 +176,13 @@ export function RunsView() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-2xs uppercase tracking-wider text-ink-500">
-                      <th className="px-2 py-1.5 font-medium">Iteration</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Trees</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Shrubs</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Violations</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Coverage</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Distribution</th>
-                      <th className="px-2 py-1.5 text-right font-medium">Canopy m²</th>
+                      <th className="px-2 py-1.5 font-medium">Итерация</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Деревья</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Кустарники</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Нарушения</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Покрытие</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Распределение</th>
+                      <th className="px-2 py-1.5 text-right font-medium">Крона, м²</th>
                     </tr>
                   </thead>
                   <tbody>

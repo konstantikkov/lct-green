@@ -10,16 +10,17 @@ import {
 import { useApp } from "../../state/store";
 import { RuleRoleBadge, ruleConditionNote } from "../regulatory";
 import { Badge, Btn, Spinner, TextInput } from "../ui";
+import { CONSTRAINT_TYPE_LABELS, DOC_STATUS_LABELS, VERDICT_LABELS } from "../../labels";
 
 // --- Status presentation -----------------------------------------------------
 
 const STATUS_LABEL: Record<RuleCandidateStatus, string> = {
-  EXTRACTED: "Extracted",
-  NEEDS_REVIEW: "Need review",
-  VERIFIED: "Verified",
-  ACTIVE: "Active",
-  DEPRECATED: "Deprecated",
-  REJECTED: "Rejected",
+  EXTRACTED: "Извлечено",
+  NEEDS_REVIEW: "Требует проверки",
+  VERIFIED: "Проверено",
+  ACTIVE: "Активно",
+  DEPRECATED: "Деактивировано",
+  REJECTED: "Отклонено",
 };
 
 const STATUS_TONE: Record<RuleCandidateStatus, "grey" | "green" | "amber" | "red" | "blue"> = {
@@ -39,7 +40,7 @@ function CountChips({ doc }: { doc: RegDocument }) {
   const chips = order
     .map((s) => ({ status: s, count: doc.candidateCounts?.[s] ?? 0 }))
     .filter((c) => c.count > 0);
-  if (chips.length === 0) return <span className="text-2xs text-ink-500">no rule candidates yet</span>;
+  if (chips.length === 0) return <span className="text-2xs text-ink-500">правил пока не извлечено</span>;
   return (
     <div className="flex flex-wrap gap-1">
       {chips.map((c) => (
@@ -71,7 +72,7 @@ function DocumentsColumn() {
           onClick={() => inputRef.current?.click()}
           data-testid="reg-upload"
         >
-          {uploadBusy ? <><Spinner /> Uploading…</> : "Upload document (PDF / DOCX)"}
+          {uploadBusy ? <><Spinner /> Загрузка…</> : "Загрузить документ (PDF / DOCX)"}
         </Btn>
         <input
           ref={inputRef}
@@ -89,12 +90,12 @@ function DocumentsColumn() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {docsError && <div className="p-2 text-2xs text-red-600 dark:text-red-400">{docsError}</div>}
         {docs == null && !docsError && (
-          <div className="flex items-center gap-2 p-3 text-2xs text-ink-500"><Spinner /> loading documents…</div>
+          <div className="flex items-center gap-2 p-3 text-2xs text-ink-500"><Spinner /> загрузка документов…</div>
         )}
         {docs != null && docs.length === 0 && (
           <div className="p-3 text-2xs leading-relaxed text-ink-500">
-            No regulatory documents yet. Upload a PDF or DOCX of a normative act
-            to extract rule candidates with full provenance.
+            Нормативных документов пока нет. Загрузите PDF или DOCX нормативного акта,
+            чтобы извлечь из него правила с привязкой к пункту источника.
           </div>
         )}
         {(docs ?? []).map((d) => (
@@ -110,12 +111,12 @@ function DocumentsColumn() {
                 {d.title ?? d.fileName}
               </span>
               <Badge tone={d.status === "FAILED" ? "red" : d.status === "EXTRACTED" ? "green" : "grey"}>
-                {d.status}
+                {DOC_STATUS_LABELS[d.status] ?? d.status}
               </Badge>
             </div>
             <div className="mt-0.5 truncate font-mono text-2xs text-ink-500">
               {d.documentNumber ?? d.fileName}
-              {d.pageCount != null ? ` · ${d.pageCount} p.` : ""} · {d.fragmentCount} fragments
+              {d.pageCount != null ? ` · ${d.pageCount} стр.` : ""} · {d.fragmentCount} фрагм.
             </div>
             <div className="mt-1"><CountChips doc={d} /></div>
             {(d.status === "PARSED" || d.status === "EXTRACTED") && (
@@ -126,8 +127,8 @@ function DocumentsColumn() {
                   onClick={() => void extractRegDocument(d.id)}
                 >
                   {extractingId === d.id
-                    ? <><Spinner className="h-2.5 w-2.5" /> Extracting…</>
-                    : d.status === "EXTRACTED" ? "Re-extract rules" : "Extract rules"}
+                    ? <><Spinner className="h-2.5 w-2.5" /> Извлечение…</>
+                    : d.status === "EXTRACTED" ? "Извлечь заново" : "Извлечь правила"}
                 </Btn>
               </div>
             )}
@@ -142,13 +143,13 @@ function DocumentsColumn() {
 
 function VerdictBadge({ c }: { c: RuleCandidate }) {
   const v = c.verification;
-  if (!v || !v.verdict) return <Badge tone="grey">not verified</Badge>;
+  if (!v || !v.verdict) return <Badge tone="grey">не проверено</Badge>;
   const tone = v.verdict === "SUPPORTED" ? "green"
     : v.verdict === "UNSUPPORTED" ? "red"
     : "amber";
   return (
     <Badge tone={tone} title={v.notes ?? undefined}>
-      {v.verdict}{v.numericLiteralFound ? "" : " · numeric literal NOT found"}
+      {VERDICT_LABELS[v.verdict] ?? v.verdict}{v.numericLiteralFound ? "" : " · число в тексте НЕ найдено"}
     </Badge>
   );
 }
@@ -180,25 +181,25 @@ function EditForm({ c, onClose }: { c: RuleCandidate; onClose: () => void }) {
     <div className="mt-2 space-y-1.5 border border-ink-600 bg-ink-850 p-2">
       <div className="grid grid-cols-2 gap-2">
         <label className="text-2xs text-ink-400">
-          Value
+          Значение
           <TextInput value={value} onChange={setValue} className="mt-0.5" />
         </label>
         <label className="text-2xs text-ink-400">
-          Unit
-          <TextInput value={unit} onChange={setUnit} placeholder="m" className="mt-0.5" />
+          Единица
+          <TextInput value={unit} onChange={setUnit} placeholder="м" className="mt-0.5" />
         </label>
       </div>
       <label className="block text-2xs text-ink-400">
-        Object types (comma-separated)
+        Типы объектов (через запятую)
         <TextInput value={objectTypes} onChange={setObjectTypes} className="mt-0.5" />
       </label>
       <div className="flex gap-1.5 pt-0.5">
         <Btn variant="primary" className="h-6 text-2xs" disabled={busyId === c.id} onClick={() => void submit()}>
-          Save edit
+          Сохранить
         </Btn>
-        <Btn variant="ghost" className="h-6 text-2xs" onClick={onClose}>Cancel</Btn>
+        <Btn variant="ghost" className="h-6 text-2xs" onClick={onClose}>Отмена</Btn>
       </div>
-      <div className="text-2xs text-ink-500">Every edit bumps ruleVersion; the previous version is retained server-side.</div>
+      <div className="text-2xs text-ink-500">Каждая правка повышает версию правила; предыдущая версия сохраняется на сервере.</div>
     </div>
   );
 }
@@ -217,25 +218,25 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 lg:grid-cols-2">
       {/* Left: source provenance */}
       <div>
-        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Source</div>
+        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Источник</div>
         <div className="border border-ink-600 bg-ink-900 p-2">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-ink-400">
-            <span>page {c.source.page ?? "—"}</span>
+            <span>стр. {c.source.page ?? "—"}</span>
             <span className="min-w-0 truncate" title={c.source.hierarchyPath}>{c.source.hierarchyPath}</span>
-            <span>doc v{c.source.documentVersion}</span>
+            <span>версия док. {c.source.documentVersion}</span>
           </div>
           <blockquote className="mt-2 whitespace-pre-wrap border-l-2 border-amber-400/70 bg-amber-50/60 p-2 text-xs leading-relaxed text-ink-200 dark:bg-amber-950/20">
             {c.source.sourceText}
           </blockquote>
           {c.source.fragmentIds.length > 0 && (
             <div className="mt-1.5 truncate font-mono text-2xs text-ink-500" title={c.source.fragmentIds.join(", ")}>
-              fragments: {c.source.fragmentIds.join(", ")}
+              фрагменты: {c.source.fragmentIds.join(", ")}
             </div>
           )}
         </div>
         {c.exceptions.length > 0 && (
           <div className="mt-2">
-            <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Exceptions</div>
+            <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Исключения</div>
             <ul className="list-inside list-disc text-2xs text-ink-300">
               {c.exceptions.map((x, i) => <li key={i}>{x}</li>)}
             </ul>
@@ -245,14 +246,14 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
 
       {/* Right: extracted rule + actions */}
       <div>
-        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Extracted rule</div>
+        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Извлечённое правило</div>
         <div className="border border-ink-600 bg-ink-900 p-2">
           <div className="flex items-center gap-1.5">
             <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
-            <Badge tone="grey">{c.constraint.type}</Badge>
+            <Badge tone="grey">{CONSTRAINT_TYPE_LABELS[c.constraint.type] ?? c.constraint.type}</Badge>
             {!c.machineExecutable && (
-              <Badge tone="amber" title="Cannot be enforced automatically by the constraint engine">
-                non-executable
+              <Badge tone="amber" title="Движок ограничений не может применить это правило автоматически">
+                не исполняемое
               </Badge>
             )}
             <span className="ml-auto font-mono text-2xs text-ink-400">v{c.ruleVersion}</span>
@@ -270,16 +271,16 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
           </div>
 
           <div className="mt-2 space-y-0.5 text-2xs text-ink-400">
-            <div>jurisdiction: <span className="text-ink-300">{c.applicability.jurisdiction ?? "—"}</span></div>
-            <div>plant types: <span className="text-ink-300">{c.applicability.plantType.join(", ") || "—"}</span></div>
-            <div>object types: <span className="text-ink-300">{c.applicability.objectTypes.join(", ") || "—"}</span></div>
+            <div>юрисдикция: <span className="text-ink-300">{c.applicability.jurisdiction ?? "—"}</span></div>
+            <div>типы насаждений: <span className="text-ink-300">{c.applicability.plantType.join(", ") || "—"}</span></div>
+            <div>типы объектов: <span className="text-ink-300">{c.applicability.objectTypes.join(", ") || "—"}</span></div>
             {c.applicability.conditions.length > 0 && (
-              <div>conditions: <span className="text-ink-300">{c.applicability.conditions.join("; ")}</span></div>
+              <div>условия: <span className="text-ink-300">{c.applicability.conditions.join("; ")}</span></div>
             )}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-2xs text-ink-400">confidence {Math.round(c.confidence * 100)}%</span>
+            <span className="font-mono text-2xs text-ink-400">уверенность {Math.round(c.confidence * 100)}%</span>
             <VerdictBadge c={c} />
           </div>
           {c.verification?.notes && (
@@ -288,29 +289,29 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
 
           <div className="mt-3 flex flex-wrap gap-1.5 border-t border-ink-700 pt-2">
             <Btn className="h-6 text-2xs" disabled={busy} onClick={() => void verifyRegCandidate(c.id)}>
-              {busy ? <Spinner className="h-2.5 w-2.5" /> : null} Verify
+              {busy ? <Spinner className="h-2.5 w-2.5" /> : null} Проверить
             </Btn>
             <Btn
               variant="primary" className="h-6 text-2xs"
               disabled={busy || !canApprove}
               onClick={() => void reviewRegCandidate(c.id, { action: "approve" })}
-              title={canApprove ? "Mark as VERIFIED" : `Cannot approve from status ${c.status}`}
+              title={canApprove ? "Отметить как проверенное" : `Нельзя подтвердить из статуса «${STATUS_LABEL[c.status]}»`}
             >
-              Approve
+              Подтвердить
             </Btn>
             <Btn className="h-6 text-2xs" disabled={busy} onClick={() => setEditing((x) => !x)}>
-              Edit
+              Изменить
             </Btn>
             <Btn
               className="h-6 border-red-300 text-2xs text-red-700 dark:border-red-800 dark:text-red-300"
               disabled={busy}
               onClick={() => void reviewRegCandidate(c.id, { action: "reject" })}
             >
-              Reject
+              Отклонить
             </Btn>
             {c.status === "ACTIVE" ? (
               <Btn className="h-6 text-2xs" disabled={busy} onClick={() => void deactivateRegCandidate(c.id)}>
-                Deactivate
+                Деактивировать
               </Btn>
             ) : (
               <Btn
@@ -319,13 +320,13 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
                 onClick={() => void activateRegCandidate(c.id)}
                 title={
                   c.status !== "VERIFIED"
-                    ? "Only VERIFIED candidates can be activated"
+                    ? "Активировать можно только проверенное правило"
                     : numericBlocked
-                      ? "Numeric value was not literally found in the source — cannot activate"
-                      : "Merge into the active rule registry"
+                      ? "Число не найдено дословно в тексте источника — активировать нельзя"
+                      : "Добавить в действующий реестр правил"
                 }
               >
-                Activate
+                Активировать
               </Btn>
             )}
           </div>
@@ -333,8 +334,8 @@ function CandidateReview({ c }: { c: RuleCandidate }) {
           {editing && <EditForm c={c} onClose={() => setEditing(false)} />}
 
           <div className="mt-2 border-t border-ink-700 pt-1.5 font-mono text-2xs text-ink-500">
-            extracted by {c.extraction.model} · prompt {c.extraction.promptVersion}
-            {c.reviewer ? ` · reviewed by ${c.reviewer}` : ""}
+            извлёк {c.extraction.model} · промпт {c.extraction.promptVersion}
+            {c.reviewer ? ` · проверил ${c.reviewer}` : ""}
           </div>
         </div>
       </div>
@@ -352,7 +353,7 @@ function CandidatesPane() {
   if (!docId) {
     return (
       <div className="flex flex-1 items-center justify-center p-6 text-xs text-ink-500">
-        Select a document on the left to review its extracted rule candidates.
+        Выберите документ слева, чтобы проверить извлечённые из него правила.
       </div>
     );
   }
@@ -373,7 +374,7 @@ function CandidatesPane() {
             }`}
             onClick={() => setRegFilter(f)}
           >
-            {f === "ALL" ? "All" : STATUS_LABEL[f]}
+            {f === "ALL" ? "Все" : STATUS_LABEL[f]}
           </button>
         ))}
         {loading && <Spinner className="ml-1 h-2.5 w-2.5" />}
@@ -384,8 +385,8 @@ function CandidatesPane() {
           {filtered.length === 0 && !loading && (
             <div className="p-3 text-2xs text-ink-500">
               {candidates == null || candidates.length === 0
-                ? "No candidates for this document yet — run extraction."
-                : "No candidates match this filter."}
+                ? "Из этого документа правила ещё не извлекались — запустите извлечение."
+                : "Нет правил с таким статусом."}
             </div>
           )}
           {filtered.map((c) => (
@@ -415,7 +416,7 @@ function CandidatesPane() {
           ? <CandidateReview c={selected} />
           : (
             <div className="flex flex-1 items-center justify-center p-6 text-xs text-ink-500">
-              Select a candidate to review it against its source text.
+              Выберите правило, чтобы сверить его с текстом источника.
             </div>
           )}
       </div>
@@ -435,22 +436,22 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
         </span>
         <RuleRoleBadge role={rule.role} />
         {inactive ? (
-          <Badge tone="grey" title={`Inactive: ${rule.status === "missing_source_data" ? "missing_source_data" : "disabled"}`}>
-            INACTIVE
+          <Badge tone="grey" title={`Не применяется: ${rule.status === "missing_source_data" ? "нет нормативного источника" : "правило выключено"}`}>
+            НЕ ПРИМЕНЯЕТСЯ
           </Badge>
         ) : rule.effectiveSource === "assumption" ? (
-          <Badge tone="amber" title={rule.assumption?.note ?? "Distance is an unverified assumption"}>
-            ASSUMED
+          <Badge tone="amber" title={rule.assumption?.note ?? "Расстояние — непроверенное допущение"}>
+            ДОПУЩЕНИЕ
           </Badge>
         ) : (
           <Badge tone="green" title={`${rule.source.document}${rule.source.clause ? ` · ${rule.source.clause}` : ""}`}>
-            VERIFIED
+            ПОДТВЕРЖДЕНО
           </Badge>
         )}
       </div>
       <div className="mt-0.5 flex items-center gap-2 text-2xs text-ink-400">
         <span className="font-mono">
-          {rule.effectiveDistanceM != null ? `${rule.effectiveDistanceM} m` : "—"}
+          {rule.effectiveDistanceM != null ? `${rule.effectiveDistanceM} м` : "—"}
         </span>
         {ruleConditionNote(rule) && (
           <span className="shrink-0 text-ink-500" title="Условие применимости правила">
@@ -461,7 +462,7 @@ function RuleRow({ rule }: { rule: RegulatoryRule }) {
           {rule.source.document}{rule.source.clause ? ` · ${rule.source.clause}` : ""}
         </span>
         <span className={rule.severity === "hard" ? "text-red-600/80 dark:text-red-400/80" : "text-ink-500"}>
-          {rule.severity}
+          {rule.severity === "hard" ? "обязательное" : "рекомендуемое"}
         </span>
       </div>
       {rule.source.excerpt && (
@@ -484,24 +485,24 @@ function RegistryPane() {
     <div className="flex-1 overflow-y-auto p-3">
       <div className="mx-auto max-w-2xl">
         <p className="mb-3 text-2xs leading-relaxed text-ink-500">
-          The rule registry the constraint engine actually uses: the hand-maintained
-          YAML baseline plus every ACTIVE candidate extracted from uploaded documents
-          (ids <span className="font-mono">REG_*</span>, status verified, full provenance).
+          Реестр правил, по которому работает движок ограничений: базовый набор из YAML
+          плюс все активированные правила, извлечённые из загруженных документов
+          (идентификаторы <span className="font-mono">REG_*</span>, статус «проверено», с привязкой к источнику).
         </p>
         {rulesError && <div className="text-2xs text-red-600 dark:text-red-400">{rulesError}</div>}
         {!rules && !rulesError && (
-          <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> loading rules…</div>
+          <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> загрузка правил…</div>
         )}
         {rules && (
           <>
             <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">
-              Active ({active.length})
+              Действующие ({active.length})
             </div>
             {active.map((r) => <RuleRow key={r.id} rule={r} />)}
             {inactive.length > 0 && (
               <>
                 <div className="mb-1 mt-3 text-2xs uppercase tracking-wider text-ink-500">
-                  Inactive ({inactive.length})
+                  Не применяются ({inactive.length})
                 </div>
                 {inactive.map((r) => <RuleRow key={r.id} rule={r} />)}
               </>
@@ -536,7 +537,7 @@ export function RegulationsView() {
             }`}
             onClick={() => setTab(t)}
           >
-            {t === "review" ? "Documents & review" : "Rule registry"}
+            {t === "review" ? "Документы и проверка" : "Реестр правил"}
           </button>
         ))}
       </div>

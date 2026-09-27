@@ -4,6 +4,7 @@ import { isDebug } from "../../debug";
 import { overrideLayerCategory, setLayersVisibility, toggleLayerVisibility } from "../../state/actions";
 import { useApp } from "../../state/store";
 import { Badge, Dropdown, Section } from "../ui";
+import { categoryLabel } from "../../labels";
 
 // --- Semantic grouping ------------------------------------------------------
 
@@ -64,7 +65,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
         checked={visible}
         onChange={() => toggleLayerVisibility(layer.name)}
         className="h-3 w-3 shrink-0 accent-emerald-600"
-        title="Toggle visibility"
+        title="Показать/скрыть слой"
       />
       <span
         className="h-2.5 w-2.5 shrink-0 rounded-[2px] border border-black/20 dark:border-black/40"
@@ -75,7 +76,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
       </span>
       <span className="shrink-0 font-mono text-2xs text-ink-500">{layer.entityCount}</span>
       {c.requiresReview && (
-        <span className="shrink-0 text-2xs text-amber-600 dark:text-amber-400" title="Classification requires review">⚠</span>
+        <span className="shrink-0 text-2xs text-amber-600 dark:text-amber-400" title="Классификация требует проверки">⚠</span>
       )}
       <Dropdown
         open={menuOpen}
@@ -83,10 +84,10 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
         trigger={
           <Badge
             tone={c.requiresReview ? "amber" : "grey"}
-            title={`source: ${c.source} — click to override`}
+            title={`источник: ${c.source} — нажмите, чтобы изменить категорию`}
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            {c.category} {confidence}%
+            {categoryLabel(c.category)} {confidence}%
           </Badge>
         }
       >
@@ -102,7 +103,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
             }}
           >
             <span className="h-2 w-2 rounded-[2px]" style={{ background: CATEGORY_COLORS[cat] }} />
-            {cat}
+            {categoryLabel(cat)}
           </button>
         ))}
       </Dropdown>
@@ -141,7 +142,7 @@ function GroupRow({ def, layers }: { def: GroupDef; layers: LayerInfo[] }) {
       <span className="min-w-0 flex-1 truncate text-xs text-ink-200">{def.label}</span>
       {reviewCount > 0 ? (
         <span className="shrink-0 text-2xs text-amber-600 dark:text-amber-400" title="Есть неуверенно распознанные слои">
-          ⚠ {reviewCount} uncertain
+          ⚠ {reviewCount} на проверку
         </span>
       ) : (
         <span className="shrink-0 text-2xs text-emerald-600 dark:text-emerald-400">✓</span>
@@ -168,7 +169,7 @@ export function LayersPanel() {
   const rawLayers = reviewOnly ? reviewLayers : doc.layers;
 
   return (
-    <Section title="Interpretation">
+    <Section title="Интерпретация">
       {/* One interrupt chip instead of permanent warning noise. */}
       {reviewLayers.length > 0 && (
         <button
@@ -179,9 +180,9 @@ export function LayersPanel() {
         >
           <span>⚠</span>
           <span className="flex-1">
-            {reviewLayers.length} layer{reviewLayers.length > 1 ? "s" : ""} require review before generation
+            Проверьте слои перед генерацией: {reviewLayers.length}
           </span>
-          <span className="font-semibold underline decoration-dotted">Review</span>
+          <span className="font-semibold underline decoration-dotted">Проверить</span>
         </button>
       )}
 
@@ -196,7 +197,7 @@ export function LayersPanel() {
             className="mt-1.5 text-2xs text-ink-400 underline decoration-dotted hover:text-ink-200"
             onClick={() => { setShowRaw(true); setReviewOnly(false); }}
           >
-            Show {doc.layers.length} CAD layers
+            Показать все слои чертежа ({doc.layers.length})
           </button>
         </div>
       ) : (
@@ -206,14 +207,14 @@ export function LayersPanel() {
               className="text-2xs text-ink-400 underline decoration-dotted hover:text-ink-200"
               onClick={() => { setShowRaw(false); setReviewOnly(false); }}
             >
-              ← Back to summary
+              ← К сводке
             </button>
             {reviewOnly && (
               <button
                 className="text-2xs text-ink-400 underline decoration-dotted hover:text-ink-200"
                 onClick={() => setReviewOnly(false)}
               >
-                Show all layers
+                Показать все слои
               </button>
             )}
           </div>
@@ -222,7 +223,7 @@ export function LayersPanel() {
               <LayerRow key={l.name} layer={l} />
             ))}
             {rawLayers.length === 0 && (
-              <div className="py-1 text-2xs text-ink-500">no layers require review</div>
+              <div className="py-1 text-2xs text-ink-500">слоёв на проверку нет</div>
             )}
           </div>
         </div>
@@ -230,7 +231,7 @@ export function LayersPanel() {
 
       {isDebug && doc.conversionLog && doc.conversionLog.length > 0 && (
         <div className="mt-2 border-t border-ink-700 pt-1.5">
-          <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Parser log (debug)</div>
+          <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Журнал разбора (отладка)</div>
           <div className="max-h-32 overflow-y-auto font-mono text-2xs leading-relaxed text-ink-500">
             {doc.conversionLog.map((line, i) => <div key={i}>{line}</div>)}
           </div>

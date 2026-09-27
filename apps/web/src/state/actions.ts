@@ -313,7 +313,7 @@ export async function openExample() {
   setState({ uploading: true, uploadError: null });
   try {
     const res = await fetch("/example/synthetic_site.dxf");
-    if (!res.ok) throw new Error(`example fetch failed (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`не удалось загрузить пример (HTTP ${res.status})`);
     const blob = await res.blob();
     const file = new File([blob], "synthetic_site.dxf", { type: "application/dxf" });
     await uploadFile(file);

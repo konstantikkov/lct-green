@@ -9,13 +9,13 @@ export const hud = {
 
   setCursor(x: number, y: number) {
     if (this.coordsEl) {
-      this.coordsEl.textContent = `X ${x.toFixed(2)} m   Y ${y.toFixed(2)} m`;
+      this.coordsEl.textContent = `X ${x.toFixed(2)} м   Y ${y.toFixed(2)} м`;
     }
   },
   setZoom(pxPerMeter: number) {
     if (this.zoomEl) {
       this.zoomEl.textContent =
-        pxPerMeter >= 1 ? `${pxPerMeter.toFixed(1)} px/m` : `1:${(1 / pxPerMeter).toFixed(0)} m/px`;
+        pxPerMeter >= 1 ? `${pxPerMeter.toFixed(1)} пикс/м` : `1:${(1 / pxPerMeter).toFixed(0)} м/пикс`;
     }
   },
 };

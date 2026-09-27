@@ -6,19 +6,19 @@ import { useApp } from "../../state/store";
 import { Btn, Checkbox, Section, Select, Spinner, TextInput } from "../ui";
 
 const STRATEGIES: { value: Strategy; label: string }[] = [
-  { value: "balanced", label: "Balanced" },
-  { value: "maximum_trees", label: "Maximum trees" },
-  { value: "maximum_canopy", label: "Maximum canopy" },
-  { value: "street_greening", label: "Street greening" },
+  { value: "balanced", label: "Сбалансированная" },
+  { value: "maximum_trees", label: "Максимум деревьев" },
+  { value: "maximum_canopy", label: "Максимум кроны" },
+  { value: "street_greening", label: "Уличное озеленение" },
 ];
 
 const STAGE_LABELS: Partial<Record<RunStage["stage"], string>> = {
-  GENERATING_CANDIDATES: "Generating candidates",
-  OPTIMIZING: "Optimizing",
-  VALIDATING: "Validating",
-  BUILDING_CONSTRAINTS: "Building constraints",
-  JUDGING: "Quality review",
-  RERUNNING: "Re-running",
+  GENERATING_CANDIDATES: "Генерация кандидатов",
+  OPTIMIZING: "Оптимизация",
+  VALIDATING: "Проверка по нормам",
+  BUILDING_CONSTRAINTS: "Построение ограничений",
+  JUDGING: "Оценка качества",
+  RERUNNING: "Повторный прогон",
 };
 
 /** Also rendered inside the wizard's Генерация step. */
@@ -47,7 +47,7 @@ export function StageChecklist() {
         </div>
       ))}
       {run.currentIteration > 0 && (
-        <div className="pt-0.5 font-mono text-2xs text-ink-500">iteration {run.currentIteration}</div>
+        <div className="pt-0.5 font-mono text-2xs text-ink-500">итерация {run.currentIteration}</div>
       )}
     </div>
   );
@@ -68,17 +68,17 @@ function AdvancedSettings() {
         onClick={() => setOpen((o) => !o)}
       >
         <span className="inline-block w-3">{open ? "▾" : "▸"}</span>
-        Advanced settings
+        Дополнительные настройки
       </button>
       {open && (
         <div className="mt-1.5 space-y-1.5 border-l border-ink-700 pl-2.5">
           <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
             <label className="text-2xs text-ink-400">
-              Seed
+              Seed (зерно генератора)
               <TextInput value={opts.seed} onChange={(v) => setGenOptions({ seed: v })} className="mt-0.5" />
             </label>
             <label className="text-2xs text-ink-400">
-              Max iterations
+              Макс. итераций
               <TextInput value={opts.maxIterations} onChange={(v) => setGenOptions({ maxIterations: v })} className="mt-0.5" />
             </label>
           </div>
@@ -87,28 +87,28 @@ function AdvancedSettings() {
             onChange={(v) => setGenOptions({ useLlmJudge: v })}
             label={
               <span>
-                LLM judge
+                LLM-судья
                 {capabilities && (!capabilities.localLlm.enabled || !capabilities.localLlm.reachable) && (
-                  <span className="ml-1 text-ink-500" title="Local LLM unreachable — heuristic fallback will be used">
-                    (fallback)
+                  <span className="ml-1 text-ink-500" title="Локальная LLM недоступна — будет использована эвристика">
+                    (эвристика)
                   </span>
                 )}
               </span>
             }
           />
           <div className="border-t border-ink-700/70 pt-1.5">
-            <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Debug overlays</div>
+            <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Отладочные слои</div>
             <div className="space-y-1">
               <Checkbox
                 checked={overlays.rejectedCandidates}
                 onChange={(v) => setOverlay("rejectedCandidates", v)}
-                label="Rejected candidates"
+                label="Отклонённые кандидаты"
               />
               {isDebug && (
                 <Checkbox
                   checked={overlays.chunkGrid}
                   onChange={(v) => setOverlay("chunkGrid", v)}
-                  label="Chunk grid"
+                  label="Сетка фрагментов"
                 />
               )}
             </div>
@@ -142,12 +142,12 @@ export function GeneratePanel() {
   };
 
   return (
-    <Section title="Generate">
-      <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Species</div>
+    <Section title="Генерация">
+      <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Породы</div>
       {!species && !speciesError && (
-        <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> loading species…</div>
+        <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> загрузка пород…</div>
       )}
-      {speciesError && <div className="text-2xs text-red-600 dark:text-red-400">species: {speciesError}</div>}
+      {speciesError && <div className="text-2xs text-red-600 dark:text-red-400">породы: {speciesError}</div>}
       {species && (
         <div className="max-h-40 space-y-0.5 overflow-y-auto pr-1">
           {species.map((sp) => (
@@ -164,10 +164,10 @@ export function GeneratePanel() {
               <span className={sp.kind === "TREE" ? "text-emerald-600 dark:text-emerald-400" : "text-lime-600 dark:text-lime-400"}>
                 {sp.kind === "TREE" ? "◉" : "◎"}
               </span>
-              <span className="min-w-0 flex-1 truncate" title={sp.displayNameRu}>{sp.displayName}</span>
+              <span className="min-w-0 flex-1 truncate" title={sp.displayName}>{sp.displayNameRu || sp.displayName}</span>
               <span className="font-mono text-2xs text-ink-500">r{sp.parameters.crownRadiusM}</span>
               {sp.regulatoryStatus === "unknown" && (
-                <span className="text-2xs text-amber-600 dark:text-amber-400" title="Regulatory status unknown">?</span>
+                <span className="text-2xs text-amber-600 dark:text-amber-400" title="Нормативный статус породы не проверен">?</span>
               )}
             </label>
           ))}
@@ -176,7 +176,7 @@ export function GeneratePanel() {
 
       <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5">
         <label className="text-2xs text-ink-400">
-          Strategy
+          Стратегия
           <Select
             value={opts.strategy}
             onChange={(v) => setGenOptions({ strategy: v as Strategy })}
@@ -185,11 +185,11 @@ export function GeneratePanel() {
           />
         </label>
         <label className="text-2xs text-ink-400">
-          Target count
+          Целевое количество
           <TextInput
             value={opts.targetCount}
             onChange={(v) => setGenOptions({ targetCount: v })}
-            placeholder="Auto"
+            placeholder="Авто"
             className="mt-0.5"
           />
         </label>
@@ -202,9 +202,9 @@ export function GeneratePanel() {
         className="mt-2.5 h-8 w-full text-[13px]"
         disabled={!canGenerate}
         onClick={() => generateNow()}
-        title={selected.size === 0 ? "Select at least one species" : undefined}
+        title={selected.size === 0 ? "Выберите хотя бы одну породу" : undefined}
       >
-        {runActive ? <><Spinner /> Generating…</> : "Generate planting plan"}
+        {runActive ? <><Spinner /> Генерация…</> : "Сгенерировать план посадок"}
       </Btn>
 
       {runError && (

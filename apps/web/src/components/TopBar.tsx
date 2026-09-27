@@ -6,6 +6,7 @@ import { useApp, useStage, type NavView } from "../state/store";
 import { toggleTheme, useTheme } from "../theme";
 import { Badge, Btn, Dropdown, Spinner } from "./ui";
 import type { PipelineState } from "../api/types";
+import { pipelineStateLabel } from "../labels";
 
 function stateTone(s: PipelineState | null): "grey" | "green" | "amber" | "red" {
   if (!s) return "grey";
@@ -46,14 +47,14 @@ function ProjectMenu() {
       trigger={
         <button
           className="flex min-w-0 items-center gap-1.5 rounded-sm border border-transparent px-1.5 py-0.5 text-xs text-ink-100 hover:border-ink-600 hover:bg-ink-800"
-          title="Switch project"
+          title="Сменить проект"
         >
           <span className="max-w-[180px] truncate">{doc.fileName}</span>
           <span className="text-ink-400">▾</span>
         </button>
       }
     >
-      <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Projects</div>
+      <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Проекты</div>
       {(projects ?? []).map((p) => (
         <button
           key={p.id}
@@ -71,7 +72,7 @@ function ProjectMenu() {
         </button>
       ))}
       {projects != null && projects.length === 0 && (
-        <div className="px-2 py-1 text-2xs text-ink-500">no saved projects</div>
+        <div className="px-2 py-1 text-2xs text-ink-500">нет сохранённых проектов</div>
       )}
       <div className="mt-1 border-t border-ink-600 pt-1">
         <button
@@ -81,7 +82,7 @@ function ProjectMenu() {
             newProject();
           }}
         >
-          + New project…
+          + Новый проект…
         </button>
       </div>
     </Dropdown>
@@ -105,7 +106,7 @@ function MobileOverflowMenu() {
         trigger={
           <button
             className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
-            title="More actions"
+            title="Ещё действия"
           >
             ⋯
           </button>
@@ -119,7 +120,7 @@ function MobileOverflowMenu() {
             if (doc) window.open(api.exportDxfUrl(doc.projectId), "_blank");
           }}
         >
-          Export DXF
+          Экспорт DXF
         </button>
         <button
           className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
@@ -129,10 +130,10 @@ function MobileOverflowMenu() {
             if (doc) window.open(api.exportReportUrl(doc.projectId), "_blank");
           }}
         >
-          Export report
+          Экспорт отчёта
         </button>
         <div className="my-1 border-t border-ink-600" />
-        <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Projects</div>
+        <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Проекты</div>
         {(projects ?? []).map((p) => (
           <button
             key={p.id}
@@ -150,7 +151,7 @@ function MobileOverflowMenu() {
           </button>
         ))}
         {projects != null && projects.length === 0 && (
-          <div className="px-2 py-1 text-2xs text-ink-500">no saved projects</div>
+          <div className="px-2 py-1 text-2xs text-ink-500">нет сохранённых проектов</div>
         )}
         <div className="mt-1 border-t border-ink-600 pt-1">
           <button
@@ -160,7 +161,7 @@ function MobileOverflowMenu() {
               newProject();
             }}
           >
-            + New project…
+            + Новый проект…
           </button>
         </div>
       </Dropdown>
@@ -177,9 +178,9 @@ function NavTabs() {
   const iterationCount = useApp((s) => s.iterations.length);
 
   const primary: { id: NavView; label: string; badge?: number; testid: string }[] = [
-    { id: "plan", label: "PLAN", testid: "nav-plan" },
+    { id: "plan", label: "ПЛАН", testid: "nav-plan" },
     {
-      id: "runs", label: "RUNS",
+      id: "runs", label: "ЗАПУСКИ",
       badge: iterationCount > 1 ? iterationCount : undefined,
       testid: "nav-runs",
     },
@@ -215,8 +216,8 @@ function NavTabs() {
 export function SecondaryNav({ className = "hidden md:flex" }: { className?: string }) {
   const nav = useApp((s) => s.nav);
   const items: { id: NavView; label: string; testid: string }[] = [
-    { id: "regulations", label: "Regulations", testid: "nav-regulations" },
-    { id: "quality", label: "Quality", testid: "nav-quality" },
+    { id: "regulations", label: "Нормативы", testid: "nav-regulations" },
+    { id: "quality", label: "Качество", testid: "nav-quality" },
   ];
   return (
     <div className={`items-center gap-0.5 ${className}`}>
@@ -243,7 +244,7 @@ export function ThemeToggle() {
     <button
       className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-ink-600 bg-ink-800 text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
       onClick={toggleTheme}
-      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
     >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
     </button>
@@ -286,9 +287,9 @@ export function TopBar() {
             <div className="hidden min-w-0 items-center gap-2.5 lg:flex">
               <span className="font-mono text-2xs text-ink-500">{doc.format}</span>
               <span className="font-mono text-2xs text-ink-500">{doc.cadVersion}</span>
-              <span className="font-mono text-2xs text-ink-500">units: {doc.units}</span>
+              <span className="font-mono text-2xs text-ink-500">единицы: {doc.units}</span>
               <span className="font-mono text-2xs text-ink-500">
-                {doc.entityCount.toLocaleString()} entities / {doc.layerCount} layers
+                {doc.entityCount.toLocaleString()} объектов / {doc.layerCount} слоёв
               </span>
             </div>
           )}
@@ -302,7 +303,7 @@ export function TopBar() {
       {doc && pipelineState && (
         <Badge tone={stateTone(pipelineState)}>
           {runActive && <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
-          {pipelineState}
+          {pipelineStateLabel(pipelineState)}
         </Badge>
       )}
 
@@ -312,10 +313,10 @@ export function TopBar() {
           className="hidden font-semibold md:inline-flex"
           disabled={runActive}
           onClick={() => generateNow()}
-          title="Generate a planting plan with the current settings"
+          title="Сгенерировать план посадок с текущими настройками"
           data-testid="generate-button"
         >
-          {runActive ? <><Spinner /> Generating…</> : "Generate planting plan"}
+          {runActive ? <><Spinner /> Генерация…</> : "Сгенерировать план посадок"}
         </Btn>
       )}
 
@@ -323,17 +324,17 @@ export function TopBar() {
         <div className="hidden items-center gap-2 md:flex">
           <Btn
             onClick={() => window.open(api.exportDxfUrl(doc.projectId), "_blank")}
-            title="Download DXF with generated plantings"
+            title="Скачать DXF со сгенерированными посадками"
             data-testid="export-dxf"
           >
-            Export DXF
+            Экспорт DXF
           </Btn>
           <Btn
             onClick={() => window.open(api.exportReportUrl(doc.projectId), "_blank")}
-            title="Download JSON report"
+            title="Скачать отчёт в JSON"
             data-testid="export-report"
           >
-            Export report
+            Экспорт отчёта
           </Btn>
         </div>
       )}

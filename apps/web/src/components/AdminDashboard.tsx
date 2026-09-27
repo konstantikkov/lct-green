@@ -4,6 +4,7 @@ import { deleteProject, loadProjectSummaries, openExample, openProject, uploadFi
 import { useApp } from "../state/store";
 import { SecondaryNav, ThemeToggle } from "./TopBar";
 import { Badge, Btn, Spinner } from "./ui";
+import { JUDGE_DECISION_LABELS } from "../labels";
 
 function formatDate(v: string | number): string {
   // Contract says ISO string; current backend emits unix seconds — accept both.
@@ -155,7 +156,7 @@ function UploadZone({ dragOver }: { dragOver: boolean }) {
             variant="ghost"
             className="text-ink-400"
             onClick={() => void openExample()}
-            title="Load the bundled example site plan"
+            title="Открыть встроенный пример генплана"
             data-testid="open-example"
           >
             Открыть пример
@@ -175,32 +176,32 @@ function UploadZone({ dragOver }: { dragOver: boolean }) {
 
       {uploadError && !converterMissing && (
         <div className="w-full border border-red-300 bg-red-50 p-2 text-2xs text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300">
-          <span className="font-semibold">Upload failed{uploadError.code ? ` (${uploadError.code})` : ""}:</span>{" "}
+          <span className="font-semibold">Не удалось загрузить{uploadError.code ? ` (${uploadError.code})` : ""}:</span>{" "}
           {uploadError.message}
         </div>
       )}
 
       {converterMissing && (
         <div className="w-full border border-amber-300 bg-amber-50 p-2.5 text-2xs leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-          <div className="mb-1 font-semibold uppercase tracking-wide">DWG converter unavailable</div>
+          <div className="mb-1 font-semibold uppercase tracking-wide">Конвертер DWG недоступен</div>
           <p className="text-amber-800/90 dark:text-amber-200/90">
-            This file is a binary DWG. The backend converts DWG → DXF with an external tool,
-            and none was found. Install one of:
+            Это двоичный файл DWG. Сервер переводит DWG в DXF внешней программой,
+            но ни одна не найдена. Установите одну из них:
           </p>
           <ul className="my-1 list-inside list-disc text-amber-800/90 dark:text-amber-200/90">
-            <li><span className="font-mono">ODA File Converter</span> — set <span className="font-mono">ODA_CONVERTER_PATH</span></li>
-            <li><span className="font-mono">LibreDWG dwg2dxf</span> — set <span className="font-mono">DWG2DXF_PATH</span> (or have it on PATH)</li>
+            <li><span className="font-mono">ODA File Converter</span> — задайте <span className="font-mono">ODA_FILE_CONVERTER_PATH</span></li>
+            <li><span className="font-mono">LibreDWG dwg2dxf</span> — задайте <span className="font-mono">LIBREDWG_DWG2DXF_PATH</span> (или добавьте в PATH)</li>
           </ul>
           <p className="text-amber-800/90 dark:text-amber-200/90">
-            Then restart the API. Alternatively, export the drawing as DXF and upload that instead.
+            Затем перезапустите сервер. Или сохраните чертёж в DXF и загрузите его.
           </p>
-          <p className="mt-1 text-amber-700/80 dark:text-amber-400/80">Backend message: {uploadError?.message}</p>
+          <p className="mt-1 text-amber-700/80 dark:text-amber-400/80">Сообщение сервера: {uploadError?.message}</p>
         </div>
       )}
 
       {capabilities && !capabilities.dwgConverter.available && !uploadError && (
         <div className="text-2xs text-ink-500">
-          Note: DWG converter not detected on the backend — DXF only.
+          Конвертер DWG на сервере не найден — принимаются только файлы DXF.
         </div>
       )}
     </div>
@@ -227,12 +228,12 @@ function ResultCell({ r }: { r: ProjectSummary["result"] }) {
       <span className="whitespace-nowrap font-mono text-2xs text-ink-200">
         {r.treeCount ?? "—"} дер. / {r.shrubCount ?? "—"} куст.
       </span>
-      <Badge tone={r.hardViolations > 0 ? "red" : "green"} title="hard violations">
+      <Badge tone={r.hardViolations > 0 ? "red" : "green"} title="Жёсткие нарушения">
         {r.hardViolations > 0 ? `${r.hardViolations} наруш.` : "0 наруш."}
       </Badge>
       {r.judgeDecision && (
-        <Badge tone={judgeTone(r.judgeDecision)} title="judge decision">
-          {r.judgeDecision === "MANUAL_REVIEW" ? "REVIEW" : r.judgeDecision}
+        <Badge tone={judgeTone(r.judgeDecision)} title="Решение судьи об оптимизации">
+          {JUDGE_DECISION_LABELS[r.judgeDecision] ?? r.judgeDecision}
         </Badge>
       )}
     </div>
@@ -381,7 +382,7 @@ function ActionsCell({ p }: { p: ProjectSummary }) {
 function UncertainCell({ n }: { n: number | null }) {
   if (n == null) return <span className="text-ink-500">—</span>;
   return n > 0 ? (
-    <span className="text-amber-600 dark:text-amber-400" title={`${n} uncertain layers`}>⚠ {n}</span>
+    <span className="text-amber-600 dark:text-amber-400" title={`Слоёв с неуверенной классификацией: ${n}`}>⚠ {n}</span>
   ) : (
     <span className="text-emerald-600 dark:text-emerald-400">✓</span>
   );
@@ -407,9 +408,9 @@ function ProjectsTable({ summaries }: { summaries: ProjectSummary[] }) {
             <th className="px-2 py-1.5 font-medium">Файл</th>
             <th className="px-2 py-1.5 font-medium">Загружен</th>
             <th className="px-2 py-1.5 font-medium">CAD</th>
-            <th className="px-2 py-1.5 font-medium" title="Uncertain layer classifications">Слои ⚠</th>
+            <th className="px-2 py-1.5 font-medium" title="Слои с неуверенной классификацией">Слои ⚠</th>
             <th className="px-2 py-1.5 font-medium">Результат</th>
-            <th className="px-2 py-1.5 font-medium" title="coverage · distribution">Качество</th>
+            <th className="px-2 py-1.5 font-medium" title="Покрытие · распределение">Качество</th>
             <th className="px-2 py-1.5 text-right font-medium">Действия</th>
           </tr>
         </thead>

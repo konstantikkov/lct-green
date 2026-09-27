@@ -52,10 +52,10 @@ function BasisChip({ basis }: { basis: AllowedBasis }) {
 }
 
 const LEGEND: { key: keyof OverlayState; label: string; swatch: string }[] = [
-  { key: "allowedArea", label: "Allowed planting", swatch: "bg-emerald-500/50" },
-  { key: "exclusionZones", label: "Excluded zones", swatch: "bg-red-500/50" },
-  { key: "existingVegetation", label: "Existing vegetation", swatch: "bg-green-600/50" },
-  { key: "originalCad", label: "Original CAD", swatch: "bg-ink-400" },
+  { key: "allowedArea", label: "Зона посадки", swatch: "bg-emerald-500/50" },
+  { key: "exclusionZones", label: "Запретные зоны", swatch: "bg-red-500/50" },
+  { key: "existingVegetation", label: "Существующее озеленение", swatch: "bg-green-600/50" },
+  { key: "originalCad", label: "Исходный чертёж", swatch: "bg-ink-400" },
 ];
 
 /**
@@ -72,10 +72,10 @@ export function ConstraintsPanel() {
   if (!doc) return null;
 
   return (
-    <Section title="Constraints">
+    <Section title="Ограничения">
       {loading && (
         <div className="flex items-center gap-2 py-0.5 text-2xs text-ink-400" data-testid="constraints-loading">
-          <Spinner className="h-2.5 w-2.5" /> Building constraint zones…
+          <Spinner className="h-2.5 w-2.5" /> Построение запретных зон…
         </div>
       )}
 
@@ -86,7 +86,7 @@ export function ConstraintsPanel() {
             className="ml-1.5 underline decoration-dotted hover:no-underline"
             onClick={() => void buildConstraints()}
           >
-            Retry
+            Повторить
           </button>
         </div>
       )}
@@ -109,7 +109,7 @@ export function ConstraintsPanel() {
           {constraints.allowedBasis && <BasisChip basis={constraints.allowedBasis} />}
 
           <div className="mt-1.5 text-2xs text-ink-500">
-            Click a red zone on the canvas to see the rule behind it.
+            Нажмите на красную зону на плане, чтобы увидеть правило, которое её создало.
           </div>
 
           {isDebug && (

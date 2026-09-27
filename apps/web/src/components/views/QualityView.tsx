@@ -37,23 +37,23 @@ export function QualityView() {
   return (
     <div className="h-full w-full overflow-y-auto bg-ink-950" data-testid="quality-view">
       <div className="mx-auto max-w-3xl px-4 py-6">
-        <h1 className="text-sm font-semibold uppercase tracking-wider text-ink-200">Quality — evaluation results</h1>
+        <h1 className="text-sm font-semibold uppercase tracking-wider text-ink-200">Качество — результаты оценки</h1>
         <p className="mt-2 text-xs leading-relaxed text-ink-400">
-          Developer-facing view of the offline eval &amp; regression pipeline
-          (deterministic export/geometry checks, golden dataset cases, and the
-          optional GPT evaluator). Results are produced by <span className="font-mono">make eval</span>{" "}
-          and written to <span className="font-mono">eval-results/&lt;timestamp&gt;/results.json</span>.
-          See <span className="font-mono">docs/improvement-plan.md</span> (WS3) and{" "}
-          <span className="font-mono">evals/</span> in the repository.
+          Служебная страница для разработчиков: результаты офлайн-оценки и регрессионных
+          проверок (детерминированные проверки экспорта и геометрии, эталонные кейсы,
+          необязательный GPT-оценщик). Результаты создаёт команда <span className="font-mono">make eval</span>{" "}
+          и сохраняет в <span className="font-mono">eval-results/&lt;timestamp&gt;/results.json</span>.
+          Подробнее — <span className="font-mono">docs/improvement-plan.md</span> (WS3) и каталог{" "}
+          <span className="font-mono">evals/</span> в репозитории.
         </p>
 
         <div className="mt-4">
           {state.kind === "loading" && (
-            <div className="flex items-center gap-2 text-xs text-ink-500"><Spinner /> checking for results…</div>
+            <div className="flex items-center gap-2 text-xs text-ink-500"><Spinner /> поиск результатов…</div>
           )}
           {state.kind === "missing" && (
             <div className="border border-ink-600 bg-ink-900 p-3 text-xs text-ink-400">
-              No evaluation results. Run <span className="font-mono text-ink-200">make eval</span>.
+              Результатов оценки нет. Запустите <span className="font-mono text-ink-200">make eval</span>.
             </div>
           )}
           {state.kind === "loaded" && (

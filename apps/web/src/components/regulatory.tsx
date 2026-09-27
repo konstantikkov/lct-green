@@ -1,6 +1,7 @@
 import type { RegulatoryRule, RegulatoryStatus, RegulatoryVerdict, RuleRole } from "../api/types";
 import { normalizeCheckResult } from "../api/types";
 import { Badge } from "./ui";
+import { plural } from "../labels";
 
 /**
  * Shared presentation of the DETERMINISTIC regulatory verdict (iteration 5).
@@ -37,7 +38,11 @@ export function blockerLabel(blocker: string): string {
   }
   const unverified = /^UNVERIFIED_HARD_RULES:(\d+)$/.exec(blocker);
   if (unverified) {
-    return `${unverified[1]} правил применены с ДЕМО-допущениями — значения не верифицированы`;
+    // A rule lands here when ANY of its checks is UNVERIFIED: a demo value,
+    // a safe buffer, or an unconfirmed applicability condition (crown > 5 m
+    // for СП 42 табл. 9.1) — so do not claim they are all demo values.
+    const n = Number(unverified[1]);
+    return `${n} ${plural(n, "правило не подтверждено", "правила не подтверждены", "правил не подтверждено")} для этого плана — ДЕМО-значения или не выполнено условие применимости (например, крона шире 5 м)`;
   }
   return blocker;
 }
@@ -99,8 +104,8 @@ export function RegulatoryVerdictBlock({ verdict }: { verdict: RegulatoryVerdict
 /** Per-check badge covering the 4 new statuses AND legacy lowercase values. */
 export function CheckResultBadge({ result }: { result: string }) {
   const r = normalizeCheckResult(result);
-  if (r === "PASS") return <Badge tone="green" title="Проверка пройдена по верифицированному правилу">PASS</Badge>;
-  if (r === "FAIL") return <Badge tone="red" title="Нарушение действующего правила">FAIL</Badge>;
+  if (r === "PASS") return <Badge tone="green" title="Проверка пройдена по верифицированному правилу">ВЫПОЛНЕНО</Badge>;
+  if (r === "FAIL") return <Badge tone="red" title="Нарушение действующего правила">НАРУШЕНИЕ</Badge>;
   if (r === "UNVERIFIED") {
     return (
       <Badge tone="amber" title="Геометрия удовлетворяет правилу, но значение правила — непроверенное ДЕМО-допущение">

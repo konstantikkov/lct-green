@@ -7,13 +7,14 @@ import { parseRegulatoryVerdict } from "../../api/types";
 import { useApp } from "../../state/store";
 import { RegulatoryVerdictBlock } from "../regulatory";
 import { Badge, MetricBar, Section } from "../ui";
+import { DIMENSION_STATUS_LABELS, plural, SEVERITY_LABELS } from "../../labels";
 
 const ASSESSMENT_LABELS: Record<AssessmentKey, string> = {
-  coverage: "Coverage",
-  distribution: "Distribution",
-  clustering: "Clustering",
-  utilization: "Utilization",
-  robustnessToUncertainty: "Robustness",
+  coverage: "Покрытие",
+  distribution: "Распределение",
+  clustering: "Кластеризация",
+  utilization: "Использование",
+  robustnessToUncertainty: "Устойчивость",
 };
 
 function isV2Issue(i: string | JudgeIssueV2): i is JudgeIssueV2 {
@@ -28,14 +29,14 @@ function normalizeJudge(it: IterationSummary) {
   // the validator metrics (deterministic too — never the LLM's own score).
   const bars: { label: string; value: number; invert?: boolean }[] = components
     ? [
-        { label: "Coverage", value: components.coverage },
-        { label: "Distribution", value: components.distribution },
-        { label: "Utilization", value: components.utilizationBalance },
-        { label: "Cluster penalty", value: components.clusterPenalty, invert: true },
+        { label: "Покрытие", value: components.coverage },
+        { label: "Распределение", value: components.distribution },
+        { label: "Использование", value: components.utilizationBalance },
+        { label: "Скученность", value: components.clusterPenalty, invert: true },
       ]
     : [
-        { label: "Coverage", value: it.metrics.coverageScore },
-        { label: "Distribution", value: it.metrics.distributionScore },
+        { label: "Покрытие", value: it.metrics.coverageScore },
+        { label: "Распределение", value: it.metrics.distributionScore },
       ];
   // "Spatial quality" = deterministic mean (penalties inverted). NOT an LLM number.
   const contributions = components
@@ -75,7 +76,7 @@ function DimensionRow({ name, dim }: { name: AssessmentKey; dim: AssessmentDimen
   return (
     <div className="flex items-center gap-1.5 py-0.5">
       <span className="w-24 shrink-0 text-2xs text-ink-400">{ASSESSMENT_LABELS[name]}</span>
-      <Badge tone={tone}>{dim.status}</Badge>
+      <Badge tone={tone}>{DIMENSION_STATUS_LABELS[dim.status] ?? dim.status}</Badge>
       {dim.evidence.length > 0 && (
         <span className="min-w-0 flex-1 truncate font-mono text-2xs text-ink-500" title={dim.evidence.join(", ")}>
           {dim.evidence.join(" ")}
@@ -91,7 +92,7 @@ function ReviewDetails({ it }: { it: IterationSummary }) {
     <div className="mt-2 space-y-2 border-t border-ink-700 pt-2">
       {assessment && (
         <div>
-          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Assessment</div>
+          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Оценка по критериям</div>
           {(Object.entries(assessment) as [AssessmentKey, AssessmentDimension][]).map(([k, dim]) =>
             dim ? <DimensionRow key={k} name={k} dim={dim} /> : null,
           )}
@@ -100,13 +101,13 @@ function ReviewDetails({ it }: { it: IterationSummary }) {
 
       {issues.length > 0 && (
         <div>
-          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Issues</div>
+          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Замечания</div>
           <div className="space-y-1">
             {issues.map((iss, i) =>
               isV2Issue(iss) ? (
                 <div key={i} className="flex items-start gap-1.5 text-2xs">
                   <Badge tone={iss.severity === "HIGH" ? "red" : iss.severity === "MEDIUM" ? "amber" : "grey"}>
-                    {iss.severity}
+                    {SEVERITY_LABELS[iss.severity] ?? iss.severity}
                   </Badge>
                   <span className="min-w-0 flex-1 text-ink-300">
                     {iss.description}
@@ -125,7 +126,7 @@ function ReviewDetails({ it }: { it: IterationSummary }) {
 
       {changes.length > 0 && (
         <div>
-          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Parameter changes</div>
+          <div className="mb-0.5 text-2xs uppercase tracking-wider text-ink-500">Изменения параметров</div>
           <table className="w-full">
             <tbody>
               {changes.map((ch) => (
@@ -167,7 +168,7 @@ export function QualityCard() {
   const { judge, bars, overall, issues } = normalizeJudge(it);
 
   return (
-    <Section title="Quality review">
+    <Section title="Оценка качества">
       <div data-testid="quality-card">
         {/* Deterministic regulatory verdict — separate from the judge below. */}
         <RegulatoryVerdictBlock verdict={parseRegulatoryVerdict(it.regulatory)} />
@@ -175,20 +176,20 @@ export function QualityCard() {
         <div className="mt-2 flex items-center gap-1.5">
           {hardPassed ? (
             <span className="text-2xs font-semibold text-emerald-600 dark:text-emerald-400">
-              ✓ Hard constraints passed
+              ✓ Жёсткие ограничения соблюдены
             </span>
           ) : (
             <span className="text-2xs font-semibold text-red-600 dark:text-red-400">
-              ✕ {it.metrics.hardViolations} hard violation{it.metrics.hardViolations === 1 ? "" : "s"}
+              ✕ {it.metrics.hardViolations} {plural(it.metrics.hardViolations, "жёсткое нарушение", "жёстких нарушения", "жёстких нарушений")}
             </span>
           )}
         </div>
 
         <div className="mt-2 space-y-1">
           <MetricBar
-            label="Spatial quality"
+            label="Общая оценка"
             value={overall}
-            title="Deterministic mean of the component metrics below (not an LLM score)"
+            title="Качество размещения: среднее детерминированных метрик ниже (не оценка LLM)"
           />
           {bars.map((b) => (
             <MetricBar key={b.label} label={b.label} value={b.value} invert={b.invert} />
@@ -197,14 +198,14 @@ export function QualityCard() {
 
         {it.judgeSkipped === "hard_violations" ? (
           <div className="mt-2 text-2xs leading-relaxed text-ink-400">
-            Judge skipped: hard violations were repaired deterministically
-            {it.deterministicRepair ? ` (removed ${it.deterministicRepair.removed})` : ""}.
+            Судья пропущен: жёсткие нарушения исправлены детерминированно
+            {it.deterministicRepair ? ` (удалено посадок: ${it.deterministicRepair.removed})` : ""}.
           </div>
         ) : judge ? (
           <>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <DecisionChip judge={judge} />
-              <Badge tone="grey">{judge.mode === "llm" ? "LLM" : "heuristic"}</Badge>
+              <Badge tone="grey">{judge.mode === "llm" ? "LLM" : "эвристика"}</Badge>
             </div>
             <div className="mt-0.5 text-2xs italic text-ink-500">
               оценка качества размещения, НЕ юридическое соответствие
@@ -212,20 +213,20 @@ export function QualityCard() {
             <div className="mt-1.5 flex items-center gap-2 text-2xs text-ink-400">
               <span>
                 {issues.length > 0
-                  ? `${issues.length} improvement opportunit${issues.length === 1 ? "y" : "ies"}`
-                  : "no open issues"}
+                  ? `${issues.length} ${plural(issues.length, "предложение", "предложения", "предложений")} по улучшению`
+                  : "замечаний нет"}
               </span>
               <button
                 className="underline decoration-dotted hover:text-ink-200"
                 onClick={() => setExpanded((x) => !x)}
               >
-                {expanded ? "Hide review" : "View review"}
+                {expanded ? "Скрыть разбор" : "Показать разбор"}
               </button>
             </div>
             {expanded && <ReviewDetails it={it} />}
           </>
         ) : (
-          <div className="mt-2 text-2xs text-ink-500">no judge report for this iteration</div>
+          <div className="mt-2 text-2xs text-ink-500">для этой итерации нет отчёта судьи</div>
         )}
       </div>
     </Section>

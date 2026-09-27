@@ -17,7 +17,7 @@ function InterpretationHeader() {
         {doc.fileName}
       </div>
       <div className="mt-0.5 font-mono text-2xs text-ink-500">
-        {doc.entityCount.toLocaleString()} entities · {doc.layerCount} layers · units {doc.units}
+        {doc.entityCount.toLocaleString()} объектов · {doc.layerCount} слоёв · единицы: {doc.units}
       </div>
     </div>
   );
@@ -31,7 +31,7 @@ function ResultSummary() {
   return (
     <div className="border-b border-ink-600 px-2 py-1.5 text-2xs text-ink-300" data-testid="result-summary">
       <span className="font-mono">
-        {it.metrics.treeCount} trees · {it.metrics.shrubCount} shrubs · iteration #{it.index}
+        {it.metrics.treeCount} дер. · {it.metrics.shrubCount} куст. · итерация №{it.index}
         {it.selected ? " ★" : ""}
       </span>
       {iterations.length > 1 && (
@@ -39,10 +39,10 @@ function ResultSummary() {
           className="ml-1.5 text-ink-400 underline decoration-dotted hover:text-ink-200"
           onClick={() => setNav("runs")}
         >
-          View {iterations.length} runs →
+          Все запуски ({iterations.length}) →
         </button>
       )}
-      <div className="mt-0.5 text-ink-500">Click a tree on the canvas to see why it is placed there.</div>
+      <div className="mt-0.5 text-ink-500">Нажмите на дерево на плане, чтобы увидеть, почему оно стоит именно здесь.</div>
     </div>
   );
 }
@@ -76,7 +76,7 @@ function AuditSection() {
       <Btn
         className="w-full"
         onClick={() => openAudit()}
-        title="Compliance audit against all effective regulations"
+        title="Проверка каждой посадки по всем действующим нормам"
         data-testid="open-audit"
       >
         {status === "loading" ? <><Spinner /> Проверка…</> : "Аудит соответствия нормам"}
@@ -126,10 +126,10 @@ export function WorkspaceTabContent({ tab }: { tab: WorkspaceTab }) {
 // --- Tab strip ---------------------------------------------------------------
 
 const TAB_DEFS: { id: WorkspaceTab; label: string; title: string; testid: string }[] = [
-  { id: "interpretation", label: "Интерпретация", title: "Interpretation — CAD layers & classification", testid: "tab-interpretation" },
-  { id: "constraints", label: "Ограничения", title: "Constraints — exclusion zones & planting domain", testid: "tab-constraints" },
-  { id: "generate", label: "Генерация", title: "Generate — species, strategy, run progress", testid: "tab-generate" },
-  { id: "result", label: "Результат", title: "Result — placements, quality review, audit", testid: "tab-result" },
+  { id: "interpretation", label: "Интерпретация", title: "Интерпретация — слои чертежа и их классификация", testid: "tab-interpretation" },
+  { id: "constraints", label: "Ограничения", title: "Ограничения — запретные зоны и область посадки", testid: "tab-constraints" },
+  { id: "generate", label: "Генерация", title: "Генерация — породы, стратегия, ход расчёта", testid: "tab-generate" },
+  { id: "result", label: "Результат", title: "Результат — посадки, оценка качества, аудит", testid: "tab-result" },
 ];
 
 function TabGlyph({ tab }: { tab: WorkspaceTab }) {
@@ -144,7 +144,7 @@ function TabGlyph({ tab }: { tab: WorkspaceTab }) {
     case "interpretation": {
       const uncertain = doc?.layers.filter((l) => l.classification.requiresReview).length ?? 0;
       return uncertain > 0 ? (
-        <span className="text-amber-600 dark:text-amber-400" title={`${uncertain} uncertain layers`}>
+        <span className="text-amber-600 dark:text-amber-400" title={`Слоёв с неуверенной классификацией: ${uncertain}`}>
           ⚠{uncertain}
         </span>
       ) : (
@@ -164,7 +164,7 @@ function TabGlyph({ tab }: { tab: WorkspaceTab }) {
       if (iterations.length === 0) return <span className="text-ink-500">—</span>;
       const it = iterations.find((x) => x.selected) ?? iterations[iterations.length - 1];
       return (
-        <span className="font-mono text-emerald-700 dark:text-emerald-300" title="trees placed">
+        <span className="font-mono text-emerald-700 dark:text-emerald-300" title="Посажено деревьев">
           {it.metrics.treeCount}
         </span>
       );

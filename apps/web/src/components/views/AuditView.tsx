@@ -10,8 +10,8 @@ const PAGE = 500;
 
 function SourceBadge({ source }: { source: string }) {
   return source === "verified"
-    ? <Badge tone="green" title="Backed by a verified regulatory source">VERIFIED</Badge>
-    : <Badge tone="amber" title="Distance is an unverified assumption (demo value)">ASSUMED</Badge>;
+    ? <Badge tone="green" title="Подтверждено нормативным источником">ПОДТВЕРЖДЕНО</Badge>
+    : <Badge tone="amber" title="Расстояние — непроверенное допущение (демо-значение)">ДОПУЩЕНИЕ</Badge>;
 }
 
 // --- Header -------------------------------------------------------------------
@@ -39,12 +39,12 @@ function AuditSummary({ audit }: { audit: ComplianceAudit }) {
         <span className={`font-mono font-semibold ${s.withViolations > 0 ? "text-red-600 dark:text-red-400" : "text-ink-100"}`}>{s.withViolations}</span> с нарушениями
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Badge tone="grey" title="ruleset version">ruleset {audit.rulesetVersion}</Badge>
-        <Badge tone="blue" title="ACTIVE document-derived REG_* rules in effect">
+        <Badge tone="grey" title="Версия реестра правил">реестр v{audit.rulesetVersion}</Badge>
+        <Badge tone="blue" title="Действующие правила REG_*, извлечённые из загруженных документов">
           {audit.documentDerivedRules} правил из документов
         </Badge>
-        <Badge tone="green" title="rules backed by verified sources">{audit.verifiedRules} VERIFIED</Badge>
-        <Badge tone="amber" title="rules applied as unverified assumptions">{audit.assumedRules} ASSUMED</Badge>
+        <Badge tone="green" title="Правила, подтверждённые нормативным источником">{audit.verifiedRules} подтверждённых</Badge>
+        <Badge tone="amber" title="Правила, применённые как непроверенные допущения">{audit.assumedRules} по допущениям</Badge>
         <span className="font-mono text-2xs text-ink-500">{s.checksTotal} проверок</span>
       </div>
     </div>
@@ -258,11 +258,11 @@ function RegulationsCrossLink() {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-sm border border-ink-600 bg-ink-900 px-2.5 py-2 text-2xs leading-relaxed text-ink-400">
       <span className="min-w-0 flex-1">
-        Загрузите новые нормативные документы (PDF/DOCX) во вкладке Регламенты —
+        Загрузите новые нормативные документы (PDF/DOCX) в разделе «Нормативы» —
         активированные правила автоматически участвуют в аудите.
       </span>
-      <Btn onClick={() => setNav("regulations")} title="Open the regulations workspace">
-        Регламенты →
+      <Btn onClick={() => setNav("regulations")} title="Открыть раздел нормативов">
+        Нормативы →
       </Btn>
     </div>
   );

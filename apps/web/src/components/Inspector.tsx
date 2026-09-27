@@ -6,21 +6,50 @@ import { select } from "../state/actions";
 import { useApp, type Selection } from "../state/store";
 import { CheckResultBadge } from "./regulatory";
 import { Badge, KV, Spinner } from "./ui";
+import { categoryLabel, KIND_LABELS, plural, sourceStatusLabel } from "../labels";
 
 const DISTANCE_LABELS: Record<string, string> = {
-  building: "Building",
-  road: "Road",
-  sidewalk: "Sidewalk",
-  utility: "Utility",
-  boundary: "Site boundary",
-  existing_tree: "Existing tree",
-  nearest_planting: "Nearest planting",
+  building: "Здание",
+  road: "Дорога",
+  sidewalk: "Тротуар",
+  utility: "Инженерные сети",
+  boundary: "Граница участка",
+  existing_tree: "Существующее дерево",
+  nearest_planting: "Ближайшая посадка",
 };
 
 function SourceBadge({ source }: { source: "verified" | "assumption" }) {
   return source === "assumption"
-    ? <Badge tone="amber" title="Distance is an unverified assumption (demo value)">ASSUMED</Badge>
-    : <Badge tone="green" title="Backed by a verified regulatory source">VERIFIED</Badge>;
+    ? <Badge tone="amber" title="Расстояние — непроверенное допущение (демо-значение)">ДОПУЩЕНИЕ</Badge>
+    : <Badge tone="green" title="Подтверждено нормативным источником">ПОДТВЕРЖДЕНО</Badge>;
+}
+
+/**
+ * Russian one-paragraph summary built from the structured checks, not from the
+ * backend's free-text `summary` (which is English). Same facts, and it stays
+ * correct whatever language the API speaks.
+ */
+function russianSummary(e: Explanation): string {
+  const results = e.checks.map((c) => normalizeCheckResult(c.result));
+  const enforced = results.filter((r) => r !== "NOT_APPLICABLE").length;
+  const failed = results.filter((r) => r === "FAIL").length;
+  const unverified = results.filter((r) => r === "UNVERIFIED").length;
+  const [x, y] = e.position;
+  let s = `Положение (${x.toFixed(1)}; ${y.toFixed(1)}) м. `
+    + `Проверено ${enforced} ${plural(enforced, "правило", "правила", "правил")}: `;
+  if (failed > 0) {
+    s += `${failed} ${plural(failed, "нарушение", "нарушения", "нарушений")}.`;
+  } else if (unverified > 0) {
+    s += `нарушений нет, но ${unverified} ${plural(unverified, "проверка не верифицирована", "проверки не верифицированы", "проверок не верифицировано")}`
+      + " — соответствие нормам не установлено.";
+  } else {
+    s += "все выполнены по подтверждённым значениям.";
+  }
+  if (e.checks.some((c) => /крона/i.test(c.reason ?? ""))) {
+    s += " Крона шире 5 м: по примечанию 1 к таблице 9.1 СП 42.13330 отступы нужно увеличить"
+      + " (на сколько — норма не указывает), требуется ручная проверка.";
+  }
+  return s;
 }
 
 function ChecksList({ explanation }: { explanation: Explanation }) {
@@ -47,20 +76,23 @@ function ChecksList({ explanation }: { explanation: Explanation }) {
             <SourceBadge source={c.effectiveSource} />
           </div>
           <div className="mt-1 flex items-center gap-2 font-mono text-2xs text-ink-300">
-            <span className="text-ink-500">{c.obstacleCategory}</span>
+            <span className="text-ink-500">{categoryLabel(c.obstacleCategory)}</span>
             {c.actualM != null && c.requiredM != null ? (
               <span>
-                {c.actualM.toFixed(2)} m <span className="text-ink-500">{c.comparator}</span>{" "}
-                {c.requiredM.toFixed(2)} m
+                {c.actualM.toFixed(2)} м <span className="text-ink-500">{c.comparator}</span>{" "}
+                {c.requiredM.toFixed(2)} м
               </span>
             ) : (
-              <span className="text-ink-500">n/a</span>
+              <span className="text-ink-500">нет таких объектов</span>
             )}
           </div>
           <div className="mt-0.5 truncate text-2xs text-ink-500" title={c.source.title}>
             {c.source.document}
-            {c.source.clause ? ` · ${c.source.clause}` : ""} · {c.source.status}
+            {c.source.clause ? ` · ${c.source.clause}` : ""} · {sourceStatusLabel(c.source.status)}
           </div>
+          {c.reason && (
+            <div className="mt-0.5 text-2xs leading-snug text-amber-700 dark:text-amber-300/90">{c.reason}</div>
+          )}
         </div>
         );
       })}
@@ -83,30 +115,30 @@ function PlacementInspector({ placement }: { placement: Placement }) {
       <div>
         <div className="mb-1 flex items-center gap-2">
           <span className="text-xs font-semibold text-ink-100">
-            {sp?.displayName ?? placement.speciesId}
+            {sp?.displayNameRu || sp?.displayName || placement.speciesId}
           </span>
-          <Badge tone={placement.kind === "TREE" ? "green" : "blue"}>{placement.kind}</Badge>
+          <Badge tone={placement.kind === "TREE" ? "green" : "blue"}>{KIND_LABELS[placement.kind] ?? placement.kind}</Badge>
         </div>
         <KV k="id" v={placement.id} />
         <KV
-          k="position"
-          v={`${placement.position[0].toFixed(2)}, ${placement.position[1].toFixed(2)} m`}
+          k="положение"
+          v={`${placement.position[0].toFixed(2)}, ${placement.position[1].toFixed(2)} м`}
         />
-        <KV k="crown radius" v={`${placement.crownRadiusM.toFixed(2)} m`} />
-        <KV k="iteration" v={iteration ? `#${iteration.index}` : "—"} />
-        <KV k="score" v={placement.score.toFixed(3)} />
+        <KV k="радиус кроны" v={`${placement.crownRadiusM.toFixed(2)} м`} />
+        <KV k="итерация" v={iteration ? `#${iteration.index}` : "—"} />
+        <KV k="оценка" v={placement.score.toFixed(3)} />
       </div>
 
       {distances.length > 0 && (
         <div>
-          <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Distances</div>
+          <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Расстояния</div>
           <table className="w-full">
             <tbody>
               {distances.map(([key, val]) => (
                 <tr key={key} className="border-b border-ink-700/50 last:border-0">
                   <td className="py-0.5 text-2xs text-ink-400">{DISTANCE_LABELS[key] ?? key}</td>
                   <td className="py-0.5 text-right font-mono text-2xs text-ink-100">
-                    {val != null ? `${val.toFixed(2)} m` : "—"}
+                    {val != null ? `${val.toFixed(2)} м` : "—"}
                   </td>
                 </tr>
               ))}
@@ -116,14 +148,14 @@ function PlacementInspector({ placement }: { placement: Placement }) {
       )}
 
       <div>
-        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Regulatory checks</div>
+        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Проверки по нормам</div>
         {loading && (
-          <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> loading explanation…</div>
+          <div className="flex items-center gap-2 text-2xs text-ink-500"><Spinner /> загрузка обоснования…</div>
         )}
         {error && <div className="text-2xs text-red-600 dark:text-red-400">{error}</div>}
         {explanation && (
           <>
-            <p className="mb-2 text-2xs leading-relaxed text-ink-300">{explanation.summary}</p>
+            <p className="mb-2 text-2xs leading-relaxed text-ink-300">{russianSummary(explanation)}</p>
             {explanation.llmNarrative && (
               <p className="mb-2 border-l-2 border-ink-600 pl-2 text-2xs italic leading-relaxed text-ink-400">
                 {explanation.llmNarrative}
@@ -144,21 +176,21 @@ function ZoneInspector({ zone }: { zone: ExclusionZone }) {
     <div className="space-y-3">
       <div>
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-xs font-semibold text-ink-100">Exclusion zone</span>
+          <span className="text-xs font-semibold text-ink-100">Запретная зона</span>
           <SourceBadge source={zone.effectiveSource} />
         </div>
         <KV k="id" v={zone.id} />
-        <KV k="rule" v={zone.ruleId} />
-        <KV k="obstacle" v={zone.obstacleCategory} mono={false} />
-        <KV k="source layer" v={zone.sourceLayer} mono={false} />
-        <KV k="offset distance" v={`${zone.distanceM.toFixed(2)} m`} />
+        <KV k="правило" v={zone.ruleId} />
+        <KV k="препятствие" v={categoryLabel(zone.obstacleCategory)} mono={false} />
+        <KV k="исходный слой" v={zone.sourceLayer} mono={false} />
+        <KV k="отступ" v={`${zone.distanceM.toFixed(2)} м`} />
       </div>
       <div>
-        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Regulatory source</div>
+        <div className="mb-1 text-2xs uppercase tracking-wider text-ink-500">Нормативный источник</div>
         <div className="border border-ink-700 bg-ink-900/60 p-1.5 text-2xs">
           <div className="text-ink-200">{zone.source.document}</div>
-          {zone.source.clause && <div className="mt-0.5 text-ink-400">clause {zone.source.clause}</div>}
-          <div className="mt-0.5 text-ink-500">status: {zone.source.status}</div>
+          {zone.source.clause && <div className="mt-0.5 text-ink-400">пункт: {zone.source.clause}</div>}
+          <div className="mt-0.5 text-ink-500">статус: {sourceStatusLabel(zone.source.status)}</div>
           {rule && (
             <>
               <div className="mt-1 text-ink-400">{rule.source.title}</div>
@@ -204,7 +236,7 @@ function SelectionBody({ selection }: { selection: NonNullable<Selection> }) {
               }`}
               onClick={() => setTab(t)}
             >
-              {t === "details" ? "Details" : "Raw JSON"}
+              {t === "details" ? "Подробно" : "JSON"}
             </button>
           ))}
         </div>
@@ -224,7 +256,7 @@ export function InspectorContent() {
   if (!selection) {
     return (
       <div className="p-3 text-xs text-ink-500">
-        Tap a tree or an exclusion zone in the viewer to inspect it.
+        Нажмите на дерево или запретную зону на плане, чтобы посмотреть подробности.
       </div>
     );
   }
@@ -242,11 +274,11 @@ export function Inspector() {
   return (
     <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-600 px-2">
-        <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Inspector</span>
+        <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Инспектор</span>
         <button
           className="px-1 text-ink-500 hover:text-ink-100"
           onClick={() => select(null)}
-          title="Close"
+          title="Закрыть"
         >
           ✕
         </button>

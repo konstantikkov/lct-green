@@ -19,22 +19,22 @@ function tooltipHtml(hit: NonNullable<HoverHit>): string {
     const sp = s.species?.find((x) => x.id === p.speciesId);
     const it = s.activeIteration;
     const title = sp
-      ? `${esc(sp.displayNameRu)} <span class="text-ink-400 italic">${esc(sp.displayName)}</span>`
+      ? esc(sp.displayNameRu || sp.displayName)
       : esc(p.speciesId);
     return (
       `<div class="mb-1 text-xs font-semibold text-ink-100">${title}</div>` +
       row("id", esc(p.id)) +
-      row("crown", `${p.crownRadiusM.toFixed(2)} m`) +
-      row("score", p.score.toFixed(3)) +
-      row("iteration", it ? `#${it.index}` : "—")
+      row("радиус кроны", `${p.crownRadiusM.toFixed(2)} м`) +
+      row("оценка", p.score.toFixed(3)) +
+      row("итерация", it ? `№${it.index}` : "—")
     );
   }
   const z = hit.zone;
   return (
-    `<div class="mb-1 text-xs font-semibold text-ink-100">Exclusion zone</div>` +
-    row("rule", esc(z.ruleId)) +
-    row("distance", `${z.distanceM.toFixed(2)} m`) +
-    row("document", esc(z.source.document))
+    `<div class="mb-1 text-xs font-semibold text-ink-100">Запретная зона</div>` +
+    row("правило", esc(z.ruleId)) +
+    row("отступ", `${z.distanceM.toFixed(2)} м`) +
+    row("документ", esc(z.source.document))
   );
 }
 
@@ -61,18 +61,18 @@ function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
   return (
     <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
       <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
-        <Seg active={mode === "2d"} label="2D" title="Orthographic plan view"
+        <Seg active={mode === "2d"} label="2D" title="План сверху"
           onClick={() => setViewMode("2d")} />
-        <Seg active={mode === "3d"} label="3D" title="3D massing view"
+        <Seg active={mode === "3d"} label="3D" title="Объёмный вид"
           onClick={() => setViewMode("3d")} />
       </div>
       {mode === "3d" && (
         <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
-          <Seg active={!detail} label="Simple"
-            title="Massing only: ground, roads, buildings, plantings"
+          <Seg active={!detail} label="Просто"
+            title="Только объёмы: земля, дороги, здания, посадки"
             onClick={() => setMassingDetail(false)} />
-          <Seg active={detail} label="Detailed"
-            title="Adds original CAD linework, lanterns and fences"
+          <Seg active={detail} label="Подробно"
+            title="Плюс линии исходного чертежа, фонари и ограждения"
             onClick={() => setMassingDetail(true)} />
         </div>
       )}
@@ -166,8 +166,8 @@ export function ViewerCanvas() {
       />
       <div className="pointer-events-none absolute bottom-2 right-2 hidden font-mono text-2xs text-ink-500 md:block">
         {viewMode === "2d"
-          ? "F — fit · drag — pan · wheel — zoom"
-          : "F — fit · drag — orbit · right-drag — pan · wheel — dolly"}
+          ? "F — вписать · перетаскивание — сдвиг · колесо — масштаб"
+          : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение"}
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import { getState, useApp, type WizardStep } from "../state/store";
 import { RegulatoryVerdictBlock, RuleRoleBadge, ruleConditionNote } from "./regulatory";
 import { Badge, Btn, MetricBar, Select, Spinner, TextInput } from "./ui";
 import { StageChecklist } from "./panels/GeneratePanel";
+import { categoryLabel } from "../labels";
 
 /**
  * Step-by-step wizard after a fresh DXF/DWG upload:
@@ -89,7 +90,7 @@ function UncertainLayerRow({ layer }: { layer: LayerInfo }) {
         className="!h-6 !w-44 shrink-0 text-2xs"
         value={layer.classification.category}
         onChange={(v) => void overrideLayerCategory(layer.name, v as Category)}
-        options={ALL_CATEGORIES.map((c) => ({ value: c, label: c }))}
+        options={ALL_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) }))}
       />
     </div>
   );
@@ -203,8 +204,8 @@ function Step1Constraints() {
                     {r.effectiveDistanceM != null ? `${r.effectiveDistanceM} м` : "—"}
                   </span>
                   {r.effectiveSource === "assumption"
-                    ? <Badge tone="amber">ASSUMED</Badge>
-                    : <Badge tone="green">VERIFIED</Badge>}
+                    ? <Badge tone="amber">ДОПУЩЕНИЕ</Badge>
+                    : <Badge tone="green">ПОДТВЕРЖДЕНО</Badge>}
                 </div>
               ))}
             </div>
@@ -777,7 +778,7 @@ function Step4Summary() {
                     ? "Оптимизация: можно улучшить"
                     : "Требуется ручная проверка"}
               </Badge>
-              <Badge tone="grey">{it.judge.mode === "llm" ? "LLM" : "heuristic"}</Badge>
+              <Badge tone="grey">{it.judge.mode === "llm" ? "LLM" : "эвристика"}</Badge>
             </span>
           )}
         </div>

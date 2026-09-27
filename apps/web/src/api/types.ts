@@ -412,6 +412,8 @@ export interface ExplanationCheck {
   obstacleCategory: string;
   effectiveSource: "verified" | "assumption";
   source: { document: string; clause: string | null; title: string; status: string };
+  /** Why a check is not PASS (Russian, from the backend), e.g. a large crown. */
+  reason?: string | null;
 }
 
 export interface Explanation {

@@ -20,7 +20,7 @@ export class ApiError extends Error {
 /** Parses both FastAPI error shapes: {detail:{code,message}} and {detail:"..."} */
 async function toApiError(res: Response): Promise<ApiError> {
   let code: string | null = null;
-  let message = `HTTP ${res.status} ${res.statusText}`;
+  let message = `Ошибка сервера: HTTP ${res.status} ${res.statusText}`;
   try {
     const body = await res.json();
     const detail = body?.detail;
@@ -42,7 +42,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     res = await fetch(path, init);
   } catch (e) {
     throw new ApiError(0, "NETWORK_ERROR",
-      "Backend unreachable (is the API server running on port 8000?)");
+      "Сервер недоступен — проверьте, что API запущен на порту 8000");
   }
   if (!res.ok) throw await toApiError(res);
   return (await res.json()) as T;

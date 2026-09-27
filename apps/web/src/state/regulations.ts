@@ -35,8 +35,8 @@ export async function uploadRegDocument(file: File) {
     setState({
       regUploadBusy: false,
       regNotice: code === "UNSUPPORTED_FORMAT"
-        ? "Unsupported format — only PDF and DOCX documents can be ingested."
-        : `Document upload failed: ${errMsg(e)}`,
+        ? "Неподдерживаемый формат — принимаются только документы PDF и DOCX."
+        : `Не удалось загрузить документ: ${errMsg(e)}`,
     });
   }
 }
@@ -99,9 +99,9 @@ export async function extractRegDocument(documentId: string) {
     setState({
       regExtractingDocId: null,
       regNotice: code === "LLM_UNAVAILABLE"
-        ? "Rule extraction needs the local LLM, which is not reachable right now. " +
-          "Start the model server (or check /api/capabilities) and try again."
-        : `Extraction failed: ${errMsg(e)}`,
+        ? "Для извлечения правил нужна локальная LLM, а она сейчас недоступна. " +
+          "Запустите сервер модели (или проверьте /api/capabilities) и повторите."
+        : `Не удалось извлечь правила: ${errMsg(e)}`,
     });
     return;
   }
@@ -113,7 +113,7 @@ export async function extractRegDocument(documentId: string) {
     const doc = await refreshRegDocument(documentId);
     if (!doc) continue;
     if (doc.status === "FAILED") {
-      setState({ regExtractingDocId: null, regNotice: "Extraction failed on the server (document status FAILED)." });
+      setState({ regExtractingDocId: null, regNotice: "Извлечение завершилось ошибкой на сервере (статус документа — ОШИБКА)." });
       return;
     }
     if (candidateTotal(doc.candidateCounts) > beforeTotal || doc.status === "EXTRACTED") {
@@ -124,7 +124,7 @@ export async function extractRegDocument(documentId: string) {
   }
   setState({
     regExtractingDocId: null,
-    regNotice: "Extraction is taking longer than expected — refresh the document list later.",
+    regNotice: "Извлечение идёт дольше обычного — обновите список документов чуть позже.",
   });
 }
 

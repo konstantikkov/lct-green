@@ -12,7 +12,8 @@ export default defineConfig({
       manifest: {
         name: "GreenPlan",
         short_name: "GreenPlan",
-        description: "Automatic urban greening placement from CAD drawings",
+        description: "Автоматическое проектирование озеленения по чертежам CAD",
+        lang: "ru",
         display: "standalone",
         start_url: "/",
         theme_color: "#0b0f14",
