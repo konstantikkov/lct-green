@@ -1,0 +1,48 @@
+{
+  "case": "case_002",
+  "title": "Building in the center",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 37,
+      "coverageScore": 0.2446,
+      "distributionScore": 0.5652,
+      "forbiddenZoneCount": 2
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "ЗДАНИЯ": "BUILDING"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 1,
+    "max": 3
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 25,
+      "max": 49
+    },
+    "coverageScore": {
+      "min": 0.1712,
+      "max": 0.318
+    },
+    "distributionScore": {
+      "min": 0.3956,
+      "max": 0.7348
+    }
+  },
+  "knownEdgeCases": []
+}

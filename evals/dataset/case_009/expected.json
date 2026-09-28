@@ -1,0 +1,50 @@
+{
+  "case": "case_009",
+  "title": "Invalid geometry (self-intersecting boundary)",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 9,
+      "coverageScore": 0.231,
+      "distributionScore": 0.3636,
+      "forbiddenZoneCount": 0
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "ГАЗОНЫ": "GREEN_AREA"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 0,
+    "max": 0
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 6,
+      "max": 12
+    },
+    "coverageScore": {
+      "min": 0.1617,
+      "max": 0.3003
+    },
+    "distributionScore": {
+      "min": 0.2545,
+      "max": 0.4727
+    }
+  },
+  "knownEdgeCases": [
+    "self_intersecting_boundary_repaired_or_fallback"
+  ]
+}

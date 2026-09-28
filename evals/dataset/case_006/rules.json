@@ -1,0 +1,10 @@
+{
+  "seed": 42,
+  "restrictToRules": null,
+  "overrides": {},
+  "relevantRules": [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    "TREE_TREE_MIN_SPACING",
+    "PLANTING_INSIDE_SITE_BOUNDARY"
+  ]
+}

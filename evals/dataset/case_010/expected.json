@@ -1,0 +1,50 @@
+{
+  "case": "case_010",
+  "title": "Open site, several equally valid layouts",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 82,
+      "coverageScore": 0.2458,
+      "distributionScore": 0.825,
+      "forbiddenZoneCount": 2
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "ТРОТУАРЫ": "SIDEWALK"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 1,
+    "max": 3
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 57,
+      "max": 107
+    },
+    "coverageScore": {
+      "min": 0.1721,
+      "max": 0.3195
+    },
+    "distributionScore": {
+      "min": 0.5775,
+      "max": 1.0
+    }
+  },
+  "knownEdgeCases": [
+    "multiple_equivalent_optima"
+  ]
+}
