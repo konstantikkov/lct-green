@@ -86,7 +86,7 @@ def _validate_signature(path: Path, ext: str) -> None:
 # what the viewer must show first when a drawing exceeds the render cap
 _RENDER_PRIORITY = ["SITE_BOUNDARY", "UTILITY_HEAT", "UTILITY_GAS", "UTILITY_WATER",
                     "UTILITY_SEWER", "UTILITY_DRAINAGE", "UTILITY_ELECTRICITY",
-                    "UTILITY_COMMUNICATION", "UTILITY", "BUILDING", "GREEN_AREA", "ROAD",
+                    "POWER_LINE_OVERHEAD", "UTILITY_COMMUNICATION", "UTILITY", "BUILDING", "GREEN_AREA", "ROAD",
                     "SIDEWALK", "CURB", "PARKING", "EXISTING_TREE", "EXISTING_SHRUB",
                     "LIGHTING", "FENCE", "ACCESS_ROUTE", "UNKNOWN", "ANNOTATION"]
 

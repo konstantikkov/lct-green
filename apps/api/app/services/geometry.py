@@ -78,7 +78,82 @@ def build_geometry_index(doc: CadDocument) -> GeometryIndex:
         li = lm.get(e.layer)
         cat = li.classification.category if li else "UNKNOWN"
         idx.by_category.setdefault(cat, []).append(e.id)
+    link_power_line_symbols(idx)
     return idx
+
+
+POWER_SYMBOL_MAX_M = 6.0     # a support symbol: 2.5 m stroke + 1 m arrow
+POWER_SPAN_MAX_M = 60.0      # longest span between two supports joined as one wire
+POWER_SPAN_MAX_ANGLE = 20.0  # degrees between a symbol's axis and the span
+
+
+def link_power_line_symbols(idx: GeometryIndex) -> int:
+    """Mosgeotrest draws an overhead line (layer «ЛЭП») as a symbol at every
+    support — a 2.5 m stroke and a 1 m arrow along the line — not as the wire
+    between supports. The protection zone runs along the wire (ПП РФ № 160,
+    приложение п. «а»), so each symbol is joined to the nearest symbol ahead
+    and behind along its own axis (within POWER_SPAN_MAX_M, off-axis by less
+    than POWER_SPAN_MAX_ANGLE). Symbols across the street lie perpendicular
+    to the axis and are not joined. The spans are added to the index as
+    derived POWER_LINE_OVERHEAD entities; the drawing is not changed.
+    Returns the number of spans."""
+    import math
+
+    import numpy as np
+    from shapely import STRtree, get_coordinates
+
+    ids = [i for i in idx.by_category.get("POWER_LINE_OVERHEAD", [])
+           if not isinstance(idx.by_entity[i], Polygon)]
+    if len(ids) < 2:
+        return 0
+    geoms = [idx.by_entity[i] for i in ids]
+    blobs = unary_union([g.buffer(1.0) for g in geoms])
+    tree = STRtree(geoms)
+    symbols = []  # (centre, unit axis, a member entity id)
+    for blob in getattr(blobs, "geoms", [blobs]):
+        members = [ids[k] for k in tree.query(blob, predicate="intersects")]
+        pts = np.vstack([get_coordinates(idx.by_entity[m]) for m in members])
+        if len(pts) < 2 or np.ptp(pts, axis=0).max() > POWER_SYMBOL_MAX_M:
+            continue  # a drawn wire, not a support symbol
+        centre = pts.mean(axis=0)
+        w, v = np.linalg.eigh(np.cov((pts - centre).T))
+        symbols.append((centre, v[:, int(np.argmax(w))], members[0]))
+    if len(symbols) < 2:
+        return 0
+    centres = np.array([c for c, _, _ in symbols])
+    cos_max = math.cos(math.radians(POWER_SPAN_MAX_ANGLE))
+    edges: set[tuple[int, int]] = set()
+    for i, (c, axis, _) in enumerate(symbols):
+        d = centres - c
+        dist = np.hypot(d[:, 0], d[:, 1])
+        ahead = behind = None
+        for j in np.argsort(dist):
+            if dist[j] > POWER_SPAN_MAX_M:
+                break
+            if j == i or dist[j] < 1e-6:
+                continue
+            cos = float(d[j] @ axis) / float(dist[j])
+            if cos >= cos_max and ahead is None:
+                ahead = int(j)
+            elif cos <= -cos_max and behind is None:
+                behind = int(j)
+            if ahead is not None and behind is not None:
+                break
+        for j in (ahead, behind):
+            if j is not None:
+                edges.add((min(i, j), max(i, j)))
+    for n, (i, j) in enumerate(sorted(edges)):
+        a, b = (tuple(float(v) for v in symbols[k][0]) for k in (i, j))
+        src = idx.entity_meta[symbols[i][2]]
+        eid = f"{src.id}~span{n}"
+        idx.by_entity[eid] = LineString([a, b])
+        idx.entity_meta[eid] = IREntity(id=eid, type="SPAN", layer=src.layer, kind="polyline",
+                                        geometry={"points": [list(a), list(b)], "closed": False},
+                                        attributes={"derived": "power_line_span"})
+        idx.by_category["POWER_LINE_OVERHEAD"].append(eid)
+    idx.repair_log.append(f"power lines: {len(symbols)} support symbol(s) joined into "
+                          f"{len(edges)} span(s) along the wire")
+    return len(edges)
 
 
 def _as_polygon(coords: list) -> Polygon | None:

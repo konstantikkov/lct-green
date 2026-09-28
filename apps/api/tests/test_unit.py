@@ -131,6 +131,13 @@ def test_layer_classification(layer, expected):
     # what lies beyond the work boundary is not the boundary (Макеева, ОДД)
     ("_за границами  работ", "ANNOTATION"),
     ("ДВ_ГП_П_Граница работ", "SITE_BOUNDARY"),
+    # overhead power lines have their own protection zone (ПП РФ № 160)
+    ("ЛЭП", "POWER_LINE_OVERHEAD"),
+    ("ВЛ-10 кВ", "POWER_LINE_OVERHEAD"),
+    ("Сущ_ВЛ 0,4", "POWER_LINE_OVERHEAD"),
+    ("Воздушная линия", "POWER_LINE_OVERHEAD"),
+    ("КЛ-10кВ", "UTILITY_ELECTRICITY"),
+    ("Кабель 0,4 кВ", "UTILITY_ELECTRICITY"),
 ])
 def test_real_geotrest_layer_names(layer, expected):
     assert classification.classify_layer_name(layer).category == expected
@@ -157,7 +164,7 @@ def test_uncertainty_not_hidden():
 
 def test_rule_registry_loads():
     reg = load_registry()
-    assert len(reg.documents) == 10
+    assert len(reg.documents) == 11  # + ПП РФ № 160 (охранные зоны ЛЭП)
     assert len(reg.rules) >= 15
 
 

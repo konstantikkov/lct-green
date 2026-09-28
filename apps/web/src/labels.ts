@@ -67,6 +67,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   UTILITY_HEAT: "Теплосеть",
   UTILITY_DRAINAGE: "Дренаж, водосток",
   UTILITY_COMMUNICATION: "Кабель связи",
+  POWER_LINE_OVERHEAD: "Воздушная ЛЭП",
   EXISTING_TREE: "Существующее дерево",
   EXISTING_SHRUB: "Существующий кустарник",
   GREEN_AREA: "Озеленение",

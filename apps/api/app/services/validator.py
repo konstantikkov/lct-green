@@ -106,6 +106,8 @@ def condition_confirmed(rule, placement: Placement) -> bool:
         if key == "crown_diameter_max_m":
             if 2.0 * float(placement.crownRadiusM) > float(value) + 1e-9:
                 return False
+        elif key == "voltage_class_kv":
+            return False  # drawings do not state an overhead line's voltage
         else:
             return False  # unknown condition — cannot confirm applicability
     return True

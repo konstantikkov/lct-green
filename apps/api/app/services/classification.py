@@ -50,7 +50,10 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"канализ|\bк1\b|\bк2\b|фекальн|бытов[а-я]*\s*сток|ливн|дожд|водосток|sewer|storm|хозбыт", "UTILITY_SEWER", 0.86),
     (r"дренаж|водоотвод|drain", "UTILITY_DRAINAGE", 0.84),
     (r"теплосет|теплотрасс|тепло|\bтс\b|heat", "UTILITY_HEAT", 0.84),
-    (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|лэп|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
+    # an OVERHEAD line (ЛЭП, ВЛ-10 кВ) has its own protection zone (ПП РФ № 160,
+    # приложение п. «а»); it outscores the cable rule, which also knows "10 кВ"
+    (r"лэп|(?<![а-яёa-z])вл(?![а-яёa-z])|воздушн[а-я]*[\s_]*(лини|провод)|overhead", "POWER_LINE_OVERHEAD", 0.88),
+    (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
     (r"связ|телефон|телеграф|тлф|слаботоч|волокон|вол[сc]|telecom|comm", "UTILITY_COMMUNICATION", 0.84),
     (r"сет[ии]|коммуникац|инжен|колодц|люк[и]?\b|коллектор|трубопровод|utility", "UTILITY", 0.55),
     # --- vegetation ---
