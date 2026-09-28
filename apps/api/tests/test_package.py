@@ -111,7 +111,7 @@ def merged(tmp_path):
     res = cad_package.ingest_package(_package(tmp_path), tmp_path / "work")
     doc = parse_dxf(res.merged_dxf, "pkg", "package.zip", "PACKAGE", list(res.log))
     classification.classify_document(doc)
-    cad_package.apply_source_classification(doc, res.sources)
+    cad_package.apply_source_classification(doc, res.sources, res.boundary_layers)
     return res, doc
 
 
@@ -214,6 +214,27 @@ def test_merged_package_is_autocad_safe(tmp_path):
     assert any("AutoCAD-safe" in m for m in res.log)
 
 
+def test_export_drops_inserts_of_missing_blocks(tmp_path):
+    """LibreDWG may leave INSERTs of blocks it did not convert (the
+    "_ArchTick" dimension arrow) in the base drawing itself; AutoCAD rejects
+    such a file, so the export must drop them."""
+    from app.services.dxf_export import export_greening_dxf
+    d = ezdxf.new("R2018")
+    blk = d.blocks.new("_ArchTick")
+    blk.add_line((0, 0), (1, 1))
+    msp = d.modelspace()
+    msp.add_blockref("_ArchTick", (5, 5), dxfattribs={"layer": "Размеры"})
+    msp.add_line((0, 0), (10, 0))
+    d.blocks.delete_block("_ArchTick", safe=False)
+    src = tmp_path / "src.dxf"
+    d.saveas(src)
+    out = tmp_path / "out.dxf"
+    export_greening_dxf(src, out, [], None, [], 1.0, 0, "test")
+    doc = ezdxf.readfile(out)
+    assert not [e for e in doc.modelspace().query("INSERT") if e.dxf.name not in doc.blocks]
+    assert len(doc.modelspace().query("LINE")) == 1
+
+
 def _complex_linetype(doc, name: str, shx: str) -> None:
     """A topographic linetype like "Otkos ukrep": two shape elements, each
     referencing the shape-file style by handle."""
@@ -258,6 +279,221 @@ def test_complex_linetype_every_shape_element_repointed(tmp_path):
         st = doc.entitydb[h]
         assert st.dxftype() == "STYLE" and st.dxf.flags & 1 and st.dxf.font.lower() == shx.lower()
     assert _dangling_pointers(res.merged_dxf) == 0
+
+
+def test_source_kinds_other_pilot_namings():
+    k = cad_package.source_kind
+    assert k("output[1-6]_3_ДЖКХпр-25_00627kl") == "kl"      # Харьковский проезд
+    assert k("tp_Макеева С. ул") == "tp"                       # Макеева: prefix form
+    assert k("up_Макеева С. ул") == "up"
+    assert k("xref_граница_Макеева С. ул") == "work_boundary"
+    assert k("01_Границы работ") == "work_boundary"            # 3-я Парковая
+    assert k("xref_ОДД_Макеева С. ул") == "other"
+    assert k("НО_Харьковский проезд") == "other"
+
+
+def _base_with_boundary_layer(doc, msp):
+    """Харьковский проезд: no work-boundary file — the outline is a layer of
+    the base drawing itself."""
+    msp.add_lwpolyline([(0, 0), (100, 0), (100, 60), (0, 60)], close=True,
+                       dxfattribs={"layer": "ДВ_ГП_П_Граница работ"})
+    for name, rel in ((TP, rf".\Ссылки\{TP}.dxf"), (UP, rf".\Ссылки\{UP}.dxf"),
+                      (BRD, rf".\Ссылки\{BRD}.dxf")):
+        doc.add_xref_def(rel, name)
+        msp.add_blockref(name, (0, 0))
+
+
+def test_work_boundary_as_a_layer_of_the_base_drawing(tmp_path):
+    root = "АПОТ - Standard"
+    files = {
+        f"{root}/АПОТ.dxf": _dxf_bytes(_base_with_boundary_layer),
+        f"{root}/Ссылки/{TP}.dxf": _dxf_bytes(_tp),
+        f"{root}/Ссылки/{UP}.dxf": _dxf_bytes(_up),
+        f"{root}/Ссылки/{BRD}.dxf": _dxf_bytes(_brd),
+    }
+    z = tmp_path / "p.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        for n, d in files.items():
+            zf.writestr(n, d)
+    res = cad_package.ingest_package(z, tmp_path / "w")
+    assert res.clip["mode"] == "work_boundary_layer"
+    assert res.boundary_layers == ["ДВ_ГП_П_Граница работ"]
+    tp_src = next(s for s in res.sources if s.name == TP)
+    assert tp_src.entities_in == 3 and tp_src.entities_kept == 2  # far building clipped after merge
+    doc = parse_dxf(res.merged_dxf, "pkg", "p.zip", "PACKAGE", list(res.log))
+    classification.classify_document(doc)
+    cad_package.apply_source_classification(doc, res.sources, res.boundary_layers)
+    cls = {li.name: li.classification.category for li in doc.layers}
+    assert cls["ДВ_ГП_П_Граница работ"] == "SITE_BOUNDARY"
+    assert cls[f"{BRD}$0$Граница заказа"] == "ANNOTATION"
+    idx = build_geometry_index(doc)
+    site, src = detect_site_boundary(doc, idx)
+    assert src == "detected" and abs(site.area - 6000) < 1
+
+
+def test_base_from_the_richest_report_next_to_its_drawing(tmp_path):
+    """Two packages zipped together (general plan + dendro plan) and a copy of
+    the base drawing in another folder: the report listing more xrefs wins
+    and its base is the drawing next to it."""
+    z = _package(tmp_path)
+    z2 = tmp_path / "two.zip"
+    dendro = "дендроплан/Дендро.txt"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, src.read(info))
+        dst.writestr("копия/_06_Генплан_Тест.dxf", _dxf_bytes(lambda d, m: None))
+        dst.writestr("дендроплан/Дендро.dxf", _dxf_bytes(lambda d, m: None))
+        dst.writestr(dendro, ("Базовый чертеж:\n\tДендро.dxf\n\n"
+                              "Внешние ссылки из чертежа AutoCAD:\n\tone.dwg\n\n").encode("cp1251"))
+        dst.writestr("Генплан_Тест - Standard/_06_Генплан_Тест.txt", (
+            "Базовый чертеж:\n\t_06_Генплан_Тест.dxf\n\nВнешние ссылки из чертежа AutoCAD:\n"
+            "\ta.dwg\n\tb.dwg\n\tc.dwg\n\n").encode("cp1251"))
+    res = cad_package.ingest_package(z2, tmp_path / "w2")
+    assert res.base_file.replace("\\", "/") == "Генплан_Тест - Standard/_06_Генплан_Тест.dxf"
+
+
+def test_nested_xrefs_are_merged(tmp_path):
+    """Макеева: base → xref_ИТП → tp_ / up_ (the ИРД hangs one level down)."""
+    def _base(doc, msp):
+        doc.add_xref_def(r".\xref\xref_ИТП.dxf", "xref_ИТП")
+        msp.add_blockref("xref_ИТП", (0, 0))
+        doc.add_xref_def(r".\xref\граница.dxf", "xref_граница_Тест")
+        msp.add_blockref("xref_граница_Тест", (0, 0))
+
+    def _itp(doc, msp):
+        for name in ("tp_Тест", "up_Тест"):
+            doc.add_xref_def(rf".\xref_ИТП\{name}.dxf", name)
+            msp.add_blockref(name, (0, 0))
+
+    root = "10001121 - Standard"
+    files = {
+        f"{root}/10001121.dxf": _dxf_bytes(_base),
+        f"{root}/xref/xref_ИТП.dxf": _dxf_bytes(_itp),
+        f"{root}/xref/xref_ИТП/tp_Тест.dxf": _dxf_bytes(_tp),
+        f"{root}/xref/xref_ИТП/up_Тест.dxf": _dxf_bytes(_up),
+        f"{root}/xref/граница.dxf": _dxf_bytes(_work_boundary),
+    }
+    z = tmp_path / "n.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        for n, d in files.items():
+            zf.writestr(n, d)
+    res = cad_package.ingest_package(z, tmp_path / "w")
+    by = {s.name: s for s in res.sources}
+    assert by["tp_Тест"].status == "merged" and by["tp_Тест"].kind == "tp"
+    assert by["up_Тест"].status == "merged" and "nested in xref_ИТП" in by["up_Тест"].detail
+    assert by["xref_граница_Тест"].kind == "work_boundary"
+    d = ezdxf.readfile(str(res.merged_dxf))
+    assert any(e.dxf.layer == "up_Тест$0$Теплосеть" for e in d.modelspace())
+
+
+def test_block_with_unconverted_nested_block_does_not_drop_source(tmp_path):
+    """A block that references a block LibreDWG did not convert (*U…) used to
+    make the Importer fail and the whole source was lost."""
+    def _tp_bad_block(doc, msp):
+        _tp(doc, msp)
+        inner = doc.blocks.new("Скамья")
+        inner.add_line((0, 0), (1, 0))
+        outer = doc.blocks.new("МАФ")
+        outer.add_blockref("Скамья", (0, 0))
+        outer.add_blockref("Скамья", (2, 0))
+        msp.add_blockref("МАФ", (50, 40), dxfattribs={"layer": "МАФ"})
+        # simulate the unconverted block: drop the definition, keep the reference
+        doc.blocks.delete_block("Скамья", safe=False)
+
+    name = f"Генплан_Тест - Standard/3ДЖКХ-25_00001/{TP}.dxf"
+    z, z2 = _package(tmp_path), tmp_path / "b.zip"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, _dxf_bytes(_tp_bad_block) if info.filename == name else src.read(info))
+    res = cad_package.ingest_package(z2, tmp_path / "w")
+    tp_src = next(s for s in res.sources if s.name == TP)
+    assert tp_src.status == "merged"
+    assert any("without a block definition dropped" in m for m in res.log)
+    assert _dangling_pointers(res.merged_dxf) == 0
+
+
+def test_unattached_ird_drawing_is_merged(tmp_path):
+    """3-я Парковая: the survey underlay is in the package but no drawing
+    references it; a copy with the same name in another folder is skipped."""
+    z, z2 = _package(tmp_path), tmp_path / "o.zip"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, src.read(info))
+        dst.writestr("Вн.ссылки/3_ДЖКХ-25_02294.dxf", _dxf_bytes(_up))
+        dst.writestr("копия ИРД/3_ДЖКХ-25_02294.dxf", _dxf_bytes(_up))
+    res = cad_package.ingest_package(z2, tmp_path / "w")
+    orphans = [s for s in res.sources if s.name == "3_ДЖКХ-25_02294"]
+    assert len(orphans) == 1 and orphans[0].status == "merged"
+    assert "not attached" in orphans[0].detail
+
+
+def test_unreadable_libredwg_output_is_repaired(tmp_path):
+    """A table record without a name and an MTEXT column type out of range
+    break even ezdxf's recover mode — the tag-level repair makes it loadable."""
+    from app.services.dxf_parser import _read_dxf
+    d = ezdxf.new("R2018")
+    d.layers.add("Здания")
+    d.modelspace().add_mtext("x", dxfattribs={"layer": "Здания"})
+    buf = io.StringIO()
+    d.write(buf)
+    t = buf.getvalue().replace("  2\nЗдания\n", "", 1)
+    i = t.index("AcDbMText")
+    t = t[:i] + "AcDbMText\n 75\n256" + t[i + len("AcDbMText"):]
+    p = tmp_path / "broken.dxf"
+    p.write_text(t, encoding="utf-8")
+    log: list[str] = []
+    doc = _read_dxf(p, log)
+    assert any("tag level" in m for m in log)
+    assert len(doc.modelspace().query("MTEXT")) == 1
+
+
+def test_undecodable_cad_text_is_cleaned():
+    """LibreDWG may write cp1251 bytes into a UTF-8 DXF; they arrive as lone
+    surrogates, which JSON (document storage, API responses) refuses."""
+    from app.services.dxf_parser import clean_text
+    raw = "Кабель связи".encode("cp1251").decode("utf-8", "surrogateescape")
+    assert clean_text(raw) == "Кабель связи"
+    assert clean_text("Теплосеть") == "Теплосеть" and clean_text(None) is None
+    # only the undecodable run is re-decoded: a proper UTF-8 xref prefix stays intact
+    mixed = "output_ДЖКХup$0$" + "Кабель".encode("cp1251").decode("utf-8", "surrogateescape")
+    assert clean_text(mixed) == "output_ДЖКХup$0$Кабель"
+
+
+def test_distance_to_a_multipart_site_boundary():
+    """Two separate work-boundary areas make the site a MultiPolygon; the
+    candidate features must still measure the distance to its edge."""
+    from shapely.geometry import MultiPolygon, Point, Polygon
+    from app.services.candidates import DistanceOracle
+    from app.services.geometry import GeometryIndex
+    site = MultiPolygon([Polygon([(0, 0), (10, 0), (10, 10), (0, 10)]),
+                         Polygon([(20, 0), (30, 0), (30, 10), (20, 10)])])
+    oracle = DistanceOracle(GeometryIndex(), site)
+    assert abs(oracle.boundary_distance(Point(25, 5)) - 5.0) < 1e-9
+
+
+def test_layout_without_block_record_is_dropped(tmp_path):
+    """A paper-space LAYOUT pointing to a missing BLOCK_RECORD makes ezdxf
+    refuse the whole file (lighting plan of Харьковский проезд). ezdxf copes
+    with the synthetic version, so the tag-level repair is checked directly."""
+    from app.services.dxf_parser import _repair_tags
+    d = ezdxf.new("R2018")
+    d.modelspace().add_line((0, 0), (1, 1), dxfattribs={"layer": "Фонари"})
+    buf = io.StringIO()
+    d.write(buf)
+    t = buf.getvalue()
+    lay = d.layouts.get("Layout1").dxf_layout
+    # the sheet's LAYOUT object: its AcDbLayout 330 pointer now names nothing
+    obj = t.index(f"\n  5\n{lay.dxf.handle}\n")
+    ptr = f"330\n{lay.dxf.block_record_handle}\n"
+    at = t.index(ptr, obj)
+    t = t[:at] + "330\nDEAD\n" + t[at + len(ptr):]
+    p = tmp_path / "no.dxf"
+    p.write_text(t, encoding="utf-8")
+    fixed = tmp_path / "fixed.dxf"
+    counts = _repair_tags(p, fixed)
+    assert counts["layouts without block record"] == 1
+    assert "330\nDEAD\n" not in fixed.read_text(encoding="utf-8")
+    assert len(ezdxf.readfile(fixed).modelspace()) == 1
 
 
 def test_base_found_without_report(tmp_path):

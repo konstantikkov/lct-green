@@ -122,6 +122,12 @@ def test_layer_classification(layer, expected):
     ("Геодезические пункты", "ANNOTATION"),
     ("ДВ_ГП_П_МАФ", "ANNOTATION"),
     ("_МАФ_вент. кожух", "ANNOTATION"),
+    # dendro plans and lighting / demolition layers of the pilot packages
+    ("!!!_1. Дендра_сохранить", "EXISTING_TREE"),
+    ("!!!_1. Дендра_номера_сохранить", "ANNOTATION"),
+    ("!!!_1. Дендра_выноски_вырубка", "ANNOTATION"),
+    ("_ЭН_опора НО", "LIGHTING"),
+    ("ДВ_ГП_Демонтаж", "ANNOTATION"),
 ])
 def test_real_geotrest_layer_names(layer, expected):
     assert classification.classify_layer_name(layer).category == expected

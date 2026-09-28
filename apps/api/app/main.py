@@ -152,10 +152,23 @@ def _document_response(pid: str, doc: CadDocument, state: str) -> dict:
         "state": state,
         "layers": [l.model_dump() for l in doc.layers],
         "entities": ents,
-        "conversionLog": doc.conversionLog,
+        "conversionLog": [_json_safe(m) for m in doc.conversionLog],
         # eTransmit package composition (sources, what merged, clip region)
-        "package": store.load_json(pid, "package"),
+        "package": _json_safe(store.load_json(pid, "package")),
     }
+
+
+def _json_safe(obj):
+    """Strings from CAD files may still carry undecodable bytes (lone
+    surrogates) that JSON rendering refuses — re-decode them."""
+    from .services.dxf_parser import clean_text
+    if isinstance(obj, str):
+        return clean_text(obj)
+    if isinstance(obj, list):
+        return [_json_safe(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    return obj
 
 
 @app.post("/api/projects", status_code=201)
@@ -228,7 +241,8 @@ async def create_project(file: UploadFile = File(...)):
     store.update_project(pid, state="CLASSIFYING")
     classification.classify_document(doc)
     if package is not None:
-        doc.conversionLog.extend(cad_package.apply_source_classification(doc, package.sources))
+        doc.conversionLog.extend(cad_package.apply_source_classification(
+            doc, package.sources, package.boundary_layers))
         store.save_json(pid, "package", package.to_api())
     llm = LocalLLM()
     try:
@@ -662,8 +676,47 @@ def export_dxf(pid: str, layers: str = "all"):
     dxf_export.export_greening_dxf(
         src_dxf, out, placements,
         constraints.allowed_area, constraints.exclusion_zones,
-        rt.doc.unitsScaleToMeters, rec["index"], registry.version)
+        rt.doc.unitsScaleToMeters, rec["index"], registry.version,
+        rejected_samples=(rec.get("rejections") or {}).get("samples"))
     return FileResponse(out, filename=out.name, media_type="application/dxf")
+
+
+_OBJECT_NAMES = {"BUILDING": "здание", "ROAD": "проезжая часть", "SIDEWALK": "тротуар",
+                 "PARKING": "парковка", "CURB": "бортовой камень"}
+_GEOMETRIC_REASONS = {
+    "OUTSIDE_SITE": "вне границы участка",
+    "NOT_PLANTING_AREA": "вне области посадки (не проектный газон / не зона озеленения)",
+    "NARROW_STRIP": "узкая полоса меньше 1 м между запретными зонами",
+}
+
+
+def _cited_rejections(rej: dict | None, registry) -> dict | None:
+    """Rejection reasons with the norm behind each: rule ids resolve to their
+    source (document, clause, also cited acts); geometric reasons get a
+    description; OUTSIDE_SITE cites the inside-site rule."""
+    from .services.rejections import cite
+    if not rej:
+        return rej
+    out = []
+    for item in rej.get("byReason", []):
+        key = item["key"]
+        entry = dict(item)
+        if key.startswith("ON_OBJECT:"):
+            cat = key.split(":", 1)[1]
+            entry["description"] = f"на объекте: {_OBJECT_NAMES.get(cat, cat)}"
+        elif key in _GEOMETRIC_REASONS:
+            entry["description"] = _GEOMETRIC_REASONS[key]
+            if key == "OUTSIDE_SITE":
+                entry["source"] = cite(registry, "PLANTING_INSIDE_SITE_BOUNDARY")
+        else:
+            entry["source"] = cite(registry, key)
+            role = (entry["source"] or {}).get("role")
+            if role == "safe_buffer":
+                entry["description"] = "технологический буфер проекта — не нормативное требование"
+            elif role == "design_heuristic":
+                entry["description"] = "проектная рекомендация — не нормативное требование"
+        out.append(entry)
+    return {**rej, "byReason": out}
 
 
 @app.get("/api/projects/{pid}/export/report")
@@ -715,6 +768,7 @@ def export_report(pid: str):
         "repairLog": constraints.repair_log,
         "placements": rec.get("placements", []),
         "explanations": explanations,
+        "rejections": _cited_rejections(rec.get("rejections"), registry),
         "disclaimer": headline + " Rules with status=missing_source_data use explicitly "
                       "flagged ASSUMED demo distances (see effectiveSource per check); "
                       "they are NOT verified regulatory values. The LLM judge decision "

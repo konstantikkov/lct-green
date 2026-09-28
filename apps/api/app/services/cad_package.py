@@ -49,9 +49,15 @@ MAX_UNPACKED_BYTES = 3 * 1024 ** 3
 CLIP_MARGIN_M = 15.0                  # > the largest setback in the registry (5 m)
 
 # kind of an xref by its file / block name
+# ИРД file kinds: "…_03117tp" (Мосгеотрест export) or "tp_Макеева С. ул"
 _IRD_SUFFIX = re.compile(r"(tp|up|pp|kl|brd)$", re.IGNORECASE)
+_IRD_PREFIX = re.compile(r"^(tp|up|pp|kl|brd)[_\s]", re.IGNORECASE)
+# survey (ИРД) drawings by file name: "3_ДЖКХ-25_02294", "…03117up", "tp_…"
+_IRD_NAME = re.compile(r"ДЖКХ|^(tp|up|pp|kl|brd)[_\s]|(tp|up|pp|kl|brd)$", re.IGNORECASE)
+# the work boundary as a LAYER name, in whichever file it is drawn
+WORK_BOUNDARY_LAYER = re.compile(r"границ[а-я]*\s*работ", re.IGNORECASE)
 _KIND_PATTERNS = [
-    (re.compile(r"границ[а-я]*\s*работ", re.IGNORECASE), "work_boundary"),
+    (re.compile(r"границ[а-я]*\s*работ|(^|[_\s])границ[аы](?=$|[_\s])", re.IGNORECASE), "work_boundary"),
     (re.compile(r"борт", re.IGNORECASE), "curbs"),
     (re.compile(r"заливк", re.IGNORECASE), "covers"),
 ]
@@ -94,15 +100,18 @@ class PackageResult:
     sources: list[PackageSource]
     clip: dict = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
+    # merged-DXF layers whose outlines form the work boundary (= site boundary)
+    boundary_layers: list[str] = field(default_factory=list)
 
     def to_api(self) -> dict:
         return {"baseFile": self.base_file, "clip": self.clip,
+                "boundaryLayers": self.boundary_layers,
                 "sources": [s.to_api() for s in self.sources]}
 
 
 def source_kind(name: str) -> str:
     stem = Path(name).stem if "." in name else name
-    m = _IRD_SUFFIX.search(stem)
+    m = _IRD_SUFFIX.search(stem) or _IRD_PREFIX.search(stem)
     if m:
         return m.group(1).lower()
     for rx, kind in _KIND_PATTERNS:
@@ -174,14 +183,38 @@ def _read_text(path: Path) -> str:
 
 
 def _base_from_report(reports: list[Path], drawings: list[Path]) -> Path | None:
-    """eTransmit report: 'Базовый чертеж:' (ru) / 'Root Drawing:' (en)."""
-    by_name = {d.name.lower(): d for d in drawings}
+    """eTransmit report: 'Базовый чертеж:' (ru) / 'Root Drawing:' (en).
+
+    A zipped "Исходные данные" folder may hold several packages (general
+    plan, dendro plan) and copies of the same base drawing in other folders:
+    take the report listing the most xrefs, and the base drawing lying next
+    to that report."""
+    existing = {d.resolve() for d in drawings}
+    best: tuple[int, Path] | None = None
     for rep in reports:
         text = _read_text(rep)
         m = re.search(r"(Базовый чертеж|Root Drawing)\s*:\s*\n\s*(.+?)\s*\n", text)
-        if m and m.group(2).strip().lower() in by_name:
-            return by_name[m.group(2).strip().lower()]
-    return None
+        if not m:
+            continue
+        cand = (rep.parent / m.group(2).strip()).resolve()
+        if cand not in existing:
+            continue
+        xm = re.search(r"(Внешние ссылки из чертежа AutoCAD|AutoCAD Drawing Xrefs)\s*:\s*\n((?:[ \t]+\S.*\n)+)", text)
+        n = len(xm.group(2).strip().splitlines()) if xm else 0
+        if best is None or n > best[0]:
+            best = (n, cand)
+    return best[1] if best else None
+
+
+def _xref_hint(path: Path) -> int:
+    """Cheap pre-ranking of base-drawing candidates without converting them:
+    how many '.dwg' path strings the file carries (UTF-16 in AC1021+,
+    8-bit before)."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return 0
+    return data.count(".dwg".encode("utf-16-le")) + data.count(b".dwg")
 
 
 def _rel_depth(p: Path, root: Path) -> int:
@@ -242,11 +275,24 @@ def _load(path: Path, log_: list[str]):
     return _read_dxf(path, log_)
 
 
-def _convert(src: Path, workdir: Path, converter: DwgConverter) -> Path:
+def _convert(src: Path, workdir: Path, converter: DwgConverter, extra: tuple[str, ...] = ()) -> Path:
     if src.suffix.lower() == ".dxf":
         return src
     out = workdir / f"{uuid.uuid4().hex}.dxf"
-    return converter.convert_to_dxf(src, out)
+    return converter.convert_to_dxf(src, out, extra)
+
+
+def _load_source(src_file: Path, dxf: Path, workdir: Path, converter: DwgConverter, msgs: list[str]):
+    """Load a converted drawing; when even the repair paths fail on LibreDWG's
+    default output (e.g. a layout without its block record), convert the DWG
+    again with the R2000 writer and load that."""
+    try:
+        return _load(dxf, msgs)
+    except Exception as first:  # noqa: BLE001
+        if src_file.suffix.lower() != ".dwg" or getattr(converter.info, "kind", "") != "libredwg":
+            raise
+        msgs.append(f"{src_file.name}: unreadable DXF ({type(first).__name__}); reconverted as R2000")
+        return _load(_convert(src_file, workdir, converter, ("--as", "r2000")), msgs)
 
 
 def _insert_matrix(ref: XrefRef, unit_factor: float) -> Matrix44 | None:
@@ -267,12 +313,55 @@ def _insert_matrix(ref: XrefRef, unit_factor: float) -> Matrix44 | None:
     )
 
 
-def _work_boundary(doc) -> Polygon | None:
+def _bulk_delete(doc, layout, entities: list) -> None:
+    """Delete many entities at once. Layout.delete_entity() is linear in the
+    layout size, so deleting most of a 300k-entity model space one by one
+    is quadratic (the 3-я Парковая package ran for 20+ minutes); destroying
+    through the entity database and purging the layout once is linear."""
+    if not entities:
+        return
+    for e in entities:
+        doc.entitydb.delete_entity(e)
+    layout.purge()
+
+
+def _compose(child: Matrix44 | None, parent: Matrix44 | None) -> Matrix44 | None:
+    """child → parent → base transform (None = identity)."""
+    if child is None:
+        return parent
+    if parent is None:
+        return child
+    return Matrix44.chain(child, parent)
+
+
+def _drop_dangling_block_refs(doc) -> tuple[int, int]:
+    """Delete INSERTs of blocks LibreDWG did not convert (anonymous *U …) and
+    DIMENSIONs without their *D geometry block — in model space AND inside
+    block definitions, where the Importer would otherwise fail on them."""
+    n_ins = n_dim = 0
+    layouts = [doc.modelspace()] + [b for b in doc.blocks
+                                    if not b.is_any_layout and not b.block.is_xref]
+    for lay in layouts:
+        ins = [e for e in lay.query("INSERT") if e.dxf.name not in doc.blocks]
+        dims = [e for e in lay.query("DIMENSION")
+                if not e.dxf.get("geometry") or e.dxf.geometry not in doc.blocks]
+        _bulk_delete(doc, lay, ins + dims)
+        n_ins += len(ins)
+        n_dim += len(dims)
+    return n_ins, n_dim
+
+
+def _work_boundary(doc, layers: set[str] | None = None):
     """Closed polylines plus open pieces stitched end to end (the Moscow work
-    boundary is often drawn as two open halves)."""
+    boundary is often drawn as two open halves). `layers` limits the search;
+    returns (union or None, names of the layers that contributed)."""
     from .geometry import stitch_rings
-    polys, lines = [], []
+    polys, lines, used = [], [], set()
+    if layers is not None and not layers:
+        return None, []
     for e in doc.modelspace().query("LWPOLYLINE POLYLINE"):
+        if layers is not None and e.dxf.layer not in layers:
+            continue
         pts = [(p[0], p[1]) for p in (e.get_points("xy") if e.dxftype() == "LWPOLYLINE"
                                        else [v.dxf.location for v in e.vertices])]
         if len(pts) < 2:
@@ -282,10 +371,14 @@ def _work_boundary(doc) -> Polygon | None:
             poly = poly if poly.is_valid else poly.buffer(0)
             if poly.area > 1.0:
                 polys.append(poly)
+                used.add(e.dxf.layer)
         else:
-            lines.append(LineString(pts))
-    polys.extend(stitch_rings(lines))
-    return unary_union(polys) if polys else None
+            lines.append((LineString(pts), e.dxf.layer))
+    rings = stitch_rings([ln for ln, _ in lines])
+    if rings:
+        polys.extend(rings)
+        used.update(layer for _, layer in lines)
+    return (unary_union(polys) if polys else None), sorted(used)
 
 
 def _entity_box(e) -> tuple[float, float, float, float] | None:
@@ -397,8 +490,10 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
     base_doc = None
     base_xrefs: list[XrefRef] = []
     if base is None:
-        shallow = min(_rel_depth(d, unpack) for d in drawings)
-        cands = [d for d in drawings if _rel_depth(d, unpack) == shallow]
+        # rank every drawing by the cheap xref hint, verify the top few by
+        # reading their real xref tables (shallower first on ties)
+        ranked = sorted(drawings, key=lambda d: (-_xref_hint(d), _rel_depth(d, unpack)))
+        cands = ranked[:3]
         best = None
         for c in cands:
             try:
@@ -412,7 +507,7 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         if best is None:
             raise PackageError("PACKAGE_NO_BASE", "Could not read any top-level drawing.")
         base, base_doc, base_xrefs = best
-        msgs.append(f"base drawing (most xrefs at top level): {base.name}")
+        msgs.append(f"base drawing (most external references): {base.name}")
     if base_doc is None:
         base_doc = _load(_convert(base, conv_dir, converter), msgs)
         base_xrefs = read_xrefs(base_doc)
@@ -427,7 +522,7 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         if path is None:
             src.status, src.detail = "missing", f"not in package: {ref.path}"
         elif not ref.inserts:
-            src.status, src.detail = "empty", "defined but not inserted in model space"
+            src.status = "empty"  # may still arrive as a nested xref of another source
         else:
             src.file = str(path.relative_to(unpack))
             plan.append((src, path, ref))
@@ -451,7 +546,7 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         if src.kind == "work_boundary" and dxf is not None:
             wdoc = _load(dxf, msgs)
             loaded[src.name] = wdoc
-            wb = _work_boundary(wdoc)
+            wb, _ = _work_boundary(wdoc)
             if wb is not None and not wb.is_empty:
                 region = wb.buffer(clip_margin_m)
                 clip = {"mode": "work_boundary", "source": src.name, "marginM": clip_margin_m,
@@ -465,22 +560,17 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
 
     def merge(doc, src: PackageSource, matrix: Matrix44 | None):
         msp = doc.modelspace()
-        dropped = 0
-        for e in list(msp.query("INSERT")):
+        placeholders = []                      # xref placeholders never merge as blocks
+        for e in msp.query("INSERT"):
             blk = doc.blocks.get(e.dxf.name)
-            if blk is None:                    # block not converted (e.g. anonymous *U)
-                msp.delete_entity(e)
-                dropped += 1
-            elif blk.block is not None and (blk.block.is_xref or blk.block.is_xref_overlay):
-                msp.delete_entity(e)           # xref placeholders never merge as blocks
+            if blk is not None and blk.block is not None and (blk.block.is_xref or blk.block.is_xref_overlay):
+                placeholders.append(e)
+        _bulk_delete(doc, msp, placeholders)
+        dropped, dims = _drop_dangling_block_refs(doc)
         if dropped:
             msgs.append(f"{src.name}: {dropped} block reference(s) without a block definition dropped")
-        dims = [e for e in msp.query("DIMENSION")
-                if not e.dxf.get("geometry") or e.dxf.geometry not in doc.blocks]
-        for e in dims:                         # LibreDWG leaves out anonymous *D blocks
-            msp.delete_entity(e)
         if dims:
-            msgs.append(f"{src.name}: {len(dims)} dimension(s) without a geometry block dropped")
+            msgs.append(f"{src.name}: {dims} dimension(s) without a geometry block dropped")
         if matrix is not None:
             for e in msp:
                 try:
@@ -492,7 +582,16 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         _prefix_layers(doc, selected, src.prefix)
         imp = Importer(doc, target)
         before = {lt.dxf.name for lt in target.linetypes}
-        imp.import_entities(selected, target.modelspace())
+        bad = 0
+        tmsp = target.modelspace()
+        for e in selected:
+            try:
+                imp.import_entity(e, tmsp)
+            except Exception:  # noqa: BLE001 — e.g. MTEXT with invalid column data
+                bad += 1
+        if bad:
+            src.entities_kept -= bad
+            msgs.append(f"{src.name}: {bad} unreadable entit(ies) skipped")
         imp.finalize()
         # complex linetypes reference their shape/text STYLE by handle, one
         # reference per element. Every Importer.finalize() re-points only the
@@ -510,25 +609,107 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
     t0 = time.time()
     ltype_styles: dict[str, list] = {}
     merge(base_doc, sources[0], None)
-    for (src, path, ref), dxf, err in converted:
+
+    # queue: (source, file, xref ref, converted dxf, error, parent matrix,
+    # parent units). Xrefs of xrefs (Макеева: base → xref_ИТП → tp_/up_) are
+    # appended as they are discovered, with the parent's transform composed
+    by_name = {s.name: s for s in sources}
+    seen = {base.resolve()} | {p.resolve() for (_s, p, _r), _d, _e in converted}
+    queue = [(src, path, ref, dxf, err, None, base_units)
+             for (src, path, ref), dxf, err in converted]
+    while queue:
+        src, path, ref, dxf, err, parent_m, parent_units = queue.pop(0)
         if err is not None or dxf is None:
             src.status, src.detail = "failed", f"conversion failed: {err}"
             continue
         try:
-            doc = loaded.get(src.name) or _load(dxf, msgs)
-            nested = read_xrefs(doc)
-            if nested:
-                msgs.append(f"{src.name}: {len(nested)} nested xref(s) not merged")
+            doc = loaded.get(src.name) or _load_source(path, dxf, conv_dir, converter, msgs)
             src_units = int(doc.header.get("$INSUNITS", 0) or 0)
             factor = 1.0
-            if base_units and src_units and src_units != base_units:
-                factor = ezdxf.units.conversion_factor(src_units, base_units)
-            merge(doc, src, _insert_matrix(ref, factor))
-            if src.entities_in == 0:
-                src.status = "empty"
+            if parent_units and src_units and src_units != parent_units:
+                factor = ezdxf.units.conversion_factor(src_units, parent_units)
+            m = _compose(_insert_matrix(ref, factor), parent_m)
+            nested = [r for r in read_xrefs(doc) if r.inserts]
+            merge(doc, src, m)
+            src.status = "merged" if src.entities_in else "empty"
+            for nref in nested:
+                npath = resolve_xref(nref.path or nref.name + ".dwg", path.parent, unpack, index)
+                nsrc = by_name.get(nref.name)
+                if npath is not None and npath.resolve() in seen:
+                    continue
+                if nsrc is None or nsrc.status not in ("empty", "missing"):
+                    nsrc = PackageSource(name=nref.name, kind=source_kind(nref.name),
+                                         prefix=_safe_prefix(nref.name))
+                    sources.append(nsrc)
+                    by_name[nref.name] = nsrc
+                if npath is None:
+                    nsrc.status, nsrc.detail = "missing", f"not in package (nested in {src.name}): {nref.path}"
+                    continue
+                seen.add(npath.resolve())
+                nsrc.file, nsrc.detail = str(npath.relative_to(unpack)), f"nested in {src.name}"
+                try:
+                    ndxf, nerr = _convert(npath, conv_dir, converter), None
+                except Exception as exc:  # noqa: BLE001
+                    ndxf, nerr = None, exc
+                queue.append((nsrc, npath, nref, ndxf, nerr, m, src_units or parent_units))
         except Exception as exc:  # noqa: BLE001
+            log.warning("package: merge of %s failed", src.name, exc_info=True)
             src.status, src.detail = "failed", f"merge failed: {exc}"
         loaded.pop(src.name, None)
+    for s_ in sources:
+        if s_.status == "empty" and not s_.entities_in and not s_.detail:
+            s_.detail = "defined but not inserted in model space"
+
+    # --- ИРД drawings shipped in the package but attached to nothing --------
+    # (3-я Парковая: the survey underlay lies next to the base drawing, which
+    # references only the lighting plan and the dendro plan). Same coordinate
+    # system as the rest; copies of an already merged file are skipped.
+    merged_names = {Path(s_.file).name.lower() for s_ in sources if s_.file}
+    for d in sorted(drawings, key=lambda p: _rel_depth(p, unpack)):
+        if d.resolve() in seen or d.name.lower() in merged_names or not _IRD_NAME.search(d.stem):
+            continue
+        seen.add(d.resolve())
+        merged_names.add(d.name.lower())
+        osrc = PackageSource(name=d.stem, kind=source_kind(d.stem), prefix=_safe_prefix(d.stem),
+                             file=str(d.relative_to(unpack)),
+                             detail="ИРД file not attached to the base drawing — merged by name")
+        sources.append(osrc)
+        try:
+            doc = _load_source(d, _convert(d, conv_dir, converter), conv_dir, converter, msgs)
+            merge(doc, osrc, None)
+            osrc.status = "merged" if osrc.entities_in else "empty"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("package: merge of %s failed", osrc.name, exc_info=True)
+            osrc.status, osrc.detail = "failed", f"{osrc.detail}; merge failed: {exc}"
+
+    # --- work boundary: from its own file and/or any "Граница работ" layer ---
+    wb_prefixes = {s.prefix for s in sources if s.kind == "work_boundary" and s.status == "merged"}
+    # layer names of the outlines themselves (a source may lack a table entry)
+    outline_layers = {e.dxf.layer for e in target.modelspace().query("LWPOLYLINE POLYLINE")}
+    cand_layers = {name for name in outline_layers
+                   if WORK_BOUNDARY_LAYER.search(split_layer(name)[1])
+                   or split_layer(name)[0] in wb_prefixes}
+    boundary, boundary_layers = _work_boundary(target, cand_layers)
+    if boundary is not None and region is None:
+        # no work-boundary FILE: the boundary is a layer inside some drawing —
+        # clip the merged model space now
+        post = boundary.buffer(clip_margin_m)
+        kept, total = _select(target.modelspace(), post)
+        keep_ids = {id(e) for e in kept}
+        by_prefix = {s.prefix: s for s in sources}
+        drop = []
+        for e in target.modelspace():
+            if id(e) not in keep_ids:
+                src = by_prefix.get(split_layer(e.dxf.layer)[0])
+                if src is not None:
+                    src.entities_kept -= 1
+                drop.append(e)
+        _bulk_delete(target, target.modelspace(), drop)
+        region = post
+        clip = {"mode": "work_boundary_layer", "source": ", ".join(sorted(boundary_layers))[:200],
+                "marginM": clip_margin_m, "boundaryAreaM2": round(boundary.area, 1)}
+        msgs.append(f"package: work boundary found on layer(s) {sorted(boundary_layers)}; "
+                    f"kept {len(kept)} of {total} entities")
 
     for name, refs in ltype_styles.items():
         _apply_linetype_styles(target.linetypes.get(name), refs, target)
@@ -545,8 +726,17 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
     for s in sources:
         if s.status != "merged":
             msgs.append(f"package: {s.name} — {s.status}: {s.detail}")
+    # names coming from CAD files may carry undecodable bytes (cp1251 inside
+    # UTF-8 DXF): clean them exactly as the parser cleans layer names, so the
+    # prefixes and boundary layers still match the parsed document
+    from .dxf_parser import clean_text
+    for s_ in sources:
+        s_.name, s_.prefix = clean_text(s_.name), clean_text(s_.prefix)
+        s_.file, s_.detail = clean_text(s_.file), clean_text(s_.detail)
+    clip = {k: clean_text(v) if isinstance(v, str) else v for k, v in clip.items()}
     return PackageResult(merged_dxf=out, base_file=sources[0].file, sources=sources,
-                         clip=clip, log=msgs)
+                         clip=clip, log=[clean_text(m) for m in msgs],
+                         boundary_layers=sorted(clean_text(x) for x in boundary_layers))
 
 
 def _target_style(target, font: str, shape: bool) -> str:
@@ -638,9 +828,18 @@ def make_autocad_safe(doc) -> dict[str, int]:
       target's defaults (those of layer "0");
     * complex linetype elements whose style is not a STYLE of the right
       kind (shape file for shapes, text style for text) → plain dashes;
+    * INSERTs of blocks that do not exist and DIMENSIONs without their
+      geometry block — LibreDWG leaves them in the base drawing too (the
+      "_ArchTick" arrow block of Харьковский проезд);
     * then ezdxf's own audit (invalid DIMENSIONs, owners, …)."""
     fixes: dict[str, int] = {}
     db = doc.entitydb
+
+    n_ins, n_dim = _drop_dangling_block_refs(doc)
+    if n_ins:
+        fixes["INSERTs of missing blocks dropped"] = n_ins
+    if n_dim:
+        fixes["DIMENSIONs without geometry block dropped"] = n_dim
 
     def resolves(handle, dxftype=None) -> bool:
         e = db.get(handle) if handle else None
@@ -704,10 +903,12 @@ def split_layer(name: str) -> tuple[str, str]:
     return "", name
 
 
-def apply_source_classification(doc, sources: list[PackageSource]) -> list[str]:
+def apply_source_classification(doc, sources: list[PackageSource],
+                                boundary_layers: list[str] | None = None) -> list[str]:
     """Override layer classes by the package source they came from.
 
-    * the work boundary is THE site boundary; nothing else may be one;
+    * the work boundary (its layers in `boundary_layers`, else every layer
+      of a work-boundary file) is THE site boundary; nothing else may be one;
     * survey frames (brd) and red lines (kl) are annotations;
     * anything in a utilities export (up / pp) is a utility — its specific
       type from the layer name when recognisable, else generic UTILITY;
@@ -718,7 +919,9 @@ def apply_source_classification(doc, sources: list[PackageSource]) -> list[str]:
     from ..models.ir import UTILITY_CATEGORIES, LayerClassification
 
     kinds = {s.prefix: s.kind for s in sources if s.prefix}
-    has_work_boundary = any(s.kind == "work_boundary" and s.status == "merged" for s in sources)
+    wb_layers = set(boundary_layers or [])
+    has_work_boundary = bool(wb_layers) or any(
+        s.kind == "work_boundary" and s.status == "merged" for s in sources)
     notes: list[str] = []
 
     def set_cls(li, cat, conf, why):
@@ -729,8 +932,10 @@ def apply_source_classification(doc, sources: list[PackageSource]) -> list[str]:
         prefix, _ = split_layer(li.name)
         kind = kinds.get(prefix, "base" if not prefix else "other")
         cur = li.classification
-        if kind == "work_boundary":
+        if li.name in wb_layers or (kind == "work_boundary" and not wb_layers):
             set_cls(li, "SITE_BOUNDARY", 0.97, "source:work_boundary")
+        elif kind == "work_boundary":
+            set_cls(li, "ANNOTATION", 0.85, "source:work_boundary (not an outline)")
         elif kind in ("brd", "kl"):
             set_cls(li, "ANNOTATION", 0.95, f"source:{kind}")
         elif kind in ("up", "pp"):

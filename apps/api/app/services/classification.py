@@ -75,6 +75,13 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"откос|внутренн[а-я]*\s*заполнен|топографическ|геодезическ|берегов"
      r"|громоотвод|указател|полусфер|пояснительн", "ANNOTATION", 0.75),
     (r"маф\b|маф_|малы[ех]\s*архитектурн", "ANNOTATION", 0.7),
+    # dendro survey plan (ИП «Дендрология»): trees to keep are existing
+    # trees; their numbers / call-outs and trees to be felled are drawing notes
+    (r"дендр[а-я]*[\s_.]*(сохран|сущ)", "EXISTING_TREE", 0.85),
+    (r"дендр[а-я]*.*(номер|выноск|вырубк|аварийк|пересадк)", "ANNOTATION", 0.88),
+    # outdoor lighting (НО = наружное освещение) poles; demolition drawings
+    (r"опор[аы]?\s*но\b|опор[аы]?\s*наружн", "LIGHTING", 0.8),
+    (r"демонтаж", "ANNOTATION", 0.8),
     # --- annotation / drafting ---
     (r"размер|текст|надпис|выноск|обознач|услов|экспл[иу]кац|штамп|рамк|таблиц|легенд|примечан"
      r"|горизонтал|отметк"

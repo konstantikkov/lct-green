@@ -274,6 +274,17 @@ classifications may have `source: "package"` (decided by the source file).
 cover plan inside the site). `GET …/export/dxf?layers=result` returns only the
 `AI_GREENING_*` layers in source coordinates, to attach as an xref.
 
+### Rejection reasons (ТЗ п. 8)
+Iteration records (`GET …/iterations/{id}`) carry `rejections: {total,
+byReason: [{key, count, byKind, involved}], samples: [{position, speciesId,
+kind, primary, reasons[], actualM?, requiredM?}]}`. `key` is a rule id or a
+geometric reason (`OUTSIDE_SITE`, `NOT_PLANTING_AREA`, `ON_OBJECT:<category>`,
+`NARROW_STRIP`); `count` = points where it is the primary reason, `involved`
+= points where it is any reason. The JSON report adds per reason `source`
+(document, clause, title, alsoCited, requiredM) or `description`. The DXF
+export has an `AI_GREENING_REJECTED` layer with the sample points, reasons in
+XDATA (`reason=<key>`).
+
 ### `GET /api/rules` → `RegulatoryRule[]`
 ```ts
 interface RegulatoryRule {

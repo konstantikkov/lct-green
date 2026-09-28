@@ -441,11 +441,39 @@ export interface ValidationReport {
   metrics: { plantingCount: number; validCount: number; coverageScore: number; distributionScore: number };
 }
 
+/** Why rejected candidates may not be planted (ТЗ п. 8). `key` is a rule id
+ *  (norm in the registry) or a geometric reason: OUTSIDE_SITE,
+ *  NOT_PLANTING_AREA, ON_OBJECT:<category>, NARROW_STRIP. */
+export interface RejectionReason {
+  key: string;
+  /** points for which this is the primary reason */
+  count: number;
+  byKind: Record<string, number>;
+  /** points for which it is any of the reasons */
+  involved: number;
+}
+
+export interface Rejections {
+  total: number;
+  byReason: RejectionReason[];
+  samples: {
+    position: [number, number];
+    speciesId: string;
+    kind: PlantKind;
+    primary: string;
+    reasons: string[];
+    actualM?: number;
+    requiredM?: number;
+  }[];
+}
+
 export type IterationDetail = IterationSummary & {
   placements: Placement[];
   rejectedCandidates: [number, number][];
   candidateCount: number;
   validation: ValidationReport;
+  /** absent on iterations computed before reasons were recorded */
+  rejections?: Rejections;
 };
 
 export interface ExplanationCheck {
