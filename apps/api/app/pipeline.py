@@ -25,6 +25,7 @@ from .services.llm import LocalLLM
 from .services.optimizer import (OptimizerParams, PlantSpec, auto_target,
                                  hard_filter_candidates, optimize)
 from .services.rules import RuleRegistry, load_registry, load_species, blacklist_check
+from .services.rejections import explain_rejections
 from .services.validator import Placement, RuleDistanceOracle, validate_plan
 
 STAGES = ["GENERATING_CANDIDATES", "OPTIMIZING", "VALIDATING", "JUDGING"]
@@ -279,6 +280,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             _set_stage(run_id, "GENERATING_CANDIDATES", "active")
             all_placements: list[Placement] = []
             rejected_pts: list[list[float]] = []
+            rejected_all: list = []  # every rejected candidate → reasons with norms
             candidate_total = 0
             per_kind_valid: dict[str, int] = {}
 
@@ -316,6 +318,9 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 valid_n = sum(1 for c in cands if c.valid)
                 per_kind_valid[kind] = per_kind_valid.get(kind, 0) + valid_n
                 rejected_pts.extend([[round(c.x, 2), round(c.y, 2)] for c in cands if not c.valid][:4000])
+                from .services.rejections import Rejected
+                rejected_all.extend(Rejected(c.x, c.y, sp["id"], kind, c.rejected_by)
+                                    for c in cands if not c.valid)
 
                 # --- optimize ---
                 _set_stage(run_id, "GENERATING_CANDIDATES", "done",
@@ -421,6 +426,9 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 "runtimeMs": int((time.time() - t0) * 1000),
                 "placements": [p.to_api() for p in all_placements],
                 "rejectedCandidates": rejected_pts[:4000],
+                # ТЗ п. 8: why each rejected candidate may not be planted, with
+                # the norm (counts per reason + evenly spaced samples)
+                "rejections": explain_rejections(rejected_all, constraints, registry, idx),
                 "candidateCount": candidate_total,
                 "validation": validation,
                 "rejectedSpecies": rejected_species,

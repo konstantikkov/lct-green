@@ -4,7 +4,8 @@ import { isDebug } from "../../debug";
 import { overrideLayerCategory, setLayersVisibility, toggleLayerVisibility } from "../../state/actions";
 import { useApp } from "../../state/store";
 import { Badge, Dropdown, Section } from "../ui";
-import { categoryLabel } from "../../labels";
+import { CLASS_SOURCE_LABELS, categoryLabel, layerDisplayName, plural } from "../../labels";
+import type { PackageInfo } from "../../api/types";
 
 // --- Semantic grouping ------------------------------------------------------
 
@@ -57,6 +58,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const c = layer.classification;
   const confidence = Math.round(c.confidence * 100);
+  const shown = layerDisplayName(layer.name);
 
   return (
     <div className="group flex items-center gap-1.5 py-[3px]">
@@ -72,7 +74,8 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
         style={{ background: CATEGORY_COLORS[c.category] ?? layer.color }}
       />
       <span className="min-w-0 flex-1 truncate text-xs text-ink-200" title={layer.name}>
-        {layer.name}
+        {shown.source && <span className="text-ink-500">{shown.source} · </span>}
+        {shown.layer}
       </span>
       <span className="shrink-0 font-mono text-2xs text-ink-500">{layer.entityCount}</span>
       {c.requiresReview && (
@@ -84,7 +87,7 @@ function LayerRow({ layer }: { layer: LayerInfo }) {
         trigger={
           <Badge
             tone={c.requiresReview ? "amber" : "grey"}
-            title={`источник: ${c.source} — нажмите, чтобы изменить категорию`}
+            title={`класс определён ${CLASS_SOURCE_LABELS[c.source] ?? c.source} — нажмите, чтобы изменить категорию`}
             onClick={() => setMenuOpen(!menuOpen)}
           >
             {categoryLabel(c.category)} {confidence}%
@@ -153,6 +156,56 @@ function GroupRow({ def, layers }: { def: GroupDef; layers: LayerInfo[] }) {
 }
 
 // --- Panel -------------------------------------------------------------------
+
+const PACKAGE_STATUS: Record<string, string> = {
+  missing: "нет в пакете",
+  failed: "не прочитан",
+  empty: "пустой",
+};
+
+/** What the xref package consisted of and what made it into the plan. */
+function PackageSummary({ pkg }: { pkg: PackageInfo }) {
+  const [open, setOpen] = useState(false);
+  const refs = pkg.sources.filter((s) => s.kind !== "base");
+  const merged = refs.filter((s) => s.status === "merged");
+  const problems = refs.filter((s) => s.status !== "merged");
+  const byTitle = new Map<string, number>();
+  for (const s of merged) byTitle.set(s.title, (byTitle.get(s.title) ?? 0) + 1);
+  const base = pkg.baseFile.split("/").pop();
+  return (
+    <div className="mt-2 border-t border-ink-700 pt-1.5 text-2xs leading-relaxed text-ink-400" data-testid="package-summary">
+      <div className="mb-0.5 uppercase tracking-wider text-ink-500">Пакет с внешними ссылками</div>
+      <div>
+        Основной чертёж: <span className="text-ink-200">{base}</span>. Подключено {merged.length} из {refs.length}{" "}
+        {plural(refs.length, "ссылки", "ссылок", "ссылок")}: {[...byTitle].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t)).join(", ")}.
+      </div>
+      {pkg.clip.mode === "work_boundary" && (
+        <div>Чертёж обрезан по границам работ с запасом {pkg.clip.marginM} м.</div>
+      )}
+      {problems.length > 0 && (
+        <div className="text-amber-700 dark:text-amber-400">
+          Не подключены: {problems.map((s) => `${s.name} (${PACKAGE_STATUS[s.status] ?? s.status})`).join(", ")}.
+        </div>
+      )}
+      <button className="mt-0.5 underline decoration-dotted hover:text-ink-200" onClick={() => setOpen(!open)}>
+        {open ? "Скрыть состав" : "Показать состав"}
+      </button>
+      {open && (
+        <div className="mt-1 max-h-48 overflow-y-auto">
+          {pkg.sources.map((s) => (
+            <div key={s.name} className="flex gap-1.5">
+              <span className="w-28 shrink-0 text-ink-500">{s.title}</span>
+              <span className="min-w-0 flex-1 truncate" title={s.file || s.detail}>{s.name}</span>
+              <span className="shrink-0 font-mono">
+                {s.status === "merged" ? `${s.entitiesKept}/${s.entitiesIn}` : PACKAGE_STATUS[s.status] ?? s.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function LayersPanel() {
   const doc = useApp((s) => s.document);
@@ -228,6 +281,8 @@ export function LayersPanel() {
           </div>
         </div>
       )}
+
+      {doc.package && <PackageSummary pkg={doc.package} />}
 
       {isDebug && doc.conversionLog && doc.conversionLog.length > 0 && (
         <div className="mt-2 border-t border-ink-700 pt-1.5">

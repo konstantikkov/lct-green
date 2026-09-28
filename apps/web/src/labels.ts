@@ -107,6 +107,37 @@ export function genusList(genera: string[]): string {
   return [...new Set(genera.map((g) => GENUS_LABELS[g] ?? g))].join(", ");
 }
 
+/** Where a layer's class came from. */
+export const CLASS_SOURCE_LABELS: Record<string, string> = {
+  rule: "по имени слоя",
+  geometry: "по геометрии",
+  llm: "локальная LLM",
+  user: "задано вручную",
+  package: "по файлу пакета",
+};
+
+const XREF_KIND_SHORT: Record<string, string> = {
+  tp: "топоплан",
+  up: "сети",
+  pp: "проектные сети",
+  kl: "красные линии",
+  brd: "рамки съёмки",
+};
+
+/** "output[1-18]_3_ДЖКХ-25_03117up$0$Теплосеть" → {source: "сети", layer: "Теплосеть"};
+ *  "10000176_Заливки$0$_ГЗН-ГЗН" → {source: "Заливки", …}; plain names → source null. */
+export function layerDisplayName(name: string): { source: string | null; layer: string } {
+  // our package prefix is everything before the FIRST "$0$"; what follows may
+  // carry the designer's own earlier binds ("$0$БР…", "$148$БР…") — drop them
+  const clean = (s: string) => s.replace(/^(\$\d+\$)+/, "") || s;
+  const i = name.indexOf("$0$");
+  if (i <= 0) return { source: null, layer: clean(name) };
+  const xref = name.slice(0, i);
+  const kind = xref.match(/(tp|up|pp|kl|brd)$/i)?.[1]?.toLowerCase();
+  const source = kind ? XREF_KIND_SHORT[kind] : xref.replace(/^[\d_]+/, "") || xref;
+  return { source, layer: clean(name.slice(i + 3)) };
+}
+
 export const KIND_LABELS: Record<string, string> = {
   TREE: "ДЕРЕВО",
   SHRUB: "КУСТАРНИК",

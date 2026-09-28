@@ -50,7 +50,8 @@ export interface ProjectListItem {
 export interface LayerClassification {
   category: Category;
   confidence: number; // 0..1
-  source: "rule" | "geometry" | "llm" | "user";
+  /** package: set by the xref-package source file (e.g. the work boundary) */
+  source: "rule" | "geometry" | "llm" | "user" | "package";
   requiresReview: boolean;
 }
 
@@ -74,10 +75,31 @@ export interface EntityRender {
   radius?: number;
 }
 
+/** One drawing of an AutoCAD eTransmit package (base general plan or an xref). */
+export interface PackageSource {
+  name: string;
+  /** base | tp | up | pp | kl | brd | work_boundary | curbs | covers | other */
+  kind: string;
+  title: string;
+  file: string;
+  prefix: string;
+  status: "merged" | "missing" | "failed" | "empty";
+  entitiesIn: number;
+  entitiesKept: number;
+  detail: string;
+}
+
+export interface PackageInfo {
+  baseFile: string;
+  clip: { mode: "work_boundary" | "none"; source?: string; marginM?: number; boundaryAreaM2?: number };
+  sources: PackageSource[];
+}
+
 export interface ProjectDocument {
   projectId: string;
   fileName: string;
-  format: "DXF" | "DWG";
+  /** PACKAGE: a zip of a base drawing with its external references, merged */
+  format: "DXF" | "DWG" | "PACKAGE";
   cadVersion: string;
   units: string;
   unitsScaleToMeters: number;
@@ -90,6 +112,8 @@ export interface ProjectDocument {
   /** NOT in the frozen contract — some backend builds attach the DWG→DXF
    *  converter/sanitizer log. Rendered only in debug mode when present. */
   conversionLog?: string[];
+  /** Present when the upload was an xref package (zip). */
+  package?: PackageInfo | null;
 }
 
 export interface ChunkInfo {
@@ -259,7 +283,7 @@ export interface ExclusionZone {
   source: { document: string; clause: string | null; status: string };
 }
 
-export type AllowedBasis = "site_boundary" | "vegetation_evidence" | "extents_fallback";
+export type AllowedBasis = "site_boundary" | "cover_lawns" | "vegetation_evidence" | "extents_fallback";
 
 export interface ConstraintsResponse {
   siteBoundary: number[][] | null;
@@ -417,11 +441,39 @@ export interface ValidationReport {
   metrics: { plantingCount: number; validCount: number; coverageScore: number; distributionScore: number };
 }
 
+/** Why rejected candidates may not be planted (ТЗ п. 8). `key` is a rule id
+ *  (norm in the registry) or a geometric reason: OUTSIDE_SITE,
+ *  NOT_PLANTING_AREA, ON_OBJECT:<category>, NARROW_STRIP. */
+export interface RejectionReason {
+  key: string;
+  /** points for which this is the primary reason */
+  count: number;
+  byKind: Record<string, number>;
+  /** points for which it is any of the reasons */
+  involved: number;
+}
+
+export interface Rejections {
+  total: number;
+  byReason: RejectionReason[];
+  samples: {
+    position: [number, number];
+    speciesId: string;
+    kind: PlantKind;
+    primary: string;
+    reasons: string[];
+    actualM?: number;
+    requiredM?: number;
+  }[];
+}
+
 export type IterationDetail = IterationSummary & {
   placements: Placement[];
   rejectedCandidates: [number, number][];
   candidateCount: number;
   validation: ValidationReport;
+  /** absent on iterations computed before reasons were recorded */
+  rejections?: Rejections;
 };
 
 export interface ExplanationCheck {
@@ -465,7 +517,7 @@ export interface ProjectSummary {
   fileName: string;
   createdAt: number;
   state: string;
-  format: "DWG" | "DXF" | null;
+  format: "DWG" | "DXF" | "PACKAGE" | null;
   units: string | null;
   entityCount: number | null;
   layerCount: number | null;

@@ -123,6 +123,40 @@ def _entity_points(e, dist: float) -> tuple[str, dict] | None:
     return None
 
 
+def clean_text(s: str | None) -> str | None:
+    """Undecodable bytes reach us as lone surrogates (LibreDWG sometimes
+    writes cp1251 where DXF R2007+ requires UTF-8). Re-decode them — cp1251
+    first — so the IR can always be serialized to JSON."""
+    if not s or not any("\udc80" <= ch <= "\udcff" for ch in s):
+        return s
+    # only the undecodable runs are re-decoded: "<xref>$0$<layer>" may mix a
+    # proper UTF-8 prefix with a cp1251 layer name
+    out: list[str] = []
+    run = bytearray()
+
+    def flush():
+        if run:
+            for enc in ("utf-8", "cp1251"):
+                try:
+                    out.append(run.decode(enc))
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                out.append(run.decode("utf-8", "replace"))
+            run.clear()
+
+    for ch in s:
+        o = ord(ch)
+        if 0xDC80 <= o <= 0xDCFF:
+            run.append(o - 0xDC00)
+            continue
+        flush()
+        out.append(ch)
+    flush()
+    return "".join(out)
+
+
 def _ring_area(pts: list[tuple[float, float]]) -> float:
     a = 0.0
     for i in range(len(pts)):
@@ -168,8 +202,116 @@ def _sanitize_dxf(src: Path, dst: Path) -> int:
     return fixes
 
 
+_SYMBOL_TABLE_TYPES = {"LAYER", "LTYPE", "STYLE", "VIEW", "UCS", "VPORT", "APPID",
+                       "DIMSTYLE", "BLOCK_RECORD"}
+
+
+def _repair_tags(src: Path, dst: Path) -> dict[str, int]:
+    """Tag-level repair of LibreDWG output that even ezdxf's recover mode
+    cannot load:
+      * symbol-table records without a name (group code 2) — a nameless
+        STYLE is a shape-file entry and gets "", others "UNNAMED_<handle>";
+      * LAYOUT objects (paper-space sheets) whose BLOCK_RECORD does not exist
+        are dropped — only model space matters here;
+      * MTEXT column type outside 0..2 → 0 (static): group code 71 of the
+        embedded object ("101 / Embedded Object"; at the top level 71 is the
+        attachment point) and the legacy code 75."""
+    counts = {"nameless table records": 0, "invalid MTEXT column types": 0,
+              "layouts without block record": 0}
+    block_records: set[str] = set()
+    with src.open("r", encoding="utf-8", errors="surrogateescape", newline="") as fin,             dst.open("w", encoding="utf-8", errors="surrogateescape", newline="") as fout:
+        lines = iter(fin)
+        section = entity = None
+        embedded = False  # inside the "Embedded Object" part of an MTEXT
+        record: list[tuple[str, str]] | None = None  # buffered table record
+
+        def flush_record():
+            nonlocal record
+            if record is None:
+                return
+            codes = [c.strip() for c, _ in record]
+            if record[0][1].strip() == "LAYOUT":
+                # the block record is the 330 pointer of the AcDbLayout subclass
+                # (the first 330 is the owner dictionary)
+                br, in_layout = None, False
+                for c, v in record:
+                    if c.strip() == "100":
+                        in_layout = v.strip() == "AcDbLayout"
+                    elif in_layout and c.strip() == "330":
+                        br = v.strip().upper()
+                if br is not None and br not in block_records:
+                    counts["layouts without block record"] += 1
+                    record = None
+                    return
+                for c, v in record:
+                    fout.write(c)
+                    fout.write(v)
+                record = None
+                return
+            if "2" not in codes:
+                handle = next((v.strip() for c, v in record if c.strip() == "5"), "0")
+                name = "" if record[0][1].strip() == "STYLE" else f"UNNAMED_{handle}"
+                at = codes.index("70") if "70" in codes else len(record)
+                record.insert(at, ("  2\n", name + "\n"))
+                counts["nameless table records"] += 1
+            for c, v in record:
+                fout.write(c)
+                fout.write(v)
+            record = None
+
+        for code_line in lines:
+            value_line = next(lines, "")
+            code, value = code_line.strip(), value_line.strip()
+            if code == "0":
+                flush_record()
+                entity = value
+                embedded = False
+                if section == "TABLES" and value in _SYMBOL_TABLE_TYPES:
+                    record = [(code_line, value_line)]
+                    continue
+                if section == "OBJECTS" and value == "LAYOUT":
+                    record = [(code_line, value_line)]
+                    continue
+            elif code == "2" and entity == "SECTION":
+                section = value
+            if record is not None:
+                if code == "5" and record[0][1].strip() == "BLOCK_RECORD":
+                    block_records.add(value.upper())
+                record.append((code_line, value_line))
+                continue
+            if entity == "MTEXT" and code == "101":
+                embedded = True
+            if entity == "MTEXT" and (code == "75" or (embedded and code == "71")):
+                try:
+                    if int(value) not in (0, 1, 2):
+                        value_line = "0" + ("\r\n" if value_line.endswith("\r\n") else "\n")
+                        counts["invalid MTEXT column types"] += 1
+                except ValueError:
+                    pass
+            fout.write(code_line)
+            fout.write(value_line)
+        flush_record()
+    return counts
+
+
 def _read_dxf(path: Path, log: list[str]):
+    """Strict read first; LibreDWG output that breaks it is retried: stray
+    line breaks are sanitized, other defects go through ezdxf's recover mode
+    and, if even that fails, a tag-level repair (see _repair_tags)."""
+    from ezdxf import recover
     from ezdxf.lldxf.const import DXFStructureError
+
+    def last_resort(p: Path):
+        fixed = p.with_name(p.stem + ".tagfix.dxf")
+        counts = _repair_tags(p, fixed)
+        log.append("DXF repaired at tag level: "
+                   + ", ".join(f"{k}: {v}" for k, v in counts.items() if v))
+        try:
+            return ezdxf.readfile(str(fixed))
+        except Exception:  # noqa: BLE001
+            doc, _ = recover.readfile(str(fixed))
+            return doc
+
     try:
         return ezdxf.readfile(str(path))
     except DXFStructureError as first_err:
@@ -179,11 +321,21 @@ def _read_dxf(path: Path, log: list[str]):
                    f"sanitized {fixes} malformed line(s) and retried")
         try:
             return ezdxf.readfile(str(fixed))
-        except DXFStructureError:
-            from ezdxf import recover
-            doc, auditor = recover.readfile(str(fixed))
-            log.append(f"loaded via ezdxf.recover ({len(auditor.errors)} issues fixed)")
+        except Exception:  # noqa: BLE001
+            try:
+                doc, auditor = recover.readfile(str(fixed))
+                log.append(f"loaded via ezdxf.recover ({len(auditor.errors)} issues fixed)")
+                return doc
+            except Exception:  # noqa: BLE001
+                return last_resort(fixed)
+    except Exception as first_err:  # noqa: BLE001 — not a structure error
+        log.append(f"strict DXF read failed ({type(first_err).__name__}: {str(first_err)[:100]})")
+        try:
+            doc, _ = recover.readfile(str(path))
+            log.append("loaded via ezdxf.recover")
             return doc
+        except Exception:  # noqa: BLE001
+            return last_resort(path)
 
 
 def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str = "DXF",
@@ -282,7 +434,7 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
         elif kind == "point":
             geom = {"position": s(g["position"])}
         elif kind == "text":
-            geom = {"position": s(g["position"]), "text": g.get("text", ""),
+            geom = {"position": s(g["position"]), "text": clean_text(g.get("text", "")),
                     "height": g.get("height", 0) * scale}
         else:  # insert point
             geom = {"position": s(g["position"])}
@@ -293,10 +445,10 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
             id=f"e{idx}",
             sourceHandle=str(handle) if handle else None,
             type=etype,
-            layer=layer,
+            layer=clean_text(layer),
             kind="polygon" if (kind == "polyline" and geom.get("closed")) else kind,
             geometry=geom,
-            blockName=block_name,
+            blockName=clean_text(block_name),
         ))
         layer_counts[layer] = layer_counts.get(layer, 0) + 1
 
@@ -309,7 +461,7 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
                 aci = doc_layers[name].color
             except Exception:
                 aci = 7
-        layers.append(LayerInfo(name=name, entityCount=count, color=_aci_hex(aci)))
+        layers.append(LayerInfo(name=clean_text(name), entityCount=count, color=_aci_hex(aci)))
 
     ext = Extents(min=(minx * scale, miny * scale), max=(maxx * scale, maxy * scale))
     return CadDocument(

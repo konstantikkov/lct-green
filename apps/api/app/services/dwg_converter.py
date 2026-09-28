@@ -16,6 +16,7 @@ returns a structured capability error and DXF support keeps working.
 """
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -23,6 +24,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
+
+log = logging.getLogger("greenplan.dwg")
+
+
+def _has_eof(path: Path) -> bool:
+    """A complete DXF ends with the "0 / EOF" tag pair."""
+    try:
+        with path.open("rb") as fh:
+            fh.seek(max(0, path.stat().st_size - 64))
+            return b"EOF" in fh.read()
+    except OSError:
+        return False
 
 
 class DwgConversionError(Exception):
@@ -80,7 +93,10 @@ class DwgConverter:
     def __init__(self, info: ConverterInfo | None = None):
         self.info = info or detect_converter()
 
-    def convert_to_dxf(self, input_path: Path, output_path: Path) -> Path:
+    def convert_to_dxf(self, input_path: Path, output_path: Path,
+                       extra_args: tuple[str, ...] = ()) -> Path:
+        """`extra_args` (LibreDWG only), e.g. ("--as", "r2000") to retry a
+        file whose default output ezdxf cannot load."""
         if not self.info.available:
             raise DwgConversionError(
                 "DWG_CONVERTER_UNAVAILABLE",
@@ -92,7 +108,7 @@ class DwgConverter:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.info.kind == "libredwg":
-            return self._convert_libredwg(input_path, output_path)
+            return self._convert_libredwg(input_path, output_path, extra_args)
         return self._convert_oda(input_path, output_path)
 
     def _run(self, argv: list[str]) -> subprocess.CompletedProcess:
@@ -102,13 +118,27 @@ class DwgConverter:
             timeout=config.CONVERTER_TIMEOUT_S, shell=False,
         )
 
-    def _convert_libredwg(self, input_path: Path, output_path: Path) -> Path:
-        proc = self._run([str(self.info.path), "-y", "-o", str(output_path), str(input_path)])
+    # dwg2dxf sometimes writes a truncated file for recent DWGs (tables, then
+    # nothing — no ENTITIES, no EOF) and still exits 0. The R2000 writer and
+    # the entities-only mode get through such files.
+    _FALLBACK_ARGS = (["--as", "r2000"], ["--minimal"])
+
+    def _convert_libredwg(self, input_path: Path, output_path: Path,
+                          extra_args: tuple[str, ...] = ()) -> Path:
+        proc = self._run([str(self.info.path), *extra_args, "-y", "-o", str(output_path), str(input_path)])
         if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
             raise DwgConversionError(
                 "DWG_CONVERSION_FAILED",
                 f"dwg2dxf failed (exit {proc.returncode}): {(proc.stderr or proc.stdout)[-800:]}",
             )
+        for extra in self._FALLBACK_ARGS:
+            if _has_eof(output_path):
+                break
+            log.warning("dwg2dxf output of %s is truncated; retrying with %s", input_path.name, extra)
+            self._run([str(self.info.path), *extra, "-y", "-o", str(output_path), str(input_path)])
+        if not _has_eof(output_path):
+            raise DwgConversionError("DWG_CONVERSION_FAILED",
+                                     "dwg2dxf produced an incomplete DXF (no EOF) in every mode")
         return output_path
 
     def _convert_oda(self, input_path: Path, output_path: Path) -> Path:

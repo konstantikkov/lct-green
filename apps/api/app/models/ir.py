@@ -31,7 +31,8 @@ UTILITY_CATEGORIES = {
 class LayerClassification(BaseModel):
     category: str = "UNKNOWN"
     confidence: float = 0.0
-    source: Literal["rule", "geometry", "llm", "user"] = "rule"
+    # package: set by the xref-package source (e.g. the work-boundary file)
+    source: Literal["rule", "geometry", "llm", "user", "package"] = "rule"
     requiresReview: bool = True
     matchedKeyword: Optional[str] = None
 
@@ -70,7 +71,7 @@ class Extents(BaseModel):
 class CadDocument(BaseModel):
     documentId: str
     fileName: str
-    format: Literal["DXF", "DWG"]
+    format: Literal["DXF", "DWG", "PACKAGE"]  # PACKAGE: eTransmit zip merged from xrefs
     cadVersion: str = "unknown"
     units: str = "unknown"
     unitsScaleToMeters: float = 1.0

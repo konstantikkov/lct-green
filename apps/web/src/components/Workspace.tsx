@@ -6,6 +6,7 @@ import { ConstraintsPanel } from "./panels/ConstraintsPanel";
 import { GeneratePanel } from "./panels/GeneratePanel";
 import { LayersPanel } from "./panels/LayersPanel";
 import { QualityCard } from "./panels/QualityCard";
+import { RejectionsSection } from "./panels/RejectionsSection";
 
 /** Compact interpretation summary — file meta above the layers list. */
 function InterpretationHeader() {
@@ -99,6 +100,7 @@ export function ResultPanelContent() {
     <>
       <ResultSummary />
       <QualityCard />
+      <RejectionsSection />
       <AuditSection />
     </>
   );
