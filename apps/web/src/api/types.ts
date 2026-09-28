@@ -91,7 +91,7 @@ export interface PackageSource {
 
 export interface PackageInfo {
   baseFile: string;
-  clip: { mode: "work_boundary" | "none"; source?: string; marginM?: number; boundaryAreaM2?: number };
+  clip: { mode: "work_boundary" | "work_boundary_layer" | "none"; source?: string; marginM?: number; boundaryAreaM2?: number };
   sources: PackageSource[];
 }
 

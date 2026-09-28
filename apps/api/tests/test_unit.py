@@ -128,6 +128,9 @@ def test_layer_classification(layer, expected):
     ("!!!_1. Дендра_выноски_вырубка", "ANNOTATION"),
     ("_ЭН_опора НО", "LIGHTING"),
     ("ДВ_ГП_Демонтаж", "ANNOTATION"),
+    # what lies beyond the work boundary is not the boundary (Макеева, ОДД)
+    ("_за границами  работ", "ANNOTATION"),
+    ("ДВ_ГП_П_Граница работ", "SITE_BOUNDARY"),
 ])
 def test_real_geotrest_layer_names(layer, expected):
     assert classification.classify_layer_name(layer).category == expected

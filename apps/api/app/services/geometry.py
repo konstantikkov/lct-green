@@ -160,12 +160,40 @@ def detect_site_boundary(doc: CadDocument, idx: GeometryIndex) -> tuple[Polygon 
             if pkg:
                 from_package.append(ring)
     if from_package:
-        return unary_union(from_package), "detected"
+        return parts_with_content(unary_union(from_package), idx), "detected"
     if candidates:
         return max(candidates, key=lambda p: p.area), "detected"
 
     (minx, miny), (maxx, maxy) = doc.extents.min, doc.extents.max
     return Polygon([(minx, miny), (maxx, miny), (maxx, maxy), (minx, maxy)]), "extents_fallback"
+
+
+def parts_with_content(site: BaseGeometry, idx: GeometryIndex) -> BaseGeometry:
+    """Drop work-boundary parts with no drawing content inside. A base drawing
+    may keep a stray copy of the contour far from everything else (Харьковский
+    проезд: the same outline 5 km to the side) — that copy is not a site part.
+    A part is kept when it holds at least 1 % of the entities of the richest
+    part; the drawing itself is not changed."""
+    import numpy as np
+    from shapely import contains_xy
+    parts = as_polygon_list(site)
+    if len(parts) < 2:
+        return site
+    boundary_ids = set(idx.by_category.get("SITE_BOUNDARY", []))
+    centres = [((b[0] + b[2]) / 2, (b[1] + b[3]) / 2)
+               for eid, g in idx.by_entity.items()
+               if eid not in boundary_ids and g is not None and not g.is_empty
+               for b in (g.bounds,)]
+    if not centres:
+        return site
+    xs, ys = np.array(centres).T
+    counts = [int(contains_xy(p, xs, ys).sum()) for p in parts]
+    keep = [p for p, n in zip(parts, counts) if n >= max(1, 0.01 * max(counts))]
+    if not keep or len(keep) == len(parts):
+        return site
+    idx.repair_log.append(f"site: {len(parts) - len(keep)} work-boundary part(s) with no drawing "
+                          f"content inside ignored (a copy of the contour beside the drawing)")
+    return unary_union(keep)
 
 
 def polygon_to_rings(geom: BaseGeometry) -> list[dict]:

@@ -54,10 +54,12 @@ _IRD_SUFFIX = re.compile(r"(tp|up|pp|kl|brd)$", re.IGNORECASE)
 _IRD_PREFIX = re.compile(r"^(tp|up|pp|kl|brd)[_\s]", re.IGNORECASE)
 # survey (ИРД) drawings by file name: "3_ДЖКХ-25_02294", "…03117up", "tp_…"
 _IRD_NAME = re.compile(r"ДЖКХ|^(tp|up|pp|kl|brd)[_\s]|(tp|up|pp|kl|brd)$", re.IGNORECASE)
-# the work boundary as a LAYER name, in whichever file it is drawn
-WORK_BOUNDARY_LAYER = re.compile(r"границ[а-я]*\s*работ", re.IGNORECASE)
+# the work boundary as a LAYER name, in whichever file it is drawn — but not
+# what lies beyond it ("_за границами работ" in the ОДД drawing of Макеева)
+WORK_BOUNDARY_LAYER = re.compile(r"(?<!за[\s_])(?<!вне[\s_])границ[а-я]*[\s_]*работ", re.IGNORECASE)
 _KIND_PATTERNS = [
-    (re.compile(r"границ[а-я]*\s*работ|(^|[_\s])границ[аы](?=$|[_\s])", re.IGNORECASE), "work_boundary"),
+    (re.compile(r"(?<!за[\s_])(?<!вне[\s_])границ[а-я]*[\s_]*работ|(^|[_\s])границ[аы](?=$|[_\s])", re.IGNORECASE),
+     "work_boundary"),
     (re.compile(r"борт", re.IGNORECASE), "curbs"),
     (re.compile(r"заливк", re.IGNORECASE), "covers"),
 ]
@@ -85,6 +87,10 @@ class PackageSource:
     entities_in: int = 0
     entities_kept: int = 0
     detail: str = ""
+    # set when the decoded model space is not where the file header says the
+    # drawing is (LibreDWG lost it); internal, not part of the API
+    decode_issue: str = ""
+    header_box: tuple[float, float, float, float] | None = None
 
     def to_api(self) -> dict:
         return {"name": self.name, "kind": self.kind, "title": KIND_TITLES.get(self.kind, self.kind),
@@ -351,6 +357,50 @@ def _drop_dangling_block_refs(doc) -> tuple[int, int]:
     return n_ins, n_dim
 
 
+def _header_box(doc, matrix: Matrix44 | None) -> tuple[float, float, float, float] | None:
+    """Drawing extents saved in the file header ($EXTMIN/$EXTMAX), in target
+    coordinates; None when the header holds no valid extents."""
+    lo, hi = doc.header.get("$EXTMIN"), doc.header.get("$EXTMAX")
+    if lo is None or hi is None:
+        return None
+    x0, y0, x1, y1 = float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1])
+    if not all(abs(v) < 1e19 for v in (x0, y0, x1, y1)) or x1 <= x0 or y1 <= y0:
+        return None
+    if matrix is not None:
+        (x0, y0, _), (x1, y1, _) = matrix.transform((x0, y0, 0)), matrix.transform((x1, y1, 0))
+        x0, x1, y0, y1 = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+    return x0, y0, x1, y1
+
+
+def _decoded_off_extents(doc) -> str:
+    """LibreDWG sometimes loses a drawing's model space: the content stays in
+    block definitions and the model space gets a few stray objects near the
+    origin (Харьковский проезд: the survey plan and the lighting plan). The
+    header still records where the drawing really is — compare. Returns a
+    reason, or "" when most decoded objects lie within the header extents."""
+    hb = _header_box(doc, None)
+    if hb is None:
+        return ""
+    x0, y0, x1, y1 = hb
+    pad = 0.05 * max(x1 - x0, y1 - y0)
+    n = inside = 0
+    for e in doc.modelspace():
+        try:
+            b = ezbbox.extents([e], fast=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if not b.has_data:
+            continue
+        n += 1
+        cx, cy = (b.extmin.x + b.extmax.x) / 2, (b.extmin.y + b.extmax.y) / 2
+        inside += x0 - pad <= cx <= x1 + pad and y0 - pad <= cy <= y1 + pad
+    if n == 0 or inside >= 0.5 * n:
+        return ""
+    return (f"the model space was not decoded: by the file header the drawing lies at "
+            f"x {x0:.0f}…{x1:.0f}, y {y0:.0f}…{y1:.0f}, but {n - inside} of {n} decoded objects "
+            f"lie elsewhere — convert this file with ODA File Converter")
+
+
 def _work_boundary(doc, layers: set[str] | None = None):
     """Closed polylines plus open pieces stitched end to end (the Moscow work
     boundary is often drawn as two open halves). `layers` limits the search;
@@ -560,6 +610,8 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
 
     def merge(doc, src: PackageSource, matrix: Matrix44 | None):
         msp = doc.modelspace()
+        src.decode_issue = _decoded_off_extents(doc)
+        src.header_box = _header_box(doc, matrix)
         placeholders = []                      # xref placeholders never merge as blocks
         for e in msp.query("INSERT"):
             blk = doc.blocks.get(e.dxf.name)
@@ -710,6 +762,15 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
                 "marginM": clip_margin_m, "boundaryAreaM2": round(boundary.area, 1)}
         msgs.append(f"package: work boundary found on layer(s) {sorted(boundary_layers)}; "
                     f"kept {len(kept)} of {total} entities")
+
+    # a source whose decoded objects are not where its header puts the
+    # drawing, and of which nothing lies on the site although the header says
+    # the drawing does, was not read — say so instead of "merged, 0 kept"
+    for s_ in sources:
+        if (s_.status == "merged" and s_.entities_in and not s_.entities_kept and s_.decode_issue
+                and (region is None or s_.header_box is None or intersects(box(*s_.header_box), region))):
+            s_.status = "failed"
+            s_.detail = "; ".join(x for x in (s_.detail, s_.decode_issue) if x)
 
     for name, refs in ltype_styles.items():
         _apply_linetype_styles(target.linetypes.get(name), refs, target)

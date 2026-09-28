@@ -290,6 +290,9 @@ def test_source_kinds_other_pilot_namings():
     assert k("01_Границы работ") == "work_boundary"            # 3-я Парковая
     assert k("xref_ОДД_Макеева С. ул") == "other"
     assert k("НО_Харьковский проезд") == "other"
+    wb = cad_package.WORK_BOUNDARY_LAYER
+    assert wb.search("ДВ_ГП_П_Граница работ") and wb.search("Граница_работ")
+    assert not wb.search("_за границами  работ") and not wb.search("вне границ работ")
 
 
 def _base_with_boundary_layer(doc, msp):
@@ -469,6 +472,47 @@ def test_distance_to_a_multipart_site_boundary():
                          Polygon([(20, 0), (30, 0), (30, 10), (20, 10)])])
     oracle = DistanceOracle(GeometryIndex(), site)
     assert abs(oracle.boundary_distance(Point(25, 5)) - 5.0) < 1e-9
+
+
+def test_empty_copy_of_the_work_boundary_is_not_a_site_part():
+    """Харьковский проезд: the base drawing keeps a copy of the work boundary
+    5 km beside the drawing; only the part with content is the site."""
+    from shapely.geometry import LineString, Polygon
+    from app.services.geometry import GeometryIndex, parts_with_content
+    from shapely.ops import unary_union
+    real = Polygon([(0, 0), (100, 0), (100, 100), (0, 100)])
+    copy = Polygon([(-5000, 0), (-4900, 0), (-4900, 100), (-5000, 100)])
+    idx = GeometryIndex()
+    idx.by_entity = {"b1": real, "b2": copy,
+                     **{f"r{i}": LineString([(10 + i, 10), (10 + i, 20)]) for i in range(50)}}
+    idx.by_category = {"SITE_BOUNDARY": ["b1", "b2"], "ROAD": [f"r{i}" for i in range(50)]}
+    site = parts_with_content(unary_union([real, copy]), idx)
+    assert site.equals(real)
+    assert any("work-boundary part" in m for m in idx.repair_log)
+    # two real areas, both with content, stay together
+    idx.by_entity["t"] = LineString([(-4950, 50), (-4940, 50)])
+    idx.by_category["ROAD"].append("t")
+    assert parts_with_content(unary_union([real, copy]), idx).area == real.area + copy.area
+
+
+def test_model_space_lost_by_the_converter_is_detected():
+    """Харьковский проезд: LibreDWG loses the model space of the survey plan —
+    a few stray objects near the origin, while the header says the drawing
+    lies on the site. Such a source must not pass as merged."""
+    lost = ezdxf.new("R2018")
+    lost.header["$EXTMIN"] = (8650, -8850, 0)
+    lost.header["$EXTMAX"] = (9670, -7570, 0)
+    for i in range(20):
+        lost.modelspace().add_line((0.1 * i, 0), (0.1 * i, 1))
+    assert "ODA File Converter" in cad_package._decoded_off_extents(lost)
+    ok = ezdxf.new("R2018")
+    ok.header["$EXTMIN"] = (8650, -8850, 0)
+    ok.header["$EXTMAX"] = (9670, -7570, 0)
+    for i in range(20):
+        ok.modelspace().add_line((8700 + i, -8000), (8700 + i, -7990))
+    assert cad_package._decoded_off_extents(ok) == ""
+    # no valid header extents: nothing to compare against
+    assert cad_package._decoded_off_extents(ezdxf.new("R2018")) == ""
 
 
 def test_layout_without_block_record_is_dropped(tmp_path):

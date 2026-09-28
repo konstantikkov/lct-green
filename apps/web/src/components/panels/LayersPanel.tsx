@@ -179,11 +179,14 @@ function PackageSummary({ pkg }: { pkg: PackageInfo }) {
         Основной чертёж: <span className="text-ink-200">{base}</span>. Подключено {merged.length} из {refs.length}{" "}
         {plural(refs.length, "ссылки", "ссылок", "ссылок")}: {[...byTitle].map(([t, n]) => (n > 1 ? `${t} ×${n}` : t)).join(", ")}.
       </div>
-      {pkg.clip.mode === "work_boundary" && (
+      {(pkg.clip.mode === "work_boundary" || pkg.clip.mode === "work_boundary_layer") && (
         <div>Чертёж обрезан по границам работ с запасом {pkg.clip.marginM} м.</div>
       )}
       {problems.length > 0 && (
-        <div className="text-amber-700 dark:text-amber-400">
+        <div
+          className="text-amber-700 dark:text-amber-400"
+          title={problems.map((s) => `${s.name}: ${s.detail}`).join("\n")}
+        >
           Не подключены: {problems.map((s) => `${s.name} (${PACKAGE_STATUS[s.status] ?? s.status})`).join(", ")}.
         </div>
       )}

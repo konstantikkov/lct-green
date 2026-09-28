@@ -18,6 +18,8 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- disambiguation first (more specific beats generic 'границ') ---
     (r"границ[а-я]*\s*(растительн|леса|газон)", "GREEN_AREA", 0.92),
     (r"границ[а-я]*\s*улиц", "ROAD", 0.91),
+    # what lies beyond the boundary is not the boundary ("_за границами работ")
+    (r"(за|вне)[\s_]+границ", "ANNOTATION", 0.92),
     (r"номер\s*(дома|строен|здан)|номер\b", "ANNOTATION", 0.86),
     # "Кабель связи" is a comms cable, but bare 'кабел' (electricity, 0.86)
     # outscores bare 'связ' (0.84), so name the combination explicitly.
