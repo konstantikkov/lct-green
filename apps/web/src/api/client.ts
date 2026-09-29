@@ -136,7 +136,9 @@ export const api = {
       json({ position }),
     ),
 
-  exportDxfUrl: (projectId: string) => `/api/projects/${projectId}/export/dxf`,
+  /** layers="result": only the AI_GREENING_* layers, to attach as an xref */
+  exportDxfUrl: (projectId: string, layers: "all" | "result" = "all") =>
+    `/api/projects/${projectId}/export/dxf${layers === "result" ? "?layers=result" : ""}`,
   exportReportUrl: (projectId: string) => `/api/projects/${projectId}/export/report`,
 
   // --- Regulations feature (WS4) — docs/API_CONTRACT.md, frozen contract ---

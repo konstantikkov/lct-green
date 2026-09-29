@@ -62,6 +62,7 @@ export interface OverlayState {
   exclusionZones: boolean;
   allowedArea: boolean;
   rejectedCandidates: boolean;
+  lawn: boolean;
   trees: boolean;
   shrubs: boolean;
   existingVegetation: boolean;
@@ -187,6 +188,7 @@ export const initialOverlays: OverlayState = {
   exclusionZones: true,
   allowedArea: true,
   rejectedCandidates: false,
+  lawn: false,
   trees: true,
   shrubs: true,
   existingVegetation: true,

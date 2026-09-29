@@ -196,6 +196,9 @@ def _cache_path(pid: str, name: str) -> Path:
 
 def save_json(pid: str, name: str, data: Any) -> Path:
     raw = json.dumps(data, ensure_ascii=False)
+    # safety net: a lone surrogate (undecodable CAD bytes) must not make the
+    # whole project unsavable
+    raw = raw.encode("utf-8", "replace").decode("utf-8")
     p = _cache_path(pid, name)
     p.write_text(raw, encoding="utf-8")
     if USE_PG:

@@ -1,0 +1,306 @@
+{
+ "synthetic": {
+  "input": "input_synthetic_site.dxf",
+  "uploadS": 0,
+  "generateS": 9,
+  "sources": {},
+  "sourcesNotMerged": [],
+  "trees": 132,
+  "shrubs": 400,
+  "allowedAreaM2": 20770.5,
+  "lawnM2": 21768.1,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:5"
+  ],
+  "coverage": 0.8966,
+  "rejected": 2558,
+  "topReasons": [
+   [
+    "ON_OBJECT:BUILDING",
+    638
+   ],
+   [
+    "ON_OBJECT:ROAD",
+    626
+   ],
+   [
+    "NARROW_STRIP",
+    494
+   ],
+   [
+    "ON_OBJECT:SIDEWALK",
+    260
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    160
+   ]
+  ]
+ },
+ "olimpiyskaya": {
+  "input": "пакет генплана «10000176_Генплан_Олимп - Standard»",
+  "uploadS": 266,
+  "generateS": 164,
+  "sources": {
+   "merged": 33,
+   "missing": 1
+  },
+  "sourcesNotMerged": [
+   "_01_борт: missing"
+  ],
+  "trees": 96,
+  "shrubs": 400,
+  "allowedAreaM2": 15038.3,
+  "lawnM2": 140534.2,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:14"
+  ],
+  "coverage": 0.7843,
+  "rejected": 52090,
+  "topReasons": [
+   [
+    "NOT_PLANTING_AREA",
+    29010
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    5288
+   ],
+   [
+    "NARROW_STRIP",
+    3174
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    2526
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    1888
+   ]
+  ],
+  "reference": {
+   "reference": {
+    "trees": 1106,
+    "shrubs": 9060
+   },
+   "ours": {
+    "trees": 96,
+    "shrubs": 400,
+    "lawnM2": 140534.2
+   },
+   "referenceBreakingNorms": {
+    "trees": {
+     "count": 628,
+     "percent": 56.8
+    },
+    "shrubs": {
+     "count": 5434,
+     "percent": 60.0
+    }
+   },
+   "referenceTreesInOurAllowedArea": 328,
+   "ourTreesWithin3mOfReferenceTree": 33
+  },
+  "uploadCachedS": 23
+ },
+ "harkovsky": {
+  "input": "папка «Исходные данные»",
+  "uploadS": 199,
+  "generateS": 61,
+  "sources": {
+   "merged": 9,
+   "missing": 2
+  },
+  "sourcesNotMerged": [
+   "Сетка_Харьковский проезд: missing",
+   "Бортовой камень: missing"
+  ],
+  "trees": 326,
+  "shrubs": 400,
+  "allowedAreaM2": 51228.3,
+  "lawnM2": 118528.3,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:14"
+  ],
+  "coverage": 0.6003,
+  "rejected": 28382,
+  "topReasons": [
+   [
+    "NARROW_STRIP",
+    7456
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    3208
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    3166
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    3076
+   ],
+   [
+    "SHRUB_POWER_LINE_OVERHEAD_PROTECTION_ZONE",
+    2876
+   ]
+  ]
+ },
+ "makeeva": {
+  "input": "папка «Исходные данные»",
+  "uploadS": 168,
+  "generateS": 30,
+  "sources": {
+   "merged": 15,
+   "missing": 1,
+   "empty": 1
+  },
+  "sourcesNotMerged": [
+   "xref_УО: missing",
+   "xref_ИТП_Макеева С. ул: empty"
+  ],
+  "trees": 1,
+  "shrubs": 8,
+  "allowedAreaM2": 218.3,
+  "lawnM2": 36781.1,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:3"
+  ],
+  "coverage": 0.8889,
+  "rejected": 9660,
+  "topReasons": [
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    1638
+   ],
+   [
+    "NARROW_STRIP",
+    1506
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    1298
+   ],
+   [
+    "ON_OBJECT:CURB",
+    1238
+   ],
+   [
+    "SHRUB_POWER_LINE_OVERHEAD_PROTECTION_ZONE",
+    778
+   ]
+  ]
+ },
+ "bagritskogo": {
+  "input": "папка «Исходные данные»",
+  "uploadS": 99,
+  "generateS": 27,
+  "sources": {
+   "merged": 28,
+   "missing": 15
+  },
+  "sourcesNotMerged": [
+   "_00_Граница работ: missing",
+   "Штриховка: missing",
+   "_02_штр: missing",
+   "output[1-4]_3_ДЖКХпр-25_05352kl: missing",
+   "output[1-4]_3_ДЖКХпр-25_05352pp: missing",
+   "output[1-4]_3_ДЖКХпр-25_05352tp: missing",
+   "output[1-4]_3_ДЖКХпр-25_05352up: missing",
+   "улица_Багрицкого2_Проектное_положение: missing",
+   "output[1]_3_ДЖКХпр-25_05352_1kl: missing",
+   "output[1]_3_ДЖКХпр-25_05352_1tp: missing",
+   "output[1]_3_ДЖКХпр-25_05352_1up: missing",
+   "output[2]_3_ДЖКХпр-25_05352_1kl: missing",
+   "output[2]_3_ДЖКХпр-25_05352_1pp: missing",
+   "output[2]_3_ДЖКХпр-25_05352_1tp: missing",
+   "output[2]_3_ДЖКХпр-25_05352_1up: missing"
+  ],
+  "trees": 0,
+  "shrubs": 2,
+  "allowedAreaM2": 67.6,
+  "lawnM2": 25642.6,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:2"
+  ],
+  "coverage": 0.8095,
+  "rejected": 8058,
+  "topReasons": [
+   [
+    "NOT_PLANTING_AREA",
+    3446
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    1060
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    878
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    588
+   ],
+   [
+    "SHRUB_POWER_LINE_OVERHEAD_PROTECTION_ZONE",
+    368
+   ]
+  ]
+ },
+ "parkovaya": {
+  "input": "папка «Исходные данные/Вн.ссылки»",
+  "uploadS": 532,
+  "generateS": 94,
+  "sources": {
+   "merged": 8
+  },
+  "sourcesNotMerged": [],
+  "trees": 128,
+  "shrubs": 400,
+  "allowedAreaM2": 20051.5,
+  "lawnM2": 112033.8,
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:14"
+  ],
+  "coverage": 0.7595,
+  "rejected": 21271,
+  "topReasons": [
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    3656
+   ],
+   [
+    "NARROW_STRIP",
+    3442
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    3070
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    2520
+   ],
+   [
+    "ON_OBJECT:CURB",
+    1782
+   ]
+  ],
+  "uploadCachedS": 17
+ }
+}

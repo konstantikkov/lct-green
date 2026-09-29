@@ -16,6 +16,7 @@ Category = Literal[
     "SITE_BOUNDARY", "BUILDING", "ROAD", "CURB", "SIDEWALK",
     "UTILITY", "UTILITY_WATER", "UTILITY_GAS", "UTILITY_ELECTRICITY",
     "UTILITY_SEWER", "UTILITY_HEAT", "UTILITY_DRAINAGE", "UTILITY_COMMUNICATION",
+    "POWER_LINE_OVERHEAD",
     "EXISTING_TREE", "EXISTING_SHRUB", "GREEN_AREA", "PARKING",
     "ACCESS_ROUTE", "FENCE", "LIGHTING", "ANNOTATION", "UNKNOWN",
 ]
@@ -25,13 +26,15 @@ CATEGORIES: list[str] = list(Category.__args__)  # type: ignore[attr-defined]
 UTILITY_CATEGORIES = {
     "UTILITY", "UTILITY_WATER", "UTILITY_GAS", "UTILITY_ELECTRICITY",
     "UTILITY_SEWER", "UTILITY_HEAT", "UTILITY_DRAINAGE", "UTILITY_COMMUNICATION",
+    "POWER_LINE_OVERHEAD",
 }
 
 
 class LayerClassification(BaseModel):
     category: str = "UNKNOWN"
     confidence: float = 0.0
-    source: Literal["rule", "geometry", "llm", "user"] = "rule"
+    # package: set by the xref-package source (e.g. the work-boundary file)
+    source: Literal["rule", "geometry", "llm", "user", "package"] = "rule"
     requiresReview: bool = True
     matchedKeyword: Optional[str] = None
 
@@ -70,7 +73,7 @@ class Extents(BaseModel):
 class CadDocument(BaseModel):
     documentId: str
     fileName: str
-    format: Literal["DXF", "DWG"]
+    format: Literal["DXF", "DWG", "PACKAGE"]  # PACKAGE: eTransmit zip merged from xrefs
     cadVersion: str = "unknown"
     units: str = "unknown"
     unitsScaleToMeters: float = 1.0

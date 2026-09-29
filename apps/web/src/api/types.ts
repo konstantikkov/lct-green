@@ -4,6 +4,7 @@ export type Category =
   | "SITE_BOUNDARY" | "BUILDING" | "ROAD" | "CURB" | "SIDEWALK"
   | "UTILITY" | "UTILITY_WATER" | "UTILITY_GAS" | "UTILITY_ELECTRICITY"
   | "UTILITY_SEWER" | "UTILITY_HEAT" | "UTILITY_DRAINAGE" | "UTILITY_COMMUNICATION"
+  | "POWER_LINE_OVERHEAD"
   | "EXISTING_TREE" | "EXISTING_SHRUB" | "GREEN_AREA" | "PARKING"
   | "ACCESS_ROUTE" | "FENCE" | "LIGHTING" | "ANNOTATION" | "UNKNOWN";
 
@@ -11,6 +12,7 @@ export const ALL_CATEGORIES: Category[] = [
   "SITE_BOUNDARY", "BUILDING", "ROAD", "CURB", "SIDEWALK",
   "UTILITY", "UTILITY_WATER", "UTILITY_GAS", "UTILITY_ELECTRICITY",
   "UTILITY_SEWER", "UTILITY_HEAT", "UTILITY_DRAINAGE", "UTILITY_COMMUNICATION",
+  "POWER_LINE_OVERHEAD",
   "EXISTING_TREE", "EXISTING_SHRUB", "GREEN_AREA", "PARKING",
   "ACCESS_ROUTE", "FENCE", "LIGHTING", "ANNOTATION", "UNKNOWN",
 ];
@@ -28,13 +30,13 @@ export const CATEGORY_COLORS: Record<string, string> = {
   CURB: "#7c8aa0", SIDEWALK: "#a8b3c4", UTILITY: "#e879f9",
   UTILITY_WATER: "#38bdf8", UTILITY_GAS: "#fbbf24", UTILITY_ELECTRICITY: "#f472b6",
   UTILITY_SEWER: "#a78bfa", UTILITY_HEAT: "#fb923c", UTILITY_DRAINAGE: "#22d3ee",
-  UTILITY_COMMUNICATION: "#c084fc", EXISTING_TREE: "#4ade80", EXISTING_SHRUB: "#86efac",
+  UTILITY_COMMUNICATION: "#c084fc", POWER_LINE_OVERHEAD: "#ef4444", EXISTING_TREE: "#4ade80", EXISTING_SHRUB: "#86efac",
   GREEN_AREA: "#166534", PARKING: "#475569", ACCESS_ROUTE: "#818cf8",
   FENCE: "#9ca3af", LIGHTING: "#fde047", ANNOTATION: "#556070", UNKNOWN: "#6b7280",
 };
 
 export interface Capabilities {
-  dwgConverter: { available: boolean; kind: string | null; path: string | null };
+  dwgConverter: { available: boolean; kind: string | null; path: string | null; fallback?: string | null };
   localLlm: { enabled: boolean; baseUrl: string | null; model: string | null; reachable: boolean };
 }
 
@@ -50,7 +52,8 @@ export interface ProjectListItem {
 export interface LayerClassification {
   category: Category;
   confidence: number; // 0..1
-  source: "rule" | "geometry" | "llm" | "user";
+  /** package: set by the xref-package source file (e.g. the work boundary) */
+  source: "rule" | "geometry" | "llm" | "user" | "package";
   requiresReview: boolean;
 }
 
@@ -74,10 +77,31 @@ export interface EntityRender {
   radius?: number;
 }
 
+/** One drawing of an AutoCAD eTransmit package (base general plan or an xref). */
+export interface PackageSource {
+  name: string;
+  /** base | tp | up | pp | kl | brd | work_boundary | curbs | covers | other */
+  kind: string;
+  title: string;
+  file: string;
+  prefix: string;
+  status: "merged" | "missing" | "failed" | "empty";
+  entitiesIn: number;
+  entitiesKept: number;
+  detail: string;
+}
+
+export interface PackageInfo {
+  baseFile: string;
+  clip: { mode: "work_boundary" | "work_boundary_layer" | "none"; source?: string; marginM?: number; boundaryAreaM2?: number };
+  sources: PackageSource[];
+}
+
 export interface ProjectDocument {
   projectId: string;
   fileName: string;
-  format: "DXF" | "DWG";
+  /** PACKAGE: a zip of a base drawing with its external references, merged */
+  format: "DXF" | "DWG" | "PACKAGE";
   cadVersion: string;
   units: string;
   unitsScaleToMeters: number;
@@ -90,6 +114,8 @@ export interface ProjectDocument {
   /** NOT in the frozen contract — some backend builds attach the DWG→DXF
    *  converter/sanitizer log. Rendered only in debug mode when present. */
   conversionLog?: string[];
+  /** Present when the upload was an xref package (zip). */
+  package?: PackageInfo | null;
 }
 
 export interface ChunkInfo {
@@ -259,7 +285,7 @@ export interface ExclusionZone {
   source: { document: string; clause: string | null; status: string };
 }
 
-export type AllowedBasis = "site_boundary" | "vegetation_evidence" | "extents_fallback";
+export type AllowedBasis = "site_boundary" | "cover_lawns" | "vegetation_evidence" | "extents_fallback";
 
 export interface ConstraintsResponse {
   siteBoundary: number[][] | null;
@@ -419,12 +445,53 @@ export interface ValidationReport {
   metrics: { plantingCount: number; validCount: number; coverageScore: number; distributionScore: number };
 }
 
+/** Why rejected candidates may not be planted (ТЗ п. 8). `key` is a rule id
+ *  (norm in the registry) or a geometric reason: OUTSIDE_SITE,
+ *  NOT_PLANTING_AREA, ON_OBJECT:<category>, NARROW_STRIP. */
+export interface RejectionReason {
+  key: string;
+  /** points for which this is the primary reason */
+  count: number;
+  byKind: Record<string, number>;
+  /** points for which it is any of the reasons */
+  involved: number;
+}
+
+export interface Rejections {
+  total: number;
+  byReason: RejectionReason[];
+  samples: {
+    position: [number, number];
+    speciesId: string;
+    kind: PlantKind;
+    primary: string;
+    reasons: string[];
+    actualM?: number;
+    requiredM?: number;
+  }[];
+}
+
 export type IterationDetail = IterationSummary & {
   placements: Placement[];
   rejectedCandidates: [number, number][];
   candidateCount: number;
   validation: ValidationReport;
+  /** absent on iterations computed before reasons were recorded */
+  rejections?: Rejections;
+  /** recommended lawn (ТЗ §2 п. 3); absent on older iterations */
+  lawn?: LawnInfo;
 };
+
+export interface LawnInfo {
+  areaM2: number;
+  polygonCount: number;
+  polygons: PolygonWithHoles[];
+  explanation: string;
+  /** rule id in the registry — its source is the norm (743-ПП п. 3.8) */
+  ruleId: string;
+  basis: string;
+  minWidthM: number;
+}
 
 export interface ExplanationCheck {
   ruleId: string;
@@ -509,7 +576,7 @@ export interface ProjectSummary {
   fileName: string;
   createdAt: number;
   state: string;
-  format: "DWG" | "DXF" | null;
+  format: "DWG" | "DXF" | "PACKAGE" | null;
   units: string | null;
   entityCount: number | null;
   layerCount: number | null;

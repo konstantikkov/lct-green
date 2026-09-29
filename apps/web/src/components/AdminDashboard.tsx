@@ -142,10 +142,13 @@ function UploadZone({ dragOver }: { dragOver: boolean }) {
       }`}
     >
       <div className="text-sm text-ink-200">Перетащите DWG / DXF сюда</div>
+      <div className="-mt-1.5 text-center text-2xs text-ink-500">
+        или ZIP-пакет генплана с внешними ссылками (топоплан, сети, границы работ) — соберётся в один чертёж
+      </div>
 
       {busy ? (
         <div className="flex items-center gap-2 py-0.5 text-xs text-ink-300">
-          <Spinner /> {uploading ? "Загрузка и разбор чертежа…" : "Открытие проекта…"}
+          <Spinner /> {uploading ? "Загрузка и разбор чертежа… ZIP-пакет собирается несколько минут" : "Открытие проекта…"}
         </div>
       ) : (
         <div className="flex items-center gap-2">
@@ -166,7 +169,7 @@ function UploadZone({ dragOver }: { dragOver: boolean }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".dxf,.dwg"
+        accept=".dxf,.dwg,.zip"
         className="hidden"
         onChange={(e) => {
           onFiles(e.target.files);

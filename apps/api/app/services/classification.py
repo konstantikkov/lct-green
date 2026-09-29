@@ -18,6 +18,8 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- disambiguation first (more specific beats generic 'границ') ---
     (r"границ[а-я]*\s*(растительн|леса|газон)", "GREEN_AREA", 0.92),
     (r"границ[а-я]*\s*улиц", "ROAD", 0.91),
+    # what lies beyond the boundary is not the boundary ("_за границами работ")
+    (r"(за|вне)[\s_]+границ", "ANNOTATION", 0.92),
     (r"номер\s*(дома|строен|здан)|номер\b", "ANNOTATION", 0.86),
     # "Кабель связи" is a comms cable, but bare 'кабел' (electricity, 0.86)
     # outscores bare 'связ' (0.84), so name the combination explicitly.
@@ -32,6 +34,9 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- roads / transport ---
     (r"проезж|дорог|проезд|асфальт|а\/б|улиц|магистрал|road|driveway|carriage", "ROAD", 0.85),
     (r"борт|бордюр|curb|бр\s?100", "CURB", 0.85),
+    # granite curb grades ГП1 (300x150), ГП 2 (450x180)… — anchored, so the
+    # "ДВ_ГП_П_…" (design general plan) layer prefix never matches
+    (r"^гп\s*\d", "CURB", 0.85),
     (r"тротуар|пешеход|дорожк|плитк|мощени|sidewalk|footpath|path", "SIDEWALK", 0.85),
     (r"парковк|стоянк|машином|parking", "PARKING", 0.85),
     (r"пожарн[а-я]*\s*(проезд|подъезд)|подъезд", "ACCESS_ROUTE", 0.8),
@@ -45,7 +50,10 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"канализ|\bк1\b|\bк2\b|фекальн|бытов[а-я]*\s*сток|ливн|дожд|водосток|sewer|storm|хозбыт", "UTILITY_SEWER", 0.86),
     (r"дренаж|водоотвод|drain", "UTILITY_DRAINAGE", 0.84),
     (r"теплосет|теплотрасс|тепло|\bтс\b|heat", "UTILITY_HEAT", 0.84),
-    (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|лэп|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
+    # an OVERHEAD line (ЛЭП, ВЛ-10 кВ) has its own protection zone (ПП РФ № 160,
+    # приложение п. «а»); it outscores the cable rule, which also knows "10 кВ"
+    (r"лэп|(?<![а-яёa-z])вл(?![а-яёa-z])|воздушн[а-я]*[\s_]*(лини|провод)|overhead", "POWER_LINE_OVERHEAD", 0.88),
+    (r"кабел|\bкл\b|кл[\s\-_]?0[.,]4|кл[\s\-_]?10|электро|эл\.?снабж|силов|power|electric|0[.,]4\s*кв|10\s*кв", "UTILITY_ELECTRICITY", 0.86),
     (r"связ|телефон|телеграф|тлф|слаботоч|волокон|вол[сc]|telecom|comm", "UTILITY_COMMUNICATION", 0.84),
     (r"сет[ии]|коммуникац|инжен|колодц|люк[и]?\b|коллектор|трубопровод|utility", "UTILITY", 0.55),
     # --- vegetation ---
@@ -55,7 +63,30 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- misc infrastructure ---
     (r"огражден|оград|забор|fence", "FENCE", 0.85),
     (r"освещ|фонар|светильн|опор[аы]\s*осв|light", "LIGHTING", 0.8),
-    (r"светофор|столб", "LIGHTING", 0.55),
+    (r"светофор|столб", "LIGHTING", 0.7),
+    # --- Mosgeotrest topographic plan (ИРД "tp") vocabulary ---------------
+    # structures → the "наружная стена здания и сооружения" setback applies
+    (r"павильон|навес|вышк[аи]|вентилятор|фонтан|памятник", "BUILDING", 0.75),
+    # "Опоры контакной сети" (sic in the source): tram / trolleybus poles —
+    # the "мачта и опора … трамвая" row of СП 42 табл. 9.1
+    (r"опор[аы]\s*конта[кт]*н", "LIGHTING", 0.8),
+    (r"колодц|\bлюк", "UTILITY", 0.7),
+    (r"выгребн", "UTILITY_SEWER", 0.7),
+    (r"парапет", "FENCE", 0.7),
+    (r"лестниц", "SIDEWALK", 0.7),
+    (r"\bмост", "ROAD", 0.7),
+    # relief, survey marks, signs and small architectural forms: drawn
+    # objects with no normative planting setback
+    (r"откос|внутренн[а-я]*\s*заполнен|топографическ|геодезическ|берегов"
+     r"|громоотвод|указател|полусфер|пояснительн", "ANNOTATION", 0.75),
+    (r"маф\b|маф_|малы[ех]\s*архитектурн", "ANNOTATION", 0.7),
+    # dendro survey plan (ИП «Дендрология»): trees to keep are existing
+    # trees; their numbers / call-outs and trees to be felled are drawing notes
+    (r"дендр[а-я]*[\s_.]*(сохран|сущ)", "EXISTING_TREE", 0.85),
+    (r"дендр[а-я]*.*(номер|выноск|вырубк|аварийк|пересадк)", "ANNOTATION", 0.88),
+    # outdoor lighting (НО = наружное освещение) poles; demolition drawings
+    (r"опор[аы]?\s*но\b|опор[аы]?\s*наружн", "LIGHTING", 0.8),
+    (r"демонтаж", "ANNOTATION", 0.8),
     # --- annotation / drafting ---
     (r"размер|текст|надпис|выноск|обознач|услов|экспл[иу]кац|штамп|рамк|таблиц|легенд|примечан"
      r"|горизонтал|отметк"
@@ -73,7 +104,39 @@ _BLOCK_RULES: list[tuple[str, str, float]] = [
 _BLOCK_COMPILED = [(re.compile(rx, re.IGNORECASE), cat, conf) for rx, cat, conf in _BLOCK_RULES]
 
 
+# AutoCAD BIND names xref layers "<xref>$0$<layer>" (also "$130$<layer>");
+# the meaning is in the last part.
+_BIND_PREFIX = re.compile(r"^.*\$\d+\$")
+
+# Moscow general-plan cover fills ("заливки"): "_<было>-<стало>", e.g.
+# "_АБ ТР-ГЗН" = asphalt sidewalk becomes lawn. The part after the dash is
+# what the project builds: ГЗН газон, ПЧ проезжая часть, ТР тротуар,
+# ПЛ плитка, Щ щебень (hard surface).
+_COVER_RX = re.compile(r"^_\s*([А-ЯЁA-Z ]+?)\s*-\s*([А-ЯЁA-Z ]+?)\s*(\(.*\))?\s*$")
+
+
+def _cover_transition(name: str) -> LayerClassification | None:
+    m = _COVER_RX.match(name)
+    if not m:
+        return None
+    new = m.group(2).upper().split()
+    if "ГЗН" in new:
+        cat = "GREEN_AREA"
+    elif "ПЧ" in new:
+        cat = "ROAD"
+    elif "ТР" in new or "ПЛ" in new or new == ["Щ"]:
+        cat = "SIDEWALK"
+    else:
+        return None
+    return LayerClassification(category=cat, confidence=0.9, source="rule",
+                               requiresReview=False, matchedKeyword=f"cover:{m.group(2).strip()}")
+
+
 def classify_layer_name(name: str) -> LayerClassification:
+    name = _BIND_PREFIX.sub("", name)
+    cover = _cover_transition(name)
+    if cover is not None:
+        return cover
     best: tuple[str, float, str] | None = None
     for rx, cat, conf in _COMPILED:
         m = rx.search(name)
@@ -86,9 +149,10 @@ def classify_layer_name(name: str) -> LayerClassification:
     return LayerClassification(category="UNKNOWN", confidence=0.3, source="rule", requiresReview=True)
 
 
-def _geometry_hint(doc: CadDocument, layer: str) -> LayerClassification | None:
+def _geometry_hint(doc: CadDocument, layer: str, ents: list | None = None) -> LayerClassification | None:
     """Heuristics for layers keyword rules could not resolve."""
-    ents = [e for e in doc.entities if e.layer == layer]
+    if ents is None:
+        ents = [e for e in doc.entities if e.layer == layer]
     if not ents:
         return None
     texts = sum(1 for e in ents if e.kind == "text")
@@ -115,10 +179,13 @@ def _geometry_hint(doc: CadDocument, layer: str) -> LayerClassification | None:
 
 def classify_document(doc: CadDocument) -> None:
     """Mutates doc.layers in place with rule + geometry classification."""
+    by_layer: dict[str, list] = {}
+    for e in doc.entities:  # one pass — merged packages carry 300k+ entities
+        by_layer.setdefault(e.layer, []).append(e)
     for li in doc.layers:
         cls = classify_layer_name(li.name)
         if cls.category == "UNKNOWN":
-            hint = _geometry_hint(doc, li.name)
+            hint = _geometry_hint(doc, li.name, by_layer.get(li.name, []))
             if hint:
                 cls = hint
         li.classification = cls

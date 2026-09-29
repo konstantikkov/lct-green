@@ -169,6 +169,7 @@ type Category =
   | "SITE_BOUNDARY" | "BUILDING" | "ROAD" | "CURB" | "SIDEWALK"
   | "UTILITY" | "UTILITY_WATER" | "UTILITY_GAS" | "UTILITY_ELECTRICITY"
   | "UTILITY_SEWER" | "UTILITY_HEAT" | "UTILITY_DRAINAGE" | "UTILITY_COMMUNICATION"
+  | "POWER_LINE_OVERHEAD"
   | "EXISTING_TREE" | "EXISTING_SHRUB" | "GREEN_AREA" | "PARKING"
   | "ACCESS_ROUTE" | "FENCE" | "LIGHTING" | "ANNOTATION" | "UNKNOWN";
 
@@ -189,7 +190,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   CURB: "#7c8aa0", SIDEWALK: "#a8b3c4", UTILITY: "#e879f9",
   UTILITY_WATER: "#38bdf8", UTILITY_GAS: "#fbbf24", UTILITY_ELECTRICITY: "#f472b6",
   UTILITY_SEWER: "#a78bfa", UTILITY_HEAT: "#fb923c", UTILITY_DRAINAGE: "#22d3ee",
-  UTILITY_COMMUNICATION: "#c084fc", EXISTING_TREE: "#4ade80", EXISTING_SHRUB: "#86efac",
+  UTILITY_COMMUNICATION: "#c084fc", POWER_LINE_OVERHEAD: "#ef4444", EXISTING_TREE: "#4ade80", EXISTING_SHRUB: "#86efac",
   GREEN_AREA: "#166534", PARKING: "#475569", ACCESS_ROUTE: "#818cf8",
   FENCE: "#9ca3af", LIGHTING: "#fde047", ANNOTATION: "#556070", UNKNOWN: "#6b7280",
 };
@@ -200,7 +201,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 ### `GET /api/capabilities`
 ```json
 {
-  "dwgConverter": {"available": true, "kind": "libredwg", "path": "/usr/bin/dwg2dxf"},
+  "dwgConverter": {"available": true, "kind": "oda", "path": "/usr/local/bin/oda-convert", "fallback": "libredwg"},
   "localLlm": {"enabled": true, "baseUrl": "http://localhost:8080", "model": "qwen2.5", "reachable": false}
 }
 ```
@@ -258,6 +259,41 @@ Body `{"category": "UTILITY_WATER"}` → returns updated `LayerInfo`. (URL-encod
 Invalidates cached constraints.
 
 ### `GET /api/projects/{id}/chunks` → `[{chunkId, bbox: [minx,miny,maxx,maxy], summary: {…counts by category}, textLabels: string[]}]`
+
+### xref packages (registry v0.3.0 iteration)
+`POST /api/projects` also accepts a `.zip` — an AutoCAD eTransmit package: base
+general plan + external references. It is merged into one DXF (xref layers
+renamed `<xref>$0$<layer>`, clipped to the work boundary + 15 m) and parsed as
+usual; `format` is `"PACKAGE"` and the response carries
+`package: {baseFile, clip: {mode, source?, marginM?, boundaryAreaM2?},
+sources: [{name, kind, title, file, prefix, status, entitiesIn, entitiesKept,
+detail}]}` (`kind`: base | tp | up | pp | kl | brd | work_boundary | curbs |
+covers | other; `status`: merged | missing | failed | empty). The same field
+is returned by `GET …/document` (null for single drawings). Layer
+classifications may have `source: "package"` (decided by the source file).
+`allowedBasis` gains `"cover_lawns"` (planting domain = project lawns of the
+cover plan inside the site). `GET …/export/dxf?layers=result` returns only the
+`AI_GREENING_*` layers in source coordinates, to attach as an xref.
+
+### Rejection reasons (ТЗ п. 8)
+Iteration records (`GET …/iterations/{id}`) carry `rejections: {total,
+byReason: [{key, count, byKind, involved}], samples: [{position, speciesId,
+kind, primary, reasons[], actualM?, requiredM?}]}`. `key` is a rule id or a
+geometric reason (`OUTSIDE_SITE`, `NOT_PLANTING_AREA`, `ON_OBJECT:<category>`,
+`NARROW_STRIP`); `count` = points where it is the primary reason, `involved`
+= points where it is any reason. The JSON report adds per reason `source`
+(document, clause, title, alsoCited, requiredM) or `description`. The DXF
+export has an `AI_GREENING_REJECTED` layer with the sample points, reasons in
+XDATA (`reason=<key>`).
+
+### Lawn (ТЗ §2 п. 3)
+Iteration records carry `lawn: {areaM2, polygonCount, polygons:
+PolygonWithHoles[], explanation, ruleId: "LAWN_RECOMMENDATION", basis,
+minWidthM}` — the planting domain without hard surfaces and shrub beds (utility
+buffers and protection zones are not subtracted: they concern trees and
+shrubs). The JSON report has `lawn` without `polygons` plus `source` (743-ПП
+п. 3.8.1–3.8.2, also cited СП 42 п. 9.6 and ПП РФ № 160 п. 11). The DXF export
+has an `AI_GREENING_LAWN` layer with the lawn outlines.
 
 ### `GET /api/rules` → `RegulatoryRule[]`
 ```ts

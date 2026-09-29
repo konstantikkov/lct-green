@@ -54,6 +54,9 @@ class DistanceOracle:
                 self._geoms[feat] = gs
                 self._trees[feat] = STRtree(gs)
         self.site_boundary = site_boundary
+        # .boundary works for a Polygon and for a MultiPolygon site (a work
+        # boundary made of several separate areas); computed once
+        self._site_edge = site_boundary.boundary if site_boundary is not None else None
 
     def distance(self, feat: str, p: Point) -> float | None:
         tree = self._trees.get(feat)
@@ -63,9 +66,9 @@ class DistanceOracle:
         return float(p.distance(self._geoms[feat][int(i)]))
 
     def boundary_distance(self, p: Point) -> float | None:
-        if self.site_boundary is None:
+        if self._site_edge is None:
             return None
-        return float(p.distance(self.site_boundary.exterior))
+        return float(p.distance(self._site_edge))
 
     def features_for(self, p: Point) -> dict[str, float | None]:
         out: dict[str, float | None] = {f: self.distance(f, p) for f in FEATURE_CATEGORIES}

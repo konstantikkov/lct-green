@@ -18,6 +18,8 @@ LAYERS = {
     "AI_GREENING_ALLOWED_ZONE": 4,   # cyan
     "AI_GREENING_EXCLUSIONS": 1,     # red
     "AI_GREENING_DEBUG": 8,          # grey
+    "AI_GREENING_REJECTED": 6,       # magenta: rejected candidates + reason
+    "AI_GREENING_LAWN": 82,          # green: recommended lawn (herbaceous cover)
 }
 
 
@@ -58,8 +60,14 @@ def _add_poly_rings(msp, rings_geom, layer: str, scale: float):
 def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
                         allowed_area, exclusion_zones, scale_to_meters: float,
                         iteration_index: int, ruleset_version: str,
-                        include_debug_zones: bool = True) -> Path:
+                        include_debug_zones: bool = True,
+                        rejected_samples: list | None = None,
+                        lawn=None) -> Path:
+    from .cad_package import make_autocad_safe
     doc = ezdxf.readfile(str(original_dxf))
+    # the source is LibreDWG output: repair what AutoCAD would reject as a
+    # damaged file although ezdxf reads it (a no-op for merged packages)
+    make_autocad_safe(doc)
     _ensure_setup(doc)
     _ensure_blocks(doc, scale_to_meters)
     msp = doc.modelspace()
@@ -84,6 +92,9 @@ def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
     if allowed_area is not None:
         _add_poly_rings(msp, allowed_area, "AI_GREENING_ALLOWED_ZONE", scale_to_meters)
 
+    if lawn is not None and not lawn.is_empty:
+        _add_poly_rings(msp, lawn, "AI_GREENING_LAWN", scale_to_meters)
+
     if include_debug_zones and exclusion_zones:
         # merged per rule to keep the file light
         from shapely.ops import unary_union
@@ -99,6 +110,26 @@ def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
                                         dxfattribs={"layer": "AI_GREENING_EXCLUSIONS"})
                 pl.set_xdata(APPID, [(1000, f"rule_id={rule_id}")])
 
+    # rejected candidate points (sample) with their reasons: rule ids point to
+    # the norm in the JSON report ("rejections.byReason[].source")
+    for r in rejected_samples or []:
+        x, y = r["position"]
+        pt = msp.add_point((x * u, y * u), dxfattribs={"layer": "AI_GREENING_REJECTED"})
+        tags = [(1000, f"species_id={r.get('speciesId', '')}"), (1000, f"kind={r.get('kind', '')}")]
+        tags += [(1000, f"reason={k}"[:250]) for k in r.get("reasons", [])[:8]]
+        pt.set_xdata(APPID, tags)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.saveas(str(out_path))
+    return out_path
+
+
+def empty_like(scale_to_meters: float, out_path: Path) -> Path:
+    """An empty DXF in the source drawing's units (the scale the parser
+    settled on) — the base for a result-only export: AI_GREENING_* layers in
+    the source coordinates, attachable to the general plan as an xref."""
+    doc = ezdxf.new("R2018", setup=True)
+    doc.header["$INSUNITS"] = {1.0: 6, 0.01: 5, 0.001: 4}.get(round(scale_to_meters, 6), 6)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.saveas(str(out_path))
     return out_path

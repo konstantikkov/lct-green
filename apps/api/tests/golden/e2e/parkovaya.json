@@ -1,0 +1,20 @@
+{
+ "sources": {
+  "merged": 8
+ },
+ "sourcesNotMerged": [],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:14"
+ ],
+ "trees": 128,
+ "shrubs": 400,
+ "allowedAreaM2": 20051.5,
+ "lawnM2": 112033.8,
+ "rejected": 21271,
+ "topReasons3": [
+  "TREE_EXISTING_TREE_MIN_DISTANCE",
+  "NARROW_STRIP",
+  "SHRUB_ROAD_MIN_DISTANCE"
+ ]
+}

@@ -106,6 +106,8 @@ def condition_confirmed(rule, placement: Placement) -> bool:
         if key == "crown_diameter_max_m":
             if 2.0 * float(placement.crownRadiusM) > float(value) + 1e-9:
                 return False
+        elif key == "voltage_class_kv":
+            return False  # drawings do not state an overhead line's voltage
         else:
             return False  # unknown condition — cannot confirm applicability
     return True
@@ -285,7 +287,17 @@ def validate_plan(placements: list[Placement], idx: GeometryIndex,
                                      "kind": "recommended"})
             else:
                 status = "PASS" if verified_passable else "UNVERIFIED"
-            tally.record(status, hard=hard_rule, rule_id=rule.id,
+            # a kept safe buffer is the project's own margin (3 m from an
+            # existing tree — no norm sets one): not a legal check awaiting
+            # review, so it neither blocks the verdict nor counts in the
+            # regulatory coverage. A buffer standing in for an UNKNOWN norm —
+            # a network whose type is not recognised ("UTILITY"; a heat main
+            # would need up to 4 m, 623-ПП п. 4.2.8) — still needs review.
+            # A violated buffer always fails.
+            stands_in_for_norm = "UTILITY" in rule.appliesTo.get("obstacle_type", [])
+            counts_as_hard = hard_rule and (status == "FAIL" or rule.role != "safe_buffer"
+                                            or stands_in_for_norm)
+            tally.record(status, hard=counts_as_hard, rule_id=rule.id,
                          verified_passable=verified_passable)
 
         # --- inside-site check ----------------------------------------------

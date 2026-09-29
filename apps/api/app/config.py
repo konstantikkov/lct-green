@@ -42,7 +42,8 @@ MAX_ITERATIONS_DEFAULT = int(os.environ.get("MAX_ITERATIONS", "3"))
 
 # Upload safety
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
-ALLOWED_EXTENSIONS = {".dxf", ".dwg"}
+# .zip: AutoCAD eTransmit package — base drawing + external references (xrefs)
+ALLOWED_EXTENSIONS = {".dxf", ".dwg", ".zip"}
 
 # Rendering caps
 MAX_RENDER_ENTITIES = int(os.environ.get("MAX_RENDER_ENTITIES", "20000"))
