@@ -1,0 +1,47 @@
+{
+  "case": "case_001",
+  "title": "Simple rectangular site",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 30,
+      "coverageScore": 0.2405,
+      "distributionScore": 0.5,
+      "forbiddenZoneCount": 0
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 0,
+    "max": 0
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 21,
+      "max": 39
+    },
+    "coverageScore": {
+      "min": 0.1683,
+      "max": 0.3126
+    },
+    "distributionScore": {
+      "min": 0.35,
+      "max": 0.65
+    }
+  },
+  "knownEdgeCases": []
+}

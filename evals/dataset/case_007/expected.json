@@ -1,0 +1,51 @@
+{
+  "case": "case_007",
+  "title": "Impossible site (fully blocked)",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 0,
+      "coverageScore": 0.0,
+      "distributionScore": 0.0,
+      "forbiddenZoneCount": 2
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "ЗДАНИЯ": "BUILDING"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 1,
+    "max": 3
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 0,
+      "max": 0
+    },
+    "coverageScore": {
+      "min": 0.0,
+      "max": 0.05
+    },
+    "distributionScore": {
+      "min": 0.0,
+      "max": 0.1
+    }
+  },
+  "knownEdgeCases": [
+    "no_placements_expected",
+    "empty_allowed_area"
+  ]
+}

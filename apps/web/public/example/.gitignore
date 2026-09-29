@@ -1,0 +1,3 @@
+# The bundled example drawing must ship with the frontend (used by
+# the "Open example" button on the empty state) — override the root *.dxf rule.
+!*.dxf

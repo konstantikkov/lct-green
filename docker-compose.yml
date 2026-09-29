@@ -1,0 +1,31 @@
+services:
+  api:
+    build: ./apps/api
+    ports:
+      - "8000:8000"
+    environment:
+      - DWG_CONVERTER=${DWG_CONVERTER:-auto}
+      - ODA_FILE_CONVERTER_PATH=${ODA_FILE_CONVERTER_PATH:-}
+      - LIBREDWG_DWG2DXF_PATH=${LIBREDWG_DWG2DXF_PATH:-}
+      - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-}
+      - LOCAL_LLM_ENABLED=${LOCAL_LLM_ENABLED:-true}
+      - PLACEMENT_RANDOM_SEED=${PLACEMENT_RANDOM_SEED:-42}
+    volumes:
+      - ./rules:/repo/rules:ro
+      - ./prompts:/repo/prompts:ro
+      - ./fixtures:/repo/fixtures
+      - api-data:/repo/data
+      - ./outputs:/repo/outputs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    build: ./apps/web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  api-data:

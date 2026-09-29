@@ -1,0 +1,50 @@
+{
+  "case": "case_004",
+  "title": "Two disconnected planting zones",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 52,
+      "coverageScore": 0.2453,
+      "distributionScore": 0.5625,
+      "forbiddenZoneCount": 2
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "ДОРОГИ_ПРОЕЗДЫ": "ROAD"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 1,
+    "max": 3
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 36,
+      "max": 68
+    },
+    "coverageScore": {
+      "min": 0.1717,
+      "max": 0.3189
+    },
+    "distributionScore": {
+      "min": 0.3937,
+      "max": 0.7313
+    }
+  },
+  "knownEdgeCases": [
+    "allowed_area_disconnected"
+  ]
+}

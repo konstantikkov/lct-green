@@ -1,0 +1,50 @@
+{
+  "case": "case_008",
+  "title": "Ambiguous layer name (СЕТИ_1)",
+  "derivedFrom": {
+    "seed": 42,
+    "spreadPct": 30,
+    "observed": {
+      "treeCount": 35,
+      "coverageScore": 0.2401,
+      "distributionScore": 0.5333,
+      "forbiddenZoneCount": 1
+    }
+  },
+  "mustPass": [
+    "EXPORT_OPENS",
+    "AI_LAYERS_PRESENT",
+    "SOURCE_SIGNATURE_PRESERVED",
+    "INSERT_COUNT_MATCHES",
+    "COORDS_FINITE",
+    "PLACEMENTS_IN_ALLOWED",
+    "REVALIDATE_REPARSED_ZERO_HARD",
+    "SPACING_RESPECTED",
+    "XDATA_METADATA_PRESENT"
+  ],
+  "expectedSemanticLayers": {
+    "ГРАНИЦА_УЧАСТКА": "SITE_BOUNDARY",
+    "СЕТИ_1": "UTILITY"
+  },
+  "expectedForbiddenZoneCount": {
+    "min": 0,
+    "max": 2
+  },
+  "allowedMetricRanges": {
+    "treeCount": {
+      "min": 24,
+      "max": 46
+    },
+    "coverageScore": {
+      "min": 0.1681,
+      "max": 0.3121
+    },
+    "distributionScore": {
+      "min": 0.3733,
+      "max": 0.6933
+    }
+  },
+  "knownEdgeCases": [
+    "ambiguous_layer_requires_review:СЕТИ_1"
+  ]
+}

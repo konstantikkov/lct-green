@@ -1,0 +1,37 @@
+{
+ "sources": {
+  "merged": 28,
+  "missing": 15
+ },
+ "sourcesNotMerged": [
+  "_00_Граница работ: missing",
+  "_02_штр: missing",
+  "output[1-4]_3_ДЖКХпр-25_05352kl: missing",
+  "output[1-4]_3_ДЖКХпр-25_05352pp: missing",
+  "output[1-4]_3_ДЖКХпр-25_05352tp: missing",
+  "output[1-4]_3_ДЖКХпр-25_05352up: missing",
+  "output[1]_3_ДЖКХпр-25_05352_1kl: missing",
+  "output[1]_3_ДЖКХпр-25_05352_1tp: missing",
+  "output[1]_3_ДЖКХпр-25_05352_1up: missing",
+  "output[2]_3_ДЖКХпр-25_05352_1kl: missing",
+  "output[2]_3_ДЖКХпр-25_05352_1pp: missing",
+  "output[2]_3_ДЖКХпр-25_05352_1tp: missing",
+  "output[2]_3_ДЖКХпр-25_05352_1up: missing",
+  "Штриховка: missing",
+  "улица_Багрицкого2_Проектное_положение: missing"
+ ],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:2"
+ ],
+ "trees": 0,
+ "shrubs": 2,
+ "allowedAreaM2": 67.6,
+ "lawnM2": 25642.6,
+ "rejected": 8058,
+ "topReasons3": [
+  "NOT_PLANTING_AREA",
+  "TREE_EXISTING_TREE_MIN_DISTANCE",
+  "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE"
+ ]
+}

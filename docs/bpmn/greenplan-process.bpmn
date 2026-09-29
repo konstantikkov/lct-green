@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_GreenPlan" targetNamespace="https://github.com/PolarBearChamp/lct-green" exporter="GreenPlan docs generator" exporterVersion="1.0">
+  <bpmn:collaboration id="Collaboration_GreenPlan">
+    <bpmn:participant id="Participant_GreenPlan" name="GreenPlan: от входного DXF до выходного DXF" processRef="Process_GreenPlan" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_GreenPlan" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_GreenPlan">
+      <bpmn:lane id="Lane_User" name="Проектировщик (веб-интерфейс / Swagger)">
+        <bpmn:flowNodeRef>Start_Input</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Upload</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ReviewLayers</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_ReviewPlan</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Change</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Prep" name="Подготовка данных (API)">
+        <bpmn:flowNodeRef>Gw_Format</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Convert</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Parse</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Core" name="Ядро генерации (детерминированное)">
+        <bpmn:flowNodeRef>Task_Constraints</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Candidates</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Optimize</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Validate</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Violations</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Repair</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Adjust</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_Explain</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Judge" name="Оценка качества (локальная LLM, опционально)">
+        <bpmn:flowNodeRef>Task_Judge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gw_Judge</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Export" name="Выгрузка результата">
+        <bpmn:flowNodeRef>Task_Export</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_Output</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_Input" name="Чертёж или пакет (DWG / DXF / ZIP)">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_Upload" name="Загрузить чертёж">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gw_Format" name="Формат файла?">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Convert" name="DWG → DXF; ZIP-пакет: собрать внешние ссылки в один DXF">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Parse" name="Разобрать DXF, перевести в метры, классифицировать слои">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="Task_ReviewLayers" name="Проверить классы слоёв, исправить спорные">
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="Task_Constraints" name="Построить зоны запрета по нормам и допустимую область">
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+      <bpmn:incoming>Flow_21</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+      <bpmn:property id="Property_Task_Constraints" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DIA_DO_Rules">
+        <bpmn:sourceRef>DO_Rules</bpmn:sourceRef>
+        <bpmn:targetRef>Property_Task_Constraints</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Candidates" name="Сгенерировать кандидатов, отсечь нарушающих нормы">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+      <bpmn:incoming>Flow_17</bpmn:incoming>
+      <bpmn:outgoing>Flow_9</bpmn:outgoing>
+      <bpmn:property id="Property_Task_Candidates" name="__targetRef_placeholder" />
+      <bpmn:dataInputAssociation id="DIA_DO_Species">
+        <bpmn:sourceRef>DO_Species</bpmn:sourceRef>
+        <bpmn:targetRef>Property_Task_Candidates</bpmn:targetRef>
+      </bpmn:dataInputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Optimize" name="Выбрать точки посадки (жадный отбор + локальный поиск)">
+      <bpmn:incoming>Flow_9</bpmn:incoming>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Validate" name="Проверить план валидатором, вынести вердикт">
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+      <bpmn:outgoing>Flow_11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gw_Violations" name="Есть жёсткие нарушения?">
+      <bpmn:incoming>Flow_11</bpmn:incoming>
+      <bpmn:outgoing>Flow_12</bpmn:outgoing>
+      <bpmn:outgoing>Flow_13</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Repair" name="Удалить нарушающие посадки, перепроверить (≤ 3 прохода)">
+      <bpmn:incoming>Flow_12</bpmn:incoming>
+      <bpmn:outgoing>Flow_14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Judge" name="Оценить качество размещения (LLM-судья или эвристика)">
+      <bpmn:incoming>Flow_13</bpmn:incoming>
+      <bpmn:incoming>Flow_14</bpmn:incoming>
+      <bpmn:outgoing>Flow_15</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gw_Judge" name="Решение судьи">
+      <bpmn:incoming>Flow_15</bpmn:incoming>
+      <bpmn:outgoing>Flow_16</bpmn:outgoing>
+      <bpmn:outgoing>Flow_18</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Adjust" name="Скорректировать параметры в допустимых пределах">
+      <bpmn:incoming>Flow_16</bpmn:incoming>
+      <bpmn:outgoing>Flow_17</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Explain" name="Выбрать лучшую итерацию, построить объяснения с пунктами НПА">
+      <bpmn:incoming>Flow_18</bpmn:incoming>
+      <bpmn:outgoing>Flow_19</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="Task_ReviewPlan" name="Просмотреть план и объяснения посадок">
+      <bpmn:incoming>Flow_19</bpmn:incoming>
+      <bpmn:outgoing>Flow_20</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gw_Change" name="Изменить параметры?">
+      <bpmn:incoming>Flow_20</bpmn:incoming>
+      <bpmn:outgoing>Flow_21</bpmn:outgoing>
+      <bpmn:outgoing>Flow_22</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Export" name="Выгрузить DXF и отчёт интерпретаций">
+      <bpmn:incoming>Flow_22</bpmn:incoming>
+      <bpmn:outgoing>Flow_23</bpmn:outgoing>
+      <bpmn:dataOutputAssociation id="DOA_DO_Dxf">
+        <bpmn:targetRef>DO_Dxf</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+      <bpmn:dataOutputAssociation id="DOA_DO_Report">
+        <bpmn:targetRef>DO_Report</bpmn:targetRef>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Output" name="Выходной DXF + отчёт">
+      <bpmn:incoming>Flow_23</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_Input" targetRef="Task_Upload" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Upload" targetRef="Gw_Format" />
+    <bpmn:sequenceFlow id="Flow_3" name="DWG / ZIP" sourceRef="Gw_Format" targetRef="Task_Convert" />
+    <bpmn:sequenceFlow id="Flow_4" name="DXF" sourceRef="Gw_Format" targetRef="Task_Parse" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_Convert" targetRef="Task_Parse" />
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Task_Parse" targetRef="Task_ReviewLayers" />
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_ReviewLayers" targetRef="Task_Constraints" />
+    <bpmn:sequenceFlow id="Flow_8" sourceRef="Task_Constraints" targetRef="Task_Candidates" />
+    <bpmn:sequenceFlow id="Flow_9" sourceRef="Task_Candidates" targetRef="Task_Optimize" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="Task_Optimize" targetRef="Task_Validate" />
+    <bpmn:sequenceFlow id="Flow_11" sourceRef="Task_Validate" targetRef="Gw_Violations" />
+    <bpmn:sequenceFlow id="Flow_12" name="да" sourceRef="Gw_Violations" targetRef="Task_Repair" />
+    <bpmn:sequenceFlow id="Flow_13" name="нет" sourceRef="Gw_Violations" targetRef="Task_Judge" />
+    <bpmn:sequenceFlow id="Flow_14" sourceRef="Task_Repair" targetRef="Task_Judge" />
+    <bpmn:sequenceFlow id="Flow_15" sourceRef="Task_Judge" targetRef="Gw_Judge" />
+    <bpmn:sequenceFlow id="Flow_16" name="ПОВТОР (лимит итераций не исчерпан)" sourceRef="Gw_Judge" targetRef="Task_Adjust" />
+    <bpmn:sequenceFlow id="Flow_17" name="новая итерация" sourceRef="Task_Adjust" targetRef="Task_Candidates" />
+    <bpmn:sequenceFlow id="Flow_18" name="ПРИНЯТО, РУЧНАЯ ПРОВЕРКА или лимит итераций" sourceRef="Gw_Judge" targetRef="Task_Explain" />
+    <bpmn:sequenceFlow id="Flow_19" sourceRef="Task_Explain" targetRef="Task_ReviewPlan" />
+    <bpmn:sequenceFlow id="Flow_20" sourceRef="Task_ReviewPlan" targetRef="Gw_Change" />
+    <bpmn:sequenceFlow id="Flow_21" name="да: новые параметры или классы слоёв" sourceRef="Gw_Change" targetRef="Task_Constraints" />
+    <bpmn:sequenceFlow id="Flow_22" name="нет" sourceRef="Gw_Change" targetRef="Task_Export" />
+    <bpmn:sequenceFlow id="Flow_23" sourceRef="Task_Export" targetRef="End_Output" />
+    <bpmn:dataObjectReference id="DO_Rules" name="Реестр норм regulations.yaml (СП 42, 743-ПП, 623-ПП, 369-ПП)" dataObjectRef="DO_Rules_obj" />
+    <bpmn:dataObject id="DO_Rules_obj" />
+    <bpmn:dataObjectReference id="DO_Species" name="Каталог пород species.yaml" dataObjectRef="DO_Species_obj" />
+    <bpmn:dataObject id="DO_Species_obj" />
+    <bpmn:dataObjectReference id="DO_Dxf" name="&lt;имя&gt;_greening.dxf: исходные слои + AI_GREENING_*" dataObjectRef="DO_Dxf_obj" />
+    <bpmn:dataObject id="DO_Dxf_obj" />
+    <bpmn:dataObjectReference id="DO_Report" name="&lt;имя&gt;_greening_report.json: объяснения со ссылками на НПА" dataObjectRef="DO_Report_obj" />
+    <bpmn:dataObject id="DO_Report_obj" />
+    <bpmn:textAnnotation id="Ann_Verdict"><bpmn:text>Вердикт о соответствии нормам выносит только детерминированный валидатор; судья не может отменить нарушение</bpmn:text></bpmn:textAnnotation>
+    <bpmn:association id="Assoc_Ann_Verdict" associationDirection="None" sourceRef="Task_Judge" targetRef="Ann_Verdict" />
+    <bpmn:textAnnotation id="Ann_Explain"><bpmn:text>Для каждой посадки: правило → документ → пункт → выдержка; статусы PASS / FAIL / UNVERIFIED / NOT_APPLICABLE</bpmn:text></bpmn:textAnnotation>
+    <bpmn:association id="Assoc_Ann_Explain" associationDirection="None" sourceRef="Task_Explain" targetRef="Ann_Explain" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram_GreenPlan">
+    <bpmndi:BPMNPlane id="Plane_GreenPlan" bpmnElement="Collaboration_GreenPlan">
+      <bpmndi:BPMNShape id="Participant_GreenPlan_di" bpmnElement="Participant_GreenPlan" isHorizontal="true"><dc:Bounds x="20" y="20" width="3140" height="935" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_User_di" bpmnElement="Lane_User" isHorizontal="true"><dc:Bounds x="50" y="20" width="3110" height="150" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Prep_di" bpmnElement="Lane_Prep" isHorizontal="true"><dc:Bounds x="50" y="170" width="3110" height="150" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Core_di" bpmnElement="Lane_Core" isHorizontal="true"><dc:Bounds x="50" y="320" width="3110" height="190" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Judge_di" bpmnElement="Lane_Judge" isHorizontal="true"><dc:Bounds x="50" y="510" width="3110" height="170" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Export_di" bpmnElement="Lane_Export" isHorizontal="true"><dc:Bounds x="50" y="680" width="3110" height="275" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Input_di" bpmnElement="Start_Input"><dc:Bounds x="162" y="77" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="125" y="117" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Upload_di" bpmnElement="Task_Upload"><dc:Bounds x="275" y="55" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Format_di" bpmnElement="Gw_Format" isMarkerVisible="true"><dc:Bounds x="475" y="220" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="359" y="231" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Convert_di" bpmnElement="Task_Convert"><dc:Bounds x="595" y="205" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Parse_di" bpmnElement="Task_Parse"><dc:Bounds x="755" y="205" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReviewLayers_di" bpmnElement="Task_ReviewLayers"><dc:Bounds x="915" y="55" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Constraints_di" bpmnElement="Task_Constraints"><dc:Bounds x="1075" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Candidates_di" bpmnElement="Task_Candidates"><dc:Bounds x="1235" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Optimize_di" bpmnElement="Task_Optimize"><dc:Bounds x="1395" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Validate_di" bpmnElement="Task_Validate"><dc:Bounds x="1555" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Violations_di" bpmnElement="Gw_Violations" isMarkerVisible="true"><dc:Bounds x="1755" y="390" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="1725" y="356" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Repair_di" bpmnElement="Task_Repair"><dc:Bounds x="1875" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Judge_di" bpmnElement="Task_Judge"><dc:Bounds x="2035" y="555" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Judge_di" bpmnElement="Gw_Judge" isMarkerVisible="true"><dc:Bounds x="2235" y="570" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="2205" y="624" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Adjust_di" bpmnElement="Task_Adjust"><dc:Bounds x="2195" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Explain_di" bpmnElement="Task_Explain"><dc:Bounds x="2355" y="375" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReviewPlan_di" bpmnElement="Task_ReviewPlan"><dc:Bounds x="2515" y="55" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gw_Change_di" bpmnElement="Gw_Change" isMarkerVisible="true"><dc:Bounds x="2715" y="70" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="2685" y="124" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Export_di" bpmnElement="Task_Export"><dc:Bounds x="2835" y="710" width="130" height="80" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Output_di" bpmnElement="End_Output"><dc:Bounds x="3042" y="732" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="3005" y="772" width="110" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DO_Rules_di" bpmnElement="DO_Rules"><dc:Bounds x="1122" y="570" width="36" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="1065" y="624" width="150" height="40" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DO_Species_di" bpmnElement="DO_Species"><dc:Bounds x="1282" y="570" width="36" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="1225" y="624" width="150" height="40" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DO_Dxf_di" bpmnElement="DO_Dxf"><dc:Bounds x="2722" y="725" width="36" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="2665" y="779" width="150" height="40" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DO_Report_di" bpmnElement="DO_Report"><dc:Bounds x="2882" y="820" width="36" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="2825" y="874" width="150" height="40" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Ann_Verdict_di" bpmnElement="Ann_Verdict"><dc:Bounds x="1800" y="739" width="280" height="62" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Ann_Explain_di" bpmnElement="Ann_Explain"><dc:Bounds x="2280" y="739" width="280" height="62" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1"><di:waypoint x="198" y="95" /><di:waypoint x="275" y="95" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2"><di:waypoint x="405" y="95" /><di:waypoint x="500" y="95" /><di:waypoint x="500" y="220" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3"><di:waypoint x="525" y="245" /><di:waypoint x="595" y="245" /><bpmndi:BPMNLabel><dc:Bounds x="533" y="223" width="58" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4"><di:waypoint x="500" y="270" /><di:waypoint x="500" y="300" /><di:waypoint x="820" y="300" /><di:waypoint x="820" y="285" /><bpmndi:BPMNLabel><dc:Bounds x="504" y="301" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5"><di:waypoint x="725" y="245" /><di:waypoint x="755" y="245" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6"><di:waypoint x="885" y="245" /><di:waypoint x="980" y="245" /><di:waypoint x="980" y="135" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7"><di:waypoint x="1045" y="95" /><di:waypoint x="1140" y="95" /><di:waypoint x="1140" y="375" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_8_di" bpmnElement="Flow_8"><di:waypoint x="1205" y="415" /><di:waypoint x="1235" y="415" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_9_di" bpmnElement="Flow_9"><di:waypoint x="1365" y="415" /><di:waypoint x="1395" y="415" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10"><di:waypoint x="1525" y="415" /><di:waypoint x="1555" y="415" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11"><di:waypoint x="1685" y="415" /><di:waypoint x="1755" y="415" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12"><di:waypoint x="1805" y="415" /><di:waypoint x="1875" y="415" /><bpmndi:BPMNLabel><dc:Bounds x="1813" y="393" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13"><di:waypoint x="1780" y="440" /><di:waypoint x="1780" y="595" /><di:waypoint x="2035" y="595" /><bpmndi:BPMNLabel><dc:Bounds x="1786" y="555" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14"><di:waypoint x="2005" y="415" /><di:waypoint x="2100" y="415" /><di:waypoint x="2100" y="555" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_15_di" bpmnElement="Flow_15"><di:waypoint x="2165" y="595" /><di:waypoint x="2235" y="595" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16_di" bpmnElement="Flow_16"><di:waypoint x="2260" y="570" /><di:waypoint x="2260" y="455" /><bpmndi:BPMNLabel><dc:Bounds x="2268" y="508" width="190" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_17_di" bpmnElement="Flow_17"><di:waypoint x="2260" y="375" /><di:waypoint x="2260" y="342" /><di:waypoint x="1300" y="342" /><di:waypoint x="1300" y="375" /><bpmndi:BPMNLabel><dc:Bounds x="1280" y="342" width="91" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_18_di" bpmnElement="Flow_18"><di:waypoint x="2285" y="595" /><di:waypoint x="2420" y="595" /><di:waypoint x="2420" y="455" /><bpmndi:BPMNLabel><dc:Bounds x="2426" y="603" width="190" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_19_di" bpmnElement="Flow_19"><di:waypoint x="2485" y="415" /><di:waypoint x="2580" y="415" /><di:waypoint x="2580" y="135" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_20_di" bpmnElement="Flow_20"><di:waypoint x="2645" y="95" /><di:waypoint x="2715" y="95" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_21_di" bpmnElement="Flow_21"><di:waypoint x="2740" y="70" /><di:waypoint x="2740" y="34" /><di:waypoint x="1170" y="34" /><di:waypoint x="1170" y="375" /><bpmndi:BPMNLabel><dc:Bounds x="1150" y="74" width="190" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_22_di" bpmnElement="Flow_22"><di:waypoint x="2765" y="95" /><di:waypoint x="2900" y="95" /><di:waypoint x="2900" y="710" /><bpmndi:BPMNLabel><dc:Bounds x="2908" y="101" width="40" height="28" /></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_23_di" bpmnElement="Flow_23"><di:waypoint x="2965" y="750" /><di:waypoint x="3042" y="750" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DIA_DO_Rules_di" bpmnElement="DIA_DO_Rules"><di:waypoint x="1140" y="570" /><di:waypoint x="1140" y="455" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DIA_DO_Species_di" bpmnElement="DIA_DO_Species"><di:waypoint x="1300" y="570" /><di:waypoint x="1300" y="455" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DOA_DO_Dxf_di" bpmnElement="DOA_DO_Dxf"><di:waypoint x="2835" y="750" /><di:waypoint x="2758" y="750" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DOA_DO_Report_di" bpmnElement="DOA_DO_Report"><di:waypoint x="2900" y="790" /><di:waypoint x="2900" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_Ann_Verdict_di" bpmnElement="Assoc_Ann_Verdict"><di:waypoint x="2100" y="635" /><di:waypoint x="1940" y="739" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_Ann_Explain_di" bpmnElement="Assoc_Ann_Explain"><di:waypoint x="2420" y="455" /><di:waypoint x="2420" y="739" /></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

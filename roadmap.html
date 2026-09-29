@@ -1,0 +1,1344 @@
+<title>Озеленение · план работ на 7 дней</title>
+
+<style>
+  :root {
+    --ground:   #EFF2F3;
+    --surface:  #FFFFFF;
+    --surface-2:#F7F9F9;
+    --ink:      #131A1C;
+    --ink-2:    #3E4B4E;
+    --muted:    #66757A;
+    --rule:     #D2DADC;
+    --rule-2:   #E4EAEB;
+    --accent:   #16794A;
+    --accent-2: #1F9E5F;
+    --accent-w: #E2F0E8;
+    --warn:     #A56200;
+    --warn-w:   #F7EDDC;
+    --crit:     #A93325;
+    --crit-w:   #F8E6E3;
+
+    --g-a: #5A6B70;
+    --g-b: #C0483A;
+    --g-c: #6E7A33;
+    --g-d: #2F6FA8;
+    --g-e: #6B5A8C;
+    --g-f: #A87519;
+    --g-g: #1B7676;
+
+    --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, "DejaVu Sans Mono", monospace;
+
+    --sheet: 76rem;
+    --read: 64ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #0E1416;
+      --surface:  #151C1E;
+      --surface-2:#1A2225;
+      --ink:      #E6ECEC;
+      --ink-2:    #C2CDCE;
+      --muted:    #8C9B9E;
+      --rule:     #2A3538;
+      --rule-2:   #222C2F;
+      --accent:   #4FC486;
+      --accent-2: #6BD69B;
+      --accent-w: #163024;
+      --warn:     #D99B3D;
+      --warn-w:   #2E2516;
+      --crit:     #E2796A;
+      --crit-w:   #2E1B18;
+
+      --g-a: #8FA1A6;
+      --g-b: #E08678;
+      --g-c: #A8B45F;
+      --g-d: #6BA5DA;
+      --g-e: #A292C2;
+      --g-f: #DDAA4E;
+      --g-g: #4FAFAF;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --ground:#EFF2F3; --surface:#FFFFFF; --surface-2:#F7F9F9;
+    --ink:#131A1C; --ink-2:#3E4B4E; --muted:#66757A;
+    --rule:#D2DADC; --rule-2:#E4EAEB;
+    --accent:#16794A; --accent-2:#1F9E5F; --accent-w:#E2F0E8;
+    --warn:#A56200; --warn-w:#F7EDDC; --crit:#A93325; --crit-w:#F8E6E3;
+    --g-a:#5A6B70; --g-b:#C0483A; --g-c:#6E7A33; --g-d:#2F6FA8;
+    --g-e:#6B5A8C; --g-f:#A87519; --g-g:#1B7676;
+  }
+
+  :root[data-theme="dark"] {
+    --ground:#0E1416; --surface:#151C1E; --surface-2:#1A2225;
+    --ink:#E6ECEC; --ink-2:#C2CDCE; --muted:#8C9B9E;
+    --rule:#2A3538; --rule-2:#222C2F;
+    --accent:#4FC486; --accent-2:#6BD69B; --accent-w:#163024;
+    --warn:#D99B3D; --warn-w:#2E2516; --crit:#E2796A; --crit-w:#2E1B18;
+    --g-a:#8FA1A6; --g-b:#E08678; --g-c:#A8B45F; --g-d:#6BA5DA;
+    --g-e:#A292C2; --g-f:#DDAA4E; --g-g:#4FAFAF;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: var(--sheet);
+    margin: 0 auto;
+    padding: 0 1.25rem 5rem;
+  }
+
+  /* ---------- title block ---------- */
+
+  .titleblock {
+    border-bottom: 2px solid var(--ink);
+    padding: 3rem 0 0;
+    margin-bottom: 2.75rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .titleblock h1 {
+    font-size: clamp(1.9rem, 4.6vw, 2.85rem);
+    line-height: 1.08;
+    letter-spacing: -0.022em;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0.7rem 0 0.85rem;
+    max-width: 24ch;
+  }
+
+  .titleblock h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+
+  .lede {
+    max-width: var(--read);
+    color: var(--ink-2);
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    border-top: 1px solid var(--rule);
+  }
+
+  .field {
+    padding: 0.85rem 1rem 0.9rem 0;
+    border-right: 1px solid var(--rule-2);
+  }
+  .field:last-child { border-right: 0; }
+
+  .field dt {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+
+  .field dd {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { margin-bottom: 3.25rem; scroll-margin-top: 1.5rem; }
+
+  .sechead {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 0.55rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .sechead .num {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    flex: none;
+  }
+
+  .sechead h2 {
+    font-size: 1.3rem;
+    font-weight: 660;
+    letter-spacing: -0.016em;
+    line-height: 1.25;
+  }
+
+  .sechead .note {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  p { max-width: var(--read); }
+  p + p { margin-top: 0.85rem; }
+
+  .prose-wide { max-width: 72ch; }
+
+  strong { font-weight: 660; }
+
+  code, .m {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--rule-2);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+    word-break: break-word;
+  }
+
+  /* ---------- tables ---------- */
+
+  .scroller {
+    overflow-x: auto;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 34rem;
+    font-size: 0.875rem;
+  }
+
+  thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 0.62rem 0.9rem;
+    border-bottom: 1px solid var(--rule-2);
+    vertical-align: top;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:nth-child(even) { background: var(--surface-2); }
+
+  td.idx {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    width: 2.5rem;
+  }
+
+  /* ---------- chips ---------- */
+
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.44rem;
+    border-radius: 3px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+
+  .chip-block { background: var(--crit-w);   color: var(--crit);   border-color: var(--crit); }
+  .chip-cond  { background: var(--warn-w);   color: var(--warn);   border-color: var(--warn); }
+  .chip-opt   { background: var(--surface-2);color: var(--muted);  border-color: var(--rule); }
+  .chip-acc   { background: var(--accent-w); color: var(--accent); border-color: var(--accent); }
+
+  /* ---------- data groups ---------- */
+
+  .groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .group {
+    background: var(--surface);
+    padding: 1.05rem 1.15rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .swatch {
+    width: 9px; height: 9px;
+    border-radius: 1px;
+    flex: none;
+    background: var(--gc, var(--muted));
+  }
+
+  .group-key {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    color: var(--gc, var(--muted));
+    font-weight: 600;
+  }
+
+  .group h3 {
+    font-size: 0.9875rem;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    line-height: 1.3;
+  }
+
+  .group p {
+    font-size: 0.8375rem;
+    color: var(--ink-2);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .group .files {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.6;
+    word-break: break-word;
+    margin-top: auto;
+    padding-top: 0.55rem;
+    border-top: 1px dashed var(--rule);
+  }
+
+  .group .flag {
+    font-size: 0.8125rem;
+    color: var(--accent);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  /* ---------- pipeline ---------- */
+
+  .pipe {
+    display: grid;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .stage {
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: 3.2rem 11rem 1fr;
+    gap: 0.9rem;
+    padding: 0.72rem 1rem;
+    align-items: baseline;
+  }
+
+  .stage-n {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stage-name {
+    font-weight: 620;
+    font-size: 0.9rem;
+    letter-spacing: -0.01em;
+  }
+
+  .stage-desc {
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
+
+  .stage.out { background: var(--accent-w); }
+  .stage.out .stage-name { color: var(--accent); }
+
+  @media (max-width: 40rem) {
+    .stage { grid-template-columns: 2.4rem 1fr; }
+    .stage-desc { grid-column: 2; }
+  }
+
+  /* ---------- track matrix ---------- */
+
+  .matrix {
+    display: grid;
+    grid-template-columns: 4.2rem repeat(7, minmax(2.4rem, 1fr));
+    gap: 2px;
+    margin-bottom: 1.75rem;
+    min-width: 26rem;
+  }
+
+  .mx-h, .mx-r {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    padding: 0.3rem 0.2rem;
+  }
+
+  .mx-h { justify-content: center; }
+
+  .mx-cell {
+    height: 1.6rem;
+    border-radius: 2px;
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+  }
+
+  .mx-cell.on {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .mx-cell.half {
+    background: var(--accent-w);
+    border-color: var(--accent);
+  }
+
+  /* ---------- days ---------- */
+
+  .days {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .day {
+    background: var(--surface);
+    padding: 1.4rem 1.25rem 1.5rem;
+  }
+
+  .day-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+
+  .day-tag {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--surface);
+    background: var(--ink);
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    flex: none;
+  }
+
+  .day.key .day-tag { background: var(--accent); }
+
+  .day-head h3 {
+    font-size: 1.05rem;
+    font-weight: 650;
+    letter-spacing: -0.014em;
+  }
+
+  .tasks {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .tasks li { display: flex; align-items: flex-start; }
+
+  .tasks input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 0.95rem; height: 0.95rem;
+    margin: 0.32rem 0.7rem 0 0;
+    flex: none;
+    border: 1.5px solid var(--rule);
+    border-radius: 2px;
+    background: var(--surface);
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .tasks input[type="checkbox"]:hover { border-color: var(--accent); }
+
+  .tasks input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+    background-image: linear-gradient(45deg, transparent 44%, var(--surface) 44%, var(--surface) 56%, transparent 56%),
+                      linear-gradient(-45deg, transparent 44%, var(--surface) 44%, var(--surface) 56%, transparent 56%);
+  }
+
+  .tasks input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+  }
+
+  .tasks label {
+    font-size: 0.8875rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    cursor: pointer;
+    padding: 0.16rem 0;
+  }
+
+  .tasks input:checked + label {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: var(--rule);
+  }
+
+  .track {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 0.45rem;
+    letter-spacing: 0.04em;
+  }
+
+  .outcome {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    border-top: 1px solid var(--rule-2);
+    padding-top: 0.85rem;
+    font-size: 0.875rem;
+    color: var(--ink);
+  }
+
+  .outcome .lbl {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    flex: none;
+    padding-top: 0.12rem;
+  }
+
+  /* ---------- callouts ---------- */
+
+  .breakers {
+    display: grid;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .breaker {
+    background: var(--surface);
+    padding: 1rem 1.15rem 1.1rem;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 0.2rem 0.9rem;
+  }
+
+  .breaker .bn {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--crit);
+    grid-row: span 2;
+    padding-top: 0.1rem;
+  }
+
+  .breaker h3 {
+    font-size: 0.9375rem;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+  }
+
+  .breaker p {
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 68ch;
+  }
+
+  .now {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent-w);
+    padding: 1.3rem 1.35rem 1.4rem;
+  }
+
+  .now ol {
+    margin: 0.4rem 0 0 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .now li { font-size: 0.9rem; color: var(--ink); }
+
+  .now .fallback {
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--accent);
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    max-width: 68ch;
+  }
+
+  .open-q {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .open-q li {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--ink-2);
+  }
+
+  .open-q .q {
+    font-family: var(--mono);
+    color: var(--accent);
+    flex: none;
+  }
+
+  .pull {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 1.05rem 1.3rem 1.15rem;
+    margin-top: 1.4rem;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .pull p {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    max-width: 70ch;
+    margin: 0;
+  }
+
+  .pull .lbl {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  td.src {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .wins {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+
+  .cover {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 1.25rem;
+  }
+
+  .cover-col { background: var(--surface); padding: 0.9rem 1rem 1rem; }
+
+  .cover-col h4 {
+    font-size: 0.8125rem;
+    font-weight: 650;
+    margin-bottom: 0.15rem;
+  }
+
+  .cover-col .cnt {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 0.55rem;
+  }
+
+  .cover-col ul {
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--ink-2);
+    line-height: 1.7;
+  }
+
+  .cover-col.best h4 { color: var(--accent); }
+  .cover-col.none h4 { color: var(--muted); }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1rem;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .day, .group, .stage, .breaker { break-inside: avoid; }
+    section { break-inside: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="titleblock">
+    <div class="eyebrow">Хакатон · техническое задание 2026</div>
+    <h1>Сервис автоматического проектирования <em>озеленения</em> города</h1>
+    <p class="lede">
+      Пайплайн <strong>DXF → расчёт → DXF</strong>: план посадок на отдельном слое,
+      исходные слои не тронуты, и на каждую посадку — обоснование со ссылкой
+      на пункт нормативного акта. Обучать модель не нужно: правильность посадки
+      определяется числами из норм, а не сходством с чужими проектами.
+    </p>
+
+    <dl class="fields">
+      <div class="field"><dt>Срок</dt><dd>7 дней</dd></div>
+      <div class="field"><dt>Объектов</dt><dd>20</dd></div>
+      <div class="field"><dt>Годных к прогону</dt><dd>19</dd></div>
+      <div class="field"><dt>С данными по сетям</dt><dd>9</dd></div>
+      <div class="field"><dt>DWG / DXF</dt><dd>819 / 1</dd></div>
+      <div class="field"><dt>Целевая ОС</dt><dd>МосТех.ОС</dd></div>
+    </dl>
+  </header>
+
+  <section id="deliverables">
+    <div class="sechead">
+      <span class="num">01</span>
+      <h2>Что обязательно к сдаче</h2>
+      <span class="note">разделы 7.2 и 8 ТЗ</span>
+    </div>
+
+    <p class="prose-wide" style="margin-bottom:1.25rem;">
+      ТЗ трижды повторяет одну мысль: ядро важнее интерфейса. Дословно —
+      «слабый алгоритм при отличном UI оценивается ниже, чем точный пайплайн
+      с минимальным способом запуска». Фронтенд можно почти не делать.
+    </p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th></th><th>Требование</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="idx">1</td><td>Импорт и разбор DXF по объектам пилота</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">2</td><td>Несколько типов посадок — деревья и кустарники минимум</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">3</td><td>Соблюдение нормативных отступов</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">4</td><td>Результат только на выделенных слоях, исходные не перезаписаны</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">5</td><td>Экспорт в DXF</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">6</td><td>Объяснение по каждой посадке: акт и пункт</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">7</td><td>Параметризация и повторный прогон — достаточно CLI-конфига</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">8</td><td>Docker и запуск под Linux по инструкции</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">9</td><td>Swagger / OpenAPI</td><td><span class="chip chip-cond">Если есть API</span></td></tr>
+          <tr><td class="idx">10</td><td>Документация: описание алгоритма и схема BPMN</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">11</td><td>Презентация 10–20 слайдов и живое демо 4–10 минут</td><td><span class="chip chip-block">Блокирует</span></td></tr>
+          <tr><td class="idx">12</td><td>Фотореалистичные визуализации после финального DXF</td><td><span class="chip chip-opt">Бонус</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:1.1rem;font-size:0.875rem;color:var(--muted);max-width:72ch;">
+      Нормативная база по ТЗ: СП 42.13330.2016, 743-ПП, 623-ПП, МГСН. Файл
+      <span class="m">Нормативные акты ссылки.docx</span> добавляет: 515-ПП, 369-ПП от 03.03.2026,
+      Закон г. Москвы № 18, СП 82.13330.2016, СП 59.13330, МГСН 30-307-2002, ГОСТ 21.508-2020.
+    </p>
+  </section>
+
+  <section id="sources">
+    <div class="sechead">
+      <span class="num">02</span>
+      <h2>Два документа, и они расходятся</h2>
+      <span class="note">карточка на сайте против PDF ТЗ</span>
+    </div>
+
+    <p class="prose-wide" style="margin-bottom:1.25rem;">
+      Карточка задачи на сайте требует «ИИ-агента» и веб-сервис. PDF с техническим
+      заданием заметно понижает планку и прямо пишет, что интерфейс не главное.
+      Похоже, PDF написан позже и сознательно смягчает формулировки.
+      <strong>Приоритет — за PDF:</strong> он называется «Техническое задание»,
+      датирован 2026 годом и содержит раздел «Критерии оценки», по которому
+      выставляют баллы. Но сайт читали все, включая часть жюри, поэтому дешёвые
+      пункты оттуда стоит закрыть.
+    </p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Пункт</th><th>Сайт</th><th>PDF ТЗ</th><th>Решение</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="src">Интерфейс</td>
+            <td>«прототип веб-сервиса»</td>
+            <td>«достаточно CLI, простого скрипта», UX по остаточному принципу</td>
+            <td class="wins">форма поверх API, полдня</td>
+          </tr>
+          <tr>
+            <td class="src">Правки плана</td>
+            <td>«в текстовом и графическом формате»</td>
+            <td>«минимально допустимый вариант — перезапуск с изменёнными параметрами без графического редактора»</td>
+            <td class="wins">конфиг + три варианта</td>
+          </tr>
+          <tr>
+            <td class="src">Карта</td>
+            <td>Leaflet, Mapbox</td>
+            <td>не упоминается</td>
+            <td class="wins">Leaflet, день 5–6</td>
+          </tr>
+          <tr>
+            <td class="src">ML</td>
+            <td>«возможно с использованием ML/ИИ»</td>
+            <td>«не обязательное использование нейросетей»</td>
+            <td class="wins">гибрид, ядро на правилах</td>
+          </tr>
+          <tr>
+            <td class="src">Данные</td>
+            <td>SHP, GeoJSON, кадастр, зонирование, data.mos.ru</td>
+            <td>то же в «Ресурсах»</td>
+            <td class="wins">в датасете их нет — по остатку</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pull">
+      <span class="lbl">Ключ к слову «агент»</span>
+      <p>
+        Сайт пишет: «Разработайте <strong>ИИ-агента (алгоритм генеративного дизайна)</strong>».
+        Скобка — это определение, а не украшение. Генеративный дизайн — устоявшийся
+        термин из мира CAD, введённый Autodesk: инженер задаёт ограничения и цель,
+        система сама порождает и оптимизирует варианты. Нейросети там исторически
+        ни при чём. Буферы плюс оптимизация размещения — это ровно генеративный
+        дизайн по определению.
+      </p>
+    </div>
+  </section>
+
+  <section id="data">
+    <div class="sechead">
+      <span class="num">03</span>
+      <h2>Что лежит в датасете</h2>
+      <span class="note">20 объектов · структура папок у всех разная</span>
+    </div>
+
+    <div class="groups">
+
+      <article class="group" style="--gc:var(--g-a)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа A</span></div>
+        <h3>Геоподоснова и генплан</h3>
+        <p>Главный вход пайплайна. Собрано через nanoCAD eTransmit — с внешними ссылками и шрифтами.</p>
+        <div class="files">*_Генплан_* - Standard · АПОТ * · xref_*.dwg<br>*_Борта.dwg · *_Заливки.dwg · *_Границы работ_*.dwg</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-b)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа B</span></div>
+        <h3>Инженерные сети</h3>
+        <p>Ключ ко всем ограничениям — и самая неровная часть датасета. Названы тремя разными способами, а у четверти объектов отсутствуют.</p>
+        <p class="flag">Есть только у 9 объектов из 20.</p>
+        <div class="files">output[1-18]_3_ДЖКХ-25_03117kl.dwg<br>kl_Грузинская М.ул.dwg<br>xref_ВП.dwg · 00.2_Сети.dwg</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-c)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа C</span></div>
+        <h3>Существующие насаждения</h3>
+        <p>Перечётная ведомость связана с точками на плане по номеру дерева. Полезна и как вход, и как источник ассортимента пород.</p>
+        <div class="files">ИП_* · ПВ_*.xls / .xlsm<br>Дендроплан*.dwg · ПАМЯТКА по дендроизысканиям.docx</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-d)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа D</span></div>
+        <h3>Проектное решение</h3>
+        <p>Не обучающая выборка, а образец оформления: какие слои, какие значки, какая реальная плотность посадки. Сравнивать глазами, метрики тут нет.</p>
+        <p class="flag">Бенчмарк оформления, не эталон ответа.</p>
+        <div class="files">Проектное решение/DWG · PDF<br>дендроплан · разбивочно-посадочный чертеж<br>Посадочный план · Ведомость растений</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-e)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа E</span></div>
+        <h3>Документы и паспорта</h3>
+        <p>Источник параметров участка и готовых формулировок для отчёта об интерпретируемости.</p>
+        <div class="files">ПЗ *.docx · Пояснительная записка*.docx<br>Паспорт объекта *.xls · ВОР.docx</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-f)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа F</span></div>
+        <h3>Фото «до» и медиа</h3>
+        <p>746 jpg, 331 heic, 331 jpeg, 5 видео.</p>
+        <p class="flag">Готовое сырьё для бонусного задания.</p>
+        <div class="files">*фото до/*.jpg · *.heic · *.mp4</div>
+      </article>
+
+      <article class="group" style="--gc:var(--g-g)">
+        <div class="group-head"><span class="swatch"></span><span class="group-key">Группа G</span></div>
+        <h3>Справочники в корне</h3>
+        <p>Блоки условных обозначений — из них строим выход, чтобы результат выглядел как чертёж, а не как кружочки на плане.</p>
+        <div class="files">Шаблоны значков.dwg<br>Нормативные акты ссылки.docx</div>
+      </article>
+
+    </div>
+
+    <h3 style="margin:2rem 0 0.2rem;font-size:1rem;font-weight:650;letter-spacing:-0.014em;">Данные разложены очень неровно</h3>
+    <p style="font-size:0.875rem;color:var(--ink-2);max-width:72ch;">
+      Сети — обязательный вход для расчёта отступов. Вот как они распределены по объектам.
+    </p>
+
+    <div class="cover">
+      <div class="cover-col best">
+        <h4>Сети в машинном формате</h4>
+        <span class="cnt">9 объектов · работаем здесь</span>
+        <ul>
+          <li>Олимпийская деревня</li>
+          <li>Куликовская</li>
+          <li>Харьковская</li>
+          <li>Багрицкого</li>
+          <li>Наташинский пр-д</li>
+          <li>Харьковский пр-д</li>
+          <li>Ак. Понтрягина</li>
+          <li>Старый Гай</li>
+          <li>Песчаный пер.</li>
+        </ul>
+      </div>
+      <div class="cover-col">
+        <h4>Сети под своими именами</h4>
+        <span class="cnt">6 объектов · второй заход</span>
+        <ul>
+          <li>Грузинская М.</li>
+          <li>Макеева С.</li>
+          <li>Измайловская пл.</li>
+          <li>Камчатская</li>
+          <li>2-я Прядильная</li>
+          <li>Кустанайская</li>
+        </ul>
+      </div>
+      <div class="cover-col none">
+        <h4>Сетей не найдено</h4>
+        <span class="cnt">4 объекта · только генплан</span>
+        <ul>
+          <li>Берзарина</li>
+          <li>Нижние Поля</li>
+          <li>Лодочная</li>
+          <li>3-я Парковая</li>
+        </ul>
+      </div>
+      <div class="cover-col none">
+        <h4>Обработке не подлежит</h4>
+        <span class="cnt">1 объект</span>
+        <ul>
+          <li>Фрунзенская наб.<br><span style="color:var(--muted);font-size:0.75rem;">ни одного DWG, только PDF и Excel</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pull">
+      <span class="lbl">Вывод по охвату</span>
+      <p>
+        Не пытайтесь покрыть все 20. Возьмите первую колонку, доведите её до идеала,
+        остальное прогоняйте «как получится» и честно покажите таблицу покрытия.
+        Экспертам это понравится больше, чем двадцать объектов вполсилы.
+      </p>
+    </div>
+  </section>
+
+  <section id="breakers">
+    <div class="sechead">
+      <span class="num">04</span>
+      <h2>Что ломает наивный план</h2>
+      <span class="note">проверено по файлам</span>
+    </div>
+
+    <div class="breakers">
+
+      <div class="breaker">
+        <span class="bn">01</span>
+        <h3>DXF в датасете ровно один</h3>
+        <p>Остальное — 819 DWG шести версий: AC1032 / 2018 — 495 шт., AC1015 / 2000 — 148, AC1024 — 87, AC1027 — 59, AC1021 — 18, AC1018 — 12. <span class="m">ezdxf</span> формат DWG не читает, нужен отдельный слой конвертации, покрывающий весь диапазон 2000–2018.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">02</span>
+        <h3>Геометрия размазана по внешним ссылкам</h3>
+        <p>Пакеты собраны через nanoCAD eTransmit. Без связывания xref вы откроете пустой чертёж и решите, что парсер сломан.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">03</span>
+        <h3>Сети названы тремя разными способами</h3>
+        <p>Городская выгрузка <span class="m">output[1-18]_3_ДЖКХ-25_03117kl.dwg</span>, человеческое имя <span class="m">kl_Грузинская М.ул.dwg</span> и третья система <span class="m">xref_ВП.dwg</span>, <span class="m">00.2_Сети.dwg</span>, <span class="m">XREF_ИОТ1_*.dwg</span>. Один парсер на всё это не ляжет — нужен слой нормализации имён, и он будет расти с каждым новым объектом.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">04</span>
+        <h3>Ни одного SHP или GeoJSON</h3>
+        <p>Хотя оба документа их обещают в разделе «Ресурсы». GIS-контекст с data.mos.ru — отдельная опциональная ветка, ядро на неё завязывать нельзя.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">05</span>
+        <h3>Каталога типовых посадок нет</h3>
+        <p>«Каталоги типовых посадок с нормами по отступам и условиям посадки» заявлены как «справочник решений генератора». В датасете такого файла нет совсем. Нормальная таблица ассортимента нашлась у одного объекта из двадцати — Олимпийская деревня, 7691 строка. Справочник пород собираете сами.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">06</span>
+        <h3>Перечётная ведомость — это не то, что сажать</h3>
+        <p>ПВ есть почти у всех и выглядит как список растений, но описывает <strong>существующие</strong> деревья: порода, диаметр, состояние, рекомендуемое мероприятие. Нужна, чтобы занять места и понять, где после вырубки освободится пятно. Списком для посадки не является.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">07</span>
+        <h3>Эталонные выходы лежат не там, где сказано</h3>
+        <p>ТЗ: «примеры выхода — без папок, на верхнем уровне набора». Фактически на верхнем уровне файлов нет вообще. Эталон — папка <span class="m">Проектное решение</span> внутри каждого объекта.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">08</span>
+        <h3>Имена слоёв кириллические и у каждого объекта свои</h3>
+        <p>Единого стандарта именования нет. Нужен классификатор: словарь плюс фаззи-сопоставление, а на неизвестный остаток — LLM.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">09</span>
+        <h3>Внутри объектов вложенные архивы</h3>
+        <p>45 zip, 5 sevenz, 2 rar, плюс мусор от tar: папки <span class="m">PaxHeader</span> и 118 файлов <span class="m">.bak</span>. Нужен шаг предраспаковки и отсева в ingest.</p>
+      </div>
+
+      <div class="breaker">
+        <span class="bn">10</span>
+        <h3>Один объект пустой, во всех остальных неясно, что подавать</h3>
+        <p>У Фрунзенской набережной нет ни одного DWG — только PDF и перечётная ведомость. В остальных объектах от 4 до 122 файлов DWG, и нигде не написано, какой из них главный. Придётся угадывать эвристикой по имени: <span class="m">Генплан</span>, <span class="m">ГП</span>, <span class="m">АПОТ</span>, <span class="m">ГЕО+Границы работ</span>.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section id="arch">
+    <div class="sechead">
+      <span class="num">05</span>
+      <h2>Архитектура пайплайна</h2>
+      <span class="note">DXF → ограничения → план → DXF</span>
+    </div>
+
+    <div class="pipe">
+      <div class="stage"><span class="stage-n">00</span><span class="stage-name">ingest</span><span class="stage-desc">Распаковка вложенных архивов, отсев PaxHeader и .bak, сборка комплекта объекта</span></div>
+      <div class="stage"><span class="stage-n">01</span><span class="stage-name">convert</span><span class="stage-desc">DWG → DXF R2018 через ODA File Converter, резолв и связывание xref</span></div>
+      <div class="stage"><span class="stage-n">02</span><span class="stage-name">parse</span><span class="stage-desc">ezdxf: сущности, слои, блоки, вставки</span></div>
+      <div class="stage"><span class="stage-n">03</span><span class="stage-name">classify</span><span class="stage-desc">Имя слоя и суффикс файла → семантический класс: водопровод, газ, кабель, теплосеть, канализация, ЛЭП, здание, проезжая часть, тротуар, газон, существующее дерево, граница работ</span></div>
+      <div class="stage"><span class="stage-n">04</span><span class="stage-name">geometry</span><span class="stage-desc">Shapely: буферизация сетей по нормам, зона допустимости = граница работ минус объединение буферов</span></div>
+      <div class="stage"><span class="stage-n">05</span><span class="stage-name">rules</span><span class="stage-desc">Декларативный YAML норм, у каждого правила поле citation: акт, пункт, таблица, величина отступа</span></div>
+      <div class="stage"><span class="stage-n">06</span><span class="stage-name">placement</span><span class="stage-desc">Генерация кандидатов — аллейная линия вдоль оси улицы, сетка в скверах — фильтр по зоне, отбор с минимальным шагом, выбор породы из справочника</span></div>
+      <div class="stage"><span class="stage-n">06б</span><span class="stage-name">variants</span><span class="stage-desc">Три сценария одним и тем же алгоритмом: максимум озеленения, сбалансированный, минимальный. Отличаются шагом посадки и долей кустарников — это и есть «генеративный дизайн» буквально</span></div>
+      <div class="stage"><span class="stage-n">07</span><span class="stage-name">explain</span><span class="stage-desc">На каждую точку — список проверенных и сработавших норм, включая причины отказа</span></div>
+      <div class="stage out"><span class="stage-n">08</span><span class="stage-name">export</span><span class="stage-desc">Новые слои GREEN_AI_TREES / _SHRUBS / _GROUND / _ZONES / _NOTES, блоки из «Шаблоны значков», XDATA с идентификатором, плюс report.json / csv / md</span></div>
+      <div class="stage"><span class="stage-n">09</span><span class="stage-name">validate</span><span class="stage-desc">Самопроверка: ни одна точка не нарушает норму, исходные слои побитово не изменены</span></div>
+    </div>
+
+    <p class="prose-wide" style="margin-top:1.4rem;">
+      <strong>Тренировать модель не нужно.</strong> Правильность посадки определяется
+      не сходством с чужими проектами, а числами из нормативных документов: до
+      водопровода 2 метра, до стены здания 5. Это измеряется, а не угадывается.
+      Обучающей выборки нет и быть не может — примеров двадцать, разметки ноль.
+      Вдобавок нейросеть не умеет сослаться на пункт СП, а ТЗ требует ссылку
+      на каждое дерево и отдельно оговаривает, что «чёрный ящик» не принимается.
+    </p>
+
+    <p class="prose-wide" style="margin-top:0.85rem;">
+      Поэтому ядро детерминированное, а языковые модели работают по краям — там,
+      где правил нет: разбор нестандартных имён слоёв, чтение разнородных
+      ведомостей в Excel, формулировка текста обоснований по уже посчитанным
+      фактам, бонусные визуализации. Модель ничего не решает — она только
+      называет. Так сохраняется воспроизводимость.
+    </p>
+
+    <div class="pull">
+      <span class="lbl">Формулировка для питча</span>
+      <p>
+        «Мы сделали агента генеративного дизайна в исходном смысле термина: он
+        принимает ограничения — сети, охранные зоны, нормативные отступы — и сам
+        порождает варианты плана под них. Ядро детерминированное, потому что на
+        каждое дерево мы обязаны предъявить пункт нормативного акта, а нейросеть
+        на пункт не сошлётся. Языковые модели работают там, где правил нет.»
+      </p>
+    </div>
+  </section>
+
+  <section id="risks">
+    <div class="sechead">
+      <span class="num">06</span>
+      <h2>Риски</h2>
+    </div>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Риск</th><th>Вероятность</th><th>Что делаем</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Конвертация DWG не заводится в Docker под Linux</td>
+            <td><span class="chip chip-cond">Средняя</span></td>
+            <td>Проверить в первые три часа Дня 1. Фолбэк — dwg2dxf из LibreDWG, худший фолбэк — ручной экспорт DXF по демо-объектам</td>
+          </tr>
+          <tr>
+            <td>Xref не связываются, чертёж читается пустым</td>
+            <td><span class="chip chip-block">Высокая</span></td>
+            <td>Bind средствами ODA. Иначе — грузить каждую ссылку отдельно и применять матрицу INSERT вручную</td>
+          </tr>
+          <tr>
+            <td>Классификатор слоёв не обобщается на 20 объектов</td>
+            <td><span class="chip chip-block">Высокая</span></td>
+            <td>Начать со словаря по двум объектам и расширять, мерить процент покрытия, LLM на неизвестный остаток</td>
+          </tr>
+          <tr>
+            <td>Команда утонет в «сделать красиво»</td>
+            <td><span class="chip chip-cond">Средняя</span></td>
+            <td>UI трогаем только если ядро закрыто к Дню 5</td>
+          </tr>
+          <tr>
+            <td>Пункты НПА проставлены на глаз</td>
+            <td><span class="chip chip-cond">Средняя</span></td>
+            <td>Завести norms.yaml с точными цитатами в первый же день и сверить по первоисточникам</td>
+          </tr>
+          <tr>
+            <td>Эксперт читал только карточку с сайта и ждёт нейросеть и веб-сервис</td>
+            <td><span class="chip chip-cond">Средняя</span></td>
+            <td>Иметь два-три места, где модель реально работает, и готовую формулировку, почему ядро намеренно не на ней. Плюс форма загрузки и карта — вместе меньше двух дней</td>
+          </tr>
+          <tr>
+            <td>Перепроецирование в систему координат карты съедает день</td>
+            <td><span class="chip chip-opt">Низкая</span></td>
+            <td>Карта не блокирует сдачу. Не подобралась зона МСК-77 за полдня — снимаем задачу, ядро от неё не зависит</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="plan">
+    <div class="sechead">
+      <span class="num">07</span>
+      <h2>План на семь дней</h2>
+      <span class="note">вертикальный срез в Д1, дальше наращивание</span>
+    </div>
+
+    <div class="scroller" style="border:0;background:none;">
+      <div class="matrix" role="img" aria-label="Загрузка дорожек A, B и C по дням с первого по седьмой">
+        <span class="mx-r"></span>
+        <span class="mx-h">Д1</span><span class="mx-h">Д2</span><span class="mx-h">Д3</span>
+        <span class="mx-h">Д4</span><span class="mx-h">Д5</span><span class="mx-h">Д6</span><span class="mx-h">Д7</span>
+
+        <span class="mx-r">A · CAD</span>
+        <span class="mx-cell on"></span><span class="mx-cell on"></span><span class="mx-cell half"></span>
+        <span class="mx-cell on"></span><span class="mx-cell"></span><span class="mx-cell half"></span><span class="mx-cell"></span>
+
+        <span class="mx-r">B · Нормы</span>
+        <span class="mx-cell half"></span><span class="mx-cell on"></span><span class="mx-cell on"></span>
+        <span class="mx-cell on"></span><span class="mx-cell on"></span><span class="mx-cell half"></span><span class="mx-cell"></span>
+
+        <span class="mx-r">C · Инфра</span>
+        <span class="mx-cell half"></span><span class="mx-cell half"></span><span class="mx-cell"></span>
+        <span class="mx-cell half"></span><span class="mx-cell on"></span><span class="mx-cell on"></span><span class="mx-cell on"></span>
+      </div>
+    </div>
+
+    <p style="margin-bottom:1.5rem;font-size:0.875rem;color:var(--muted);max-width:72ch;">
+      Дорожки: <strong>A</strong> — CAD и геометрия, <strong>B</strong> — нормы и алгоритм,
+      <strong>C</strong> — инфраструктура, API, документация. План свёрстан под 2–3 человека;
+      если вас один-двое, дорожки внутри дня идут последовательно.
+    </p>
+
+    <div class="days">
+
+      <article class="day">
+        <div class="day-head"><span class="day-tag">Д1</span><h3>Разведка и сквозной скелет</h3></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t101"><label for="t101"><span class="track">A</span>Поднять ODA File Converter под Linux в Docker, прогнать батч DWG → DXF на всём датасете, собрать статистику успеха</label></li>
+          <li><input type="checkbox" id="t102"><label for="t102"><span class="track">A</span>Решить вопрос со связыванием xref</label></li>
+          <li><input type="checkbox" id="t103"><label for="t103"><span class="track">A</span>Выбрать два эталонных объекта — простой и сложный: Куликовская улица и Олимпийская деревня</label></li>
+          <li><input type="checkbox" id="t104"><label for="t104"><span class="track">B</span>Выписать в norms.yaml 10–15 ключевых отступов с точными цитатами: СП 42.13330.2016 табл. 9.1, 743-ПП, 623-ПП</label></li>
+          <li><input type="checkbox" id="t106"><label for="t106"><span class="track">B</span>Собрать species.yaml на 12–15 пород из таблицы ассортимента Олимпийской: диаметр кроны взрослого растения, высота, тип — дерево или кустарник</label></li>
+          <li><input type="checkbox" id="t105"><label for="t105"><span class="track">C</span>Репозиторий, структура пакета, Dockerfile, заглушка CLI</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>DXF читается, в него дописывается пустой слой GREEN_AI, файл открывается в CAD, исходные слои целы. Сквозной путь существует.</span></div>
+      </article>
+
+      <article class="day">
+        <div class="day-head"><span class="day-tag">Д2</span><h3>Семантика слоёв и карта ограничений</h3></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t201"><label for="t201"><span class="track">A</span>Классификатор слоёв: словарь кириллических имён плюс суффиксы ИРД kl / tp / pp / up / brd → семантические классы, считаем процент покрытия</label></li>
+          <li><input type="checkbox" id="t202"><label for="t202"><span class="track">A</span>Извлечение геометрии в Shapely, привязка к границе работ</label></li>
+          <li><input type="checkbox" id="t203"><label for="t203"><span class="track">B</span>Буферизация по нормам, построение полигона «где можно сажать»</label></li>
+          <li><input type="checkbox" id="t204"><label for="t204"><span class="track">C</span>Схема конфига в YAML, логирование, скрипт батч-прогона</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>Визуализация зон допустимости по двум объектам — первая картинка, которую не стыдно показать на слайде.</span></div>
+      </article>
+
+      <article class="day key">
+        <div class="day-head"><span class="day-tag">Д3</span><h3>Алгоритм размещения деревьев</h3><span class="chip chip-acc">Закрывает промежуточную сдачу</span></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t301"><label for="t301"><span class="track">B</span>Генерация кандидатов: аллейная линия вдоль оси улицы и сетка в скверах</label></li>
+          <li><input type="checkbox" id="t302"><label for="t302"><span class="track">B</span>Отбор с минимальным шагом между посадками, учёт существующих насаждений из ИП и ПВ</label></li>
+          <li><input type="checkbox" id="t303"><label for="t303"><span class="track">B</span>Выбор породы из species.yaml — список пород подаётся параметром запуска, а не зашит в код</label></li>
+          <li><input type="checkbox" id="t304"><label for="t304"><span class="track">A</span>Запись точек на выделенный слой блоками из «Шаблоны значков.dwg»</label></li>
+          <li><input type="checkbox" id="t305"><label for="t305"><span class="track">B</span>Три варианта плана одним алгоритмом: максимум озеленения, сбалансированный, минимальный. Полдня работы, закрывает и «генеративность», и «внесение корректировок»</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>Первый настоящий DXF с посадками, сразу в трёх сценариях. Требования пункта 7.1 ТЗ выполнены.</span></div>
+      </article>
+
+      <article class="day key">
+        <div class="day-head"><span class="day-tag">Д4</span><h3>Интерпретируемость</h3><span class="chip chip-acc">Критичный день</span></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t401"><label for="t401"><span class="track">B</span>Трассировка «посадка → норма → пункт» для каждой точки, включая отклонённые места с причиной отказа</label></li>
+          <li><input type="checkbox" id="t402"><label for="t402"><span class="track">A</span>Выгрузка report.json, report.csv, report.md; XDATA на точках; выноски MTEXT на слое GREEN_AI_NOTES</label></li>
+          <li><input type="checkbox" id="t403"><label for="t403"><span class="track">C</span>Валидатор-самопроверка: ноль нарушений, diff исходных слоёв пустой</label></li>
+          <li><input type="checkbox" id="t404"><label for="t404"><span class="track">C</span>Сравнение с эталоном из «Проектное решение» — хотя бы качественное, для слайда «до / после»</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>Ядро ТЗ закрыто полностью для деревьев. Здесь лежит половина баллов экспертизы.</span></div>
+      </article>
+
+      <article class="day">
+        <div class="day-head"><span class="day-tag">Д5</span><h3>Типы посадок, API, веб-морда</h3></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t501"><label for="t501"><span class="track">B</span>Кустарники со своими отступами и шагом, травянистые покрытия как полигон-заливка</label></li>
+          <li><input type="checkbox" id="t502"><label for="t502"><span class="track">C</span>FastAPI: POST /jobs, GET /jobs/{id}, /dxf, /report — и Swagger, который обязателен при наличии API</label></li>
+          <li><input type="checkbox" id="t503"><label for="t503"><span class="track">C</span>docker-compose, инструкция запуска, проверка на чистой Ubuntu</label></li>
+          <li><input type="checkbox" id="t504"><label for="t504"><span class="track">C</span>Форма загрузки поверх API: выбрать файл, нажать «рассчитать», забрать DXF и отчёт. Полдня, закрывает «прототип веб-сервиса» с карточки задачи</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>«Поднимается в контуре заказчика по инструкции, без привязки к машине разработчика» — выполнено.</span></div>
+      </article>
+
+      <article class="day">
+        <div class="day-head"><span class="day-tag">Д6</span><h3>Масштаб, документация, стабилизация</h3></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t601"><label for="t601"><span class="track">A B</span>Прогон по всем 20 объектам, таблица «объект → сконвертировался → слоёв распознано → посадок сгенерировано → время». Провалы показываем честно, они объяснимы неполнотой данных</label></li>
+          <li><input type="checkbox" id="t604"><label for="t604"><span class="track">C</span>Карта Leaflet с точками посадки. Осторожно: чертежи в московской системе координат, Leaflet хочет широту и долготу — нужно перепроецирование через pyproj, подбор зоны МСК-77 может съесть несколько часов</label></li>
+          <li><input type="checkbox" id="t602"><label for="t602"><span class="track">C</span>Сопроводительная документация: границы MVP, архитектура, описание алгоритма, схема BPMN, методы и библиотеки, инструкция сборки и проверки, ограничения и допущения</label></li>
+          <li><input type="checkbox" id="t605"><label for="t605"><span class="track">B</span>По остатку времени: подтянуть слой зданий или улиц с data.mos.ru как дополнительный контекст. Не успели — уходит в раздел «масштабирование»</label></li>
+          <li><input type="checkbox" id="t603"><label for="t603"><span class="track">A B</span>Фикс топовых багов по результатам батча</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>Документация готова, воспроизводимость доказана на всех 20 объектах — сильный слайд и сильный ответ эксперту.</span></div>
+      </article>
+
+      <article class="day">
+        <div class="day-head"><span class="day-tag">Д7</span><h3>Презентация, демо, бонус, буфер</h3></div>
+        <ul class="tasks">
+          <li><input type="checkbox" id="t701"><label for="t701"><span class="track">C</span>Презентация 10–20 слайдов по структуре ТЗ: проблема, архитектура, алгоритм, организация слоёв, пример интерпретации, до / после, источники, запуск, ограничения</label></li>
+          <li><input type="checkbox" id="t702"><label for="t702"><span class="track">C</span>Репетиция живого демо с таймером: подача DXF, прогон, выходной DXF, открытие в nanoCAD, показ интерпретации — от 4 до 10 минут</label></li>
+          <li><input type="checkbox" id="t703"><label for="t703"><span class="track">B</span>Бонус: фотореалистичные визуализации из фото «до» плюс финальный план</label></li>
+          <li><input type="checkbox" id="t704"><label for="t704"><span class="track">—</span>Буфер на то, что обязательно поедет</label></li>
+        </ul>
+        <div class="outcome"><span class="lbl">Итог</span><span>Сдача.</span></div>
+      </article>
+
+    </div>
+  </section>
+
+  <section id="now">
+    <div class="sechead">
+      <span class="num">08</span>
+      <h2>Первые три часа</h2>
+    </div>
+
+    <div class="now">
+      <div class="eyebrow" style="color:var(--accent)">Начать прямо сейчас</div>
+      <ol>
+        <li>Проверить ODA File Converter под Linux в Docker на пяти файлах разных версий — обязательно AC1015 и AC1032.</li>
+        <li>Сконвертировать <strong>один</strong> файл и распечатать список слоёв внутри. Три строчки кода, но это единственный способ узнать, работает ваш подход вообще или нет. Пока этого не сделано, любой план стоит на догадке.</li>
+        <li>Открыть <span class="m">Шаблоны значков.dwg</span> и один дендроплан из «Проектное решение»: понять, как выглядит целевой выход, какие там слои и блоки.</li>
+        <li>Завести <span class="m">norms.yaml</span> с первыми пятью отступами и точными цитатами.</li>
+      </ol>
+      <p class="fallback">
+        Если первый пункт не заводится за три часа — переключаемся на LibreDWG
+        и параллельно готовим ручной экспорт DXF по трём-пяти демо-объектам,
+        чтобы работа над ядром не простаивала.
+      </p>
+    </div>
+  </section>
+
+  <section id="open">
+    <div class="sechead">
+      <span class="num">09</span>
+      <h2>Открытые вопросы</h2>
+      <span class="note">уточнить у организаторов или решить внутри команды</span>
+    </div>
+
+    <ul class="open-q">
+      <li><span class="q">?</span><span>Дата и формат промежуточной сдачи — от неё зависит, что резать в первую очередь.</span></li>
+      <li><span class="q">?</span><span>Размер команды и распределение ролей. План свёрстан под 2–3 человека.</span></li>
+      <li><span class="q">?</span><span>Достаточно ли эталонов из «Проектное решение», или организаторы выдадут отдельные эталонные выходные DXF.</span></li>
+      <li><span class="q">?</span><span>Будет ли доп. выдача данных: обещанные в «Ресурсах» SHP и GeoJSON от Мосгеотреста, каталог типовых посадок, примеры DXF с размеченными коммуникациями. В текущем наборе их нет.</span></li>
+      <li><span class="q">?</span><span>Какой документ считать главным при расхождении — карточку на сайте или PDF ТЗ. Стоит спросить прямо, ответ экономит два дня.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>План работ · 7 дней · пилот «20 улиц»</span>
+    <span>Ядро важнее интерфейса</span>
+  </footer>
+
+</div>
