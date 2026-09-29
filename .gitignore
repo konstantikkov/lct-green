@@ -112,6 +112,8 @@ lerna-debug.log*
 !tests/fixtures/**/*.dxf
 !samples/**/*.dxf
 !docs/**/*.dxf
+# примеры входа/выхода для сдачи (ТЗ п. 7.2.10)
+!examples/**/*.dxf
 
 # Ведомости и растры из датасета
 *.xlsm
@@ -141,6 +143,8 @@ report.json
 report.csv
 report.md
 reports/
+# …кроме файлов интерпретации в примерах для сдачи
+!examples/**/report.json
 
 # Бонусные визуализации
 renders/

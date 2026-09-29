@@ -1,0 +1,212 @@
+{
+ "synthetic": {
+  "input": "synthetic_site.dxf",
+  "uploadS": 0,
+  "generateS": 9,
+  "sources": {},
+  "placements": {
+   "TREE": 132,
+   "SHRUB": 400
+  },
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:5"
+  ],
+  "coverage": 0.8966,
+  "rejected": 2558,
+  "topReasons": [
+   [
+    "ON_OBJECT:BUILDING",
+    638
+   ],
+   [
+    "ON_OBJECT:ROAD",
+    626
+   ],
+   [
+    "NARROW_STRIP",
+    494
+   ],
+   [
+    "ON_OBJECT:SIDEWALK",
+    260
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    160
+   ]
+  ]
+ },
+ "olimpiyskaya": {
+  "input": "olymp_pkg.zip",
+  "uploadS": 184,
+  "generateS": 142,
+  "sources": {
+   "merged": 32,
+   "empty": 1,
+   "missing": 1
+  },
+  "placements": {
+   "TREE": 52,
+   "SHRUB": 334
+  },
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:14"
+  ],
+  "coverage": 0.8156,
+  "rejected": 55336,
+  "topReasons": [
+   [
+    "NOT_PLANTING_AREA",
+    30828
+   ],
+   [
+    "ON_OBJECT:CURB",
+    6000
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    4118
+   ],
+   [
+    "NARROW_STRIP",
+    2528
+   ],
+   [
+    "SHRUB_POWER_LINE_OVERHEAD_PROTECTION_ZONE",
+    2004
+   ]
+  ]
+ },
+ "harkovsky": {
+  "input": "harkovsky.zip",
+  "uploadS": 117,
+  "generateS": 36,
+  "sources": {
+   "merged": 7,
+   "failed": 2,
+   "missing": 1
+  },
+  "placements": {
+   "TREE": 400,
+   "SHRUB": 400
+  },
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:6"
+  ],
+  "coverage": 0.7083,
+  "rejected": 19032,
+  "topReasons": [
+   [
+    "NARROW_STRIP",
+    5618
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    4438
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    4060
+   ],
+   [
+    "ON_OBJECT:CURB",
+    2626
+   ],
+   [
+    "TREE_ROAD_MIN_DISTANCE",
+    1430
+   ]
+  ]
+ },
+ "makeeva": {
+  "input": "makeeva.zip",
+  "uploadS": 103,
+  "generateS": 21,
+  "sources": {
+   "merged": 15,
+   "missing": 1,
+   "empty": 1
+  },
+  "placements": {
+   "TREE": 1,
+   "SHRUB": 8
+  },
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:3"
+  ],
+  "coverage": 0.8889,
+  "rejected": 9656,
+  "topReasons": [
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    1644
+   ],
+   [
+    "NARROW_STRIP",
+    1526
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    1306
+   ],
+   [
+    "ON_OBJECT:CURB",
+    1274
+   ],
+   [
+    "SHRUB_POWER_LINE_OVERHEAD_PROTECTION_ZONE",
+    782
+   ]
+  ]
+ },
+ "bagritskogo": {
+  "input": "bagritskogo.zip",
+  "uploadS": 65,
+  "generateS": 21,
+  "sources": {
+   "merged": 28,
+   "missing": 15
+  },
+  "placements": {
+   "TREE": 4,
+   "SHRUB": 24
+  },
+  "hardViolations": 0,
+  "status": "NEEDS_REVIEW",
+  "blockers": [
+   "UNVERIFIED_HARD_RULES:15"
+  ],
+  "coverage": 0.7389,
+  "rejected": 7906,
+  "topReasons": [
+   [
+    "NOT_PLANTING_AREA",
+    3446
+   ],
+   [
+    "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE",
+    876
+   ],
+   [
+    "NARROW_STRIP",
+    628
+   ],
+   [
+    "SHRUB_ROAD_MIN_DISTANCE",
+    582
+   ],
+   [
+    "TREE_EXISTING_TREE_MIN_DISTANCE",
+    430
+   ]
+  ]
+ }
+}
