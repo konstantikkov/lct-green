@@ -24,8 +24,11 @@ def _check_status_and_reason(rule, p: Placement, passed_geom: bool,
     if not passed_geom:
         return "FAIL", None
     if rule.role == "safe_buffer":
-        return "UNVERIFIED", ("технологический буфер (НЕ нормативная проверка) — "
-                              "тип сети не установлен")
+        if "UTILITY" in rule.appliesTo.get("obstacle_type", []):
+            return "UNVERIFIED", ("технологический буфер (НЕ нормативная проверка) — "
+                                  "тип сети не установлен, норма зависит от типа")
+        return "UNVERIFIED", ("технологический запас проекта (НЕ нормативная проверка) — "
+                              "нормой не установлен, на итоговый статус не влияет")
     if not condition_confirmed(rule, p) and "crown_diameter_max_m" in rule.condition:
         crown = 2.0 * float(p.crownRadiusM)
         limit = rule.condition.get("crown_diameter_max_m")

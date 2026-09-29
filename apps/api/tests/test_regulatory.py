@@ -12,7 +12,7 @@ from pathlib import Path
 
 import ezdxf
 import pytest
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Point, Polygon
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -206,6 +206,28 @@ def test_safe_buffer_never_passes_but_still_repairs():
     bad = validate_plan([_tree(60.5, 50)], idx, reg, SITE, SITE)
     assert bad["regulatory"]["status"] == "NON_COMPLIANT"
     assert bad["hardViolations"][0]["ruleId"] == "TREE_UTILITY_GENERIC_MIN_DISTANCE"
+
+
+def test_kept_project_buffer_does_not_block_the_verdict():
+    """3 m from an existing tree is the project's own margin — no norm sets
+    one — so keeping it is not a legal check awaiting review; violating it
+    still fails. (The unknown-network buffer above stands in for an unknown
+    norm and keeps NEEDS_REVIEW.)"""
+    buffer_rule = RegulatoryRule(
+        id="TREE_EXISTING_TREE_MIN_DISTANCE",
+        appliesTo={"planting_type": ["TREE"], "obstacle_type": ["EXISTING_TREE"]},
+        constraint={"type": "min_distance", "distance_m": 3.0, "units": "m"},
+        source=RuleSource(document="tech"), status="verified",
+        severity="hard", role="safe_buffer")
+    reg = _registry(buffer_rule, _inside_rule())
+    idx = _mini_idx()
+    idx.by_entity["tree1"] = Point(60, 50).buffer(0.3)
+    idx.by_category["EXISTING_TREE"] = ["tree1"]
+    ok = validate_plan([_tree(30, 50)], idx, reg, SITE, SITE)
+    assert ok["regulatory"]["status"] == "COMPLIANT"
+    assert not ok["regulatory"]["blockers"]
+    bad = validate_plan([_tree(61, 50)], idx, reg, SITE, SITE)
+    assert bad["regulatory"]["status"] == "NON_COMPLIANT"
 
 
 # ---------------------------------------------------------------------------
