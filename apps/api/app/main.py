@@ -506,6 +506,123 @@ def get_iteration(pid: str, iteration_id: str):
     return _find_iteration(pid, iteration_id)
 
 
+@app.get("/api/projects/{pid}/placements/check")
+def live_position_check(pid: str, x: float, y: float, kind: str = "TREE",
+                        speciesId: str = "tree_linden",
+                        excludeId: str | None = None):
+    """Stateless live check for drag preview: how does a hypothetical position
+    correlate with every effective document condition. Deterministic geometry
+    only; no writes. Called throttled while the user drags a planting."""
+    rt = _get_rt(pid)
+    registry = pipeline.ensure_registry(rt)
+    idx = pipeline.ensure_geometry(rt)
+    constraints = pipeline.ensure_constraints(rt)
+    species = next((s for s in load_species() if s["id"] == speciesId), None)
+    crown = species["parameters"]["crownRadiusM"] if species else 2.0
+
+    pl = Placement(id=excludeId or "probe", kind=kind, speciesId=speciesId,
+                   x=x, y=y, crownRadiusM=crown)
+    oracle = RuleDistanceOracle(idx)
+    exp = build_explanation(pl, 0, registry, oracle, constraints.site_boundary,
+                            site_boundary_source=constraints.site_boundary_kind)
+
+    # same-kind spacing vs other placements of the selected iteration
+    spacing = None
+    try:
+        rec = _selected_iteration(pid)
+        others = [q for q in rec["placements"]
+                  if q["kind"] == kind and q["id"] != excludeId]
+        if others:
+            import math as _m
+            nearest = min(_m.dist((x, y), tuple(q["position"])) for q in others)
+            srule = next((r for r in registry.rules_for(kind, {"min_spacing"})
+                          if r.effective_distance_m), None)
+            if srule:
+                spacing = {"ruleId": srule.id, "nearestM": round(nearest, 2),
+                           "requiredM": srule.effective_distance_m,
+                           "role": srule.role,
+                           "result": "PASS" if nearest >= srule.effective_distance_m - 1e-9
+                                     else ("WARNING" if srule.role == "design_heuristic"
+                                           else "FAIL")}
+    except HTTPException:
+        pass  # no generation yet — pure position probe
+
+    from shapely.geometry import Point as _P
+    inside_allowed = bool(constraints.allowed_area and
+                          constraints.allowed_area.covers(_P(x, y)))
+    in_visibility = any(z.geometry.covers(_P(x, y))
+                        for z in constraints.visibility_zones())
+
+    checks = [c for c in exp["checks"] if c["result"] != "NOT_APPLICABLE"]
+    has_fail = any(c["result"] == "FAIL" for c in checks) or in_visibility or \
+               (spacing is not None and spacing["result"] == "FAIL")
+    has_unverified = any(c["result"] == "UNVERIFIED" for c in checks)
+    verdict = ("VIOLATIONS" if has_fail
+               else "UNVERIFIED" if has_unverified else "OK")
+    return {"position": [round(x, 3), round(y, 3)], "verdict": verdict,
+            "insideAllowed": inside_allowed, "inVisibilityTriangle": in_visibility,
+            "spacing": spacing, "checks": checks}
+
+
+class MoveRequest(BaseModel):
+    position: tuple[float, float]
+    iterationId: str | None = None
+
+
+@app.post("/api/projects/{pid}/placements/{placement_id}/move")
+def move_placement(pid: str, placement_id: str, body: MoveRequest):
+    """Persist a manual move: update the placement, recompute its distances,
+    re-run the FULL deterministic validation + regulatory verdict for the
+    iteration and store it (with a manual-edit audit trail)."""
+    import time as _time
+    rt = _get_rt(pid)
+    registry = pipeline.ensure_registry(rt)
+    idx = pipeline.ensure_geometry(rt)
+    constraints = pipeline.ensure_constraints(rt)
+
+    rec = (_find_iteration(pid, body.iterationId) if body.iterationId
+           else _selected_iteration(pid))
+    target = next((q for q in rec["placements"] if q["id"] == placement_id), None)
+    if target is None:
+        _err(404, "PLACEMENT_NOT_FOUND", f"No placement {placement_id} in iteration")
+
+    old_pos = list(target["position"])
+    nx, ny = float(body.position[0]), float(body.position[1])
+    target["position"] = [round(nx, 3), round(ny, 3)]
+    target["manuallyMoved"] = True
+
+    # recompute this placement's stored distances
+    from .services.candidates import DistanceOracle
+    d_oracle = DistanceOracle(idx, constraints.site_boundary)
+    from shapely.geometry import Point as _P
+    feats = d_oracle.features_for(_P(nx, ny))
+    target["distances"] = {k: (round(v, 2) if v is not None else None)
+                           for k, v in feats.items()}
+
+    placements = [Placement(id=q["id"], kind=q["kind"], speciesId=q["speciesId"],
+                            x=q["position"][0], y=q["position"][1],
+                            crownRadiusM=q["crownRadiusM"], score=q.get("score", 0))
+                  for q in rec["placements"]]
+    validation = validate_plan(placements, idx, registry,
+                               constraints.site_boundary, constraints.allowed_area,
+                               site_boundary_source=constraints.site_boundary_kind,
+                               visibility_zones=constraints.visibility_zones())
+    rec["validation"] = validation
+    rec["regulatory"] = validation.get("regulatory")
+    rec["metrics"] = {**rec.get("metrics", {}), **validation.get("metrics", {})}
+    rec.setdefault("manualEdits", []).append({
+        "placementId": placement_id, "from": old_pos,
+        "to": target["position"], "at": _time.time()})
+    store.save_json(pid, f"iteration_{rec['runId']}_{rec['index']}", rec)
+
+    return {"placement": target, "validation": {
+                "valid": validation["valid"],
+                "hardViolations": validation["hardViolations"],
+                "warnings": validation.get("warnings", [])},
+            "regulatory": validation.get("regulatory"),
+            "metrics": rec["metrics"]}
+
+
 @app.get("/api/projects/{pid}/placements/{placement_id}/explanation")
 async def get_explanation(pid: str, placement_id: str):
     rt = _get_rt(pid)

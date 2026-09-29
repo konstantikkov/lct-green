@@ -1,5 +1,6 @@
 import { api, ApiError, watchRun } from "../api/client";
-import type { Category, GenerateRequest, PlantKind, ProjectDocument } from "../api/types";
+import { parseRegulatoryVerdict } from "../api/types";
+import type { Category, GenerateRequest, Placement, PlantKind, ProjectDocument } from "../api/types";
 import {
   getState, setState, MASSING_DETAIL_STORAGE_KEY,
   type GenOptions, type MobileTab, type NavView, type Selection, type SheetSnap,
@@ -415,6 +416,73 @@ export function select(selection: Selection) {
   // On mobile, picking something in the viewer opens the Inspector tab.
   if (selection && isMobile()) raiseSheet("inspector");
   if (selection?.type === "placement") void loadExplanation(selection.placement.id);
+}
+
+// --- Manual placement editing (iteration 6) ---------------------------------
+
+export function clearMoveToast() {
+  setState({ moveToast: null });
+}
+
+/**
+ * Persists a drag-move. The backend revalidates the WHOLE iteration
+ * deterministically; the response patches the placement, validation verdict,
+ * regulatory verdict and metrics of the active iteration in place. Moves INTO
+ * a violation are saved AND reported — nothing is silently blocked.
+ */
+export async function movePlacement(placement: Placement, position: [number, number]) {
+  const s = getState();
+  const doc = s.document;
+  const it = s.activeIteration;
+  if (!doc || !it) return;
+  try {
+    const res = await api.movePlacement(doc.projectId, placement.id, position);
+    const cur = getState();
+    const curIt = cur.activeIteration;
+    // Stale guard: the project or iteration changed while the POST was in flight.
+    if (cur.document?.projectId !== doc.projectId || curIt?.iterationId !== it.iterationId) return;
+    const metrics = res.metrics ?? curIt.metrics;
+    const regulatory = parseRegulatoryVerdict(res.regulatory) ?? curIt.regulatory ?? null;
+    const updated = {
+      ...curIt,
+      placements: curIt.placements.map((p) => (p.id === res.placement.id ? res.placement : p)),
+      validation: {
+        ...curIt.validation,
+        valid: res.validation.valid,
+        hardViolations: res.validation.hardViolations,
+        warnings: res.validation.warnings,
+      },
+      regulatory,
+      metrics,
+    };
+    const n = res.validation.hardViolations.length;
+    setState({
+      activeIteration: updated,
+      iterations: cur.iterations.map((x) =>
+        x.iterationId === curIt.iterationId ? { ...x, metrics, regulatory } : x,
+      ),
+      // The cached compliance audit refers to the pre-move layout.
+      audit: null,
+      auditStatus: "idle",
+      auditError: null,
+      moveToast: res.validation.valid
+        ? { text: "Перемещено — план пересчитан", tone: "ok" }
+        : { text: `Перемещено — есть нарушения (${n})`, tone: "warn" },
+    });
+    // Refresh the Inspector: new position + manuallyMoved + re-fetched checks.
+    if (cur.selection?.type === "placement" && cur.selection.placement.id === placement.id) {
+      select({ type: "placement", placement: res.placement });
+    }
+  } catch (e) {
+    // The viewer already shows the symbol at the dropped position — reinstall
+    // the iteration (fresh object identity) so it rebuilds from the stored
+    // positions, snapping the planting back.
+    const cur = getState();
+    setState({
+      activeIteration: cur.activeIteration ? { ...cur.activeIteration } : null,
+      moveToast: { text: `Не удалось переместить: ${errMsg(e)}`, tone: "error" },
+    });
+  }
 }
 
 // --- Compliance audit (iteration 3) -----------------------------------------

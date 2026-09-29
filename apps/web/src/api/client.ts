@@ -1,7 +1,8 @@
 import type {
   CandidateReviewPatch, Capabilities, Category, ChunkInfo, ComplianceAudit,
   ConstraintsResponse, Explanation, Fragment, GenerateRequest, IterationDetail,
-  IterationSummary, LayerInfo, ProjectDocument, ProjectListItem, ProjectSummary,
+  IterationSummary, LayerInfo, MovePlacementResponse, PlacementLiveCheck,
+  PlantKind, ProjectDocument, ProjectListItem, ProjectSummary,
   RegDocument, RegulatoryRule, RuleCandidate, RuleCandidateStatus, RunStatus,
   SpeciesInfo,
 } from "./types";
@@ -116,6 +117,24 @@ export const api = {
 
   getExplanation: (projectId: string, placementId: string) =>
     request<Explanation>(`/api/projects/${projectId}/placements/${placementId}/explanation`),
+
+  /** Iteration 6: stateless live check for drag preview (no writes). */
+  checkPlacementPosition: (projectId: string, q: {
+    x: number; y: number; kind: PlantKind; speciesId: string; excludeId?: string;
+  }) => {
+    const qs = new URLSearchParams({
+      x: String(q.x), y: String(q.y), kind: q.kind, speciesId: q.speciesId,
+    });
+    if (q.excludeId) qs.set("excludeId", q.excludeId);
+    return request<PlacementLiveCheck>(`/api/projects/${projectId}/placements/check?${qs}`);
+  },
+
+  /** Iteration 6: persists a manual move and revalidates the whole iteration. */
+  movePlacement: (projectId: string, placementId: string, position: [number, number]) =>
+    request<MovePlacementResponse>(
+      `/api/projects/${projectId}/placements/${placementId}/move`,
+      json({ position }),
+    ),
 
   exportDxfUrl: (projectId: string) => `/api/projects/${projectId}/export/dxf`,
   exportReportUrl: (projectId: string) => `/api/projects/${projectId}/export/report`,

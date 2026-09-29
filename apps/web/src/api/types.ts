@@ -398,6 +398,8 @@ export interface Placement {
   crownRadiusM: number;
   score: number;
   distances: Record<string, number | null>;
+  /** Iteration 6: true after POST /placements/{id}/move. */
+  manuallyMoved?: boolean;
 }
 
 /** Iteration 5: structured design-heuristic warning. Old stored reports may
@@ -453,6 +455,48 @@ export interface Explanation {
   summary: string;
   llmNarrative: string | null;
   checks: ExplanationCheck[];
+}
+
+// ---------------------------------------------------------------------------
+// Manual placement editing (iteration 6) — docs/API_CONTRACT.md.
+// ---------------------------------------------------------------------------
+
+export type LiveCheckVerdict = "OK" | "UNVERIFIED" | "VIOLATIONS";
+
+/** Same shape as ExplanationCheck plus the rule's role. */
+export interface LiveCheck extends ExplanationCheck {
+  role?: RuleRole | null;
+}
+
+export interface LiveSpacingCheck {
+  ruleId: string;
+  nearestM: number | null;
+  requiredM: number;
+  role?: RuleRole | null;
+  result: "PASS" | "WARNING" | "FAIL";
+}
+
+/** GET /placements/check — stateless live check for drag preview. */
+export interface PlacementLiveCheck {
+  position: [number, number];
+  verdict: LiveCheckVerdict;
+  insideAllowed: boolean;
+  inVisibilityTriangle: boolean;
+  spacing: LiveSpacingCheck | null;
+  checks: LiveCheck[];
+}
+
+/** POST /placements/{id}/move — persists and revalidates the iteration. */
+export interface MovePlacementResponse {
+  placement: Placement;
+  validation: {
+    valid: boolean;
+    hardViolations: ValidationReport["hardViolations"];
+    warnings: ValidationReport["warnings"];
+  };
+  /** Parse with parseRegulatoryVerdict (defensive). */
+  regulatory?: unknown;
+  metrics?: IterationSummary["metrics"];
 }
 
 // ---------------------------------------------------------------------------

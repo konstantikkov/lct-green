@@ -118,11 +118,16 @@ function PlacementInspector({ placement }: { placement: Placement }) {
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1 flex items-center gap-2">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-ink-100">
             {sp?.displayNameRu || sp?.displayName || placement.speciesId}
           </span>
           <Badge tone={placement.kind === "TREE" ? "green" : "blue"}>{KIND_LABELS[placement.kind] ?? placement.kind}</Badge>
+          {placement.manuallyMoved && (
+            <Badge tone="amber" title="Позиция изменена вручную; итерация пересчитана детерминированно">
+              Перемещено вручную
+            </Badge>
+          )}
         </div>
         <KV k="id" v={placement.id} />
         <KV

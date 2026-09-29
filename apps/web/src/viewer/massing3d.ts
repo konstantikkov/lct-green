@@ -87,6 +87,8 @@ export interface Massing3DBuild {
    * by SceneManager without a rebuild; null when the document has none.
    */
   detailGroup: THREE.Group | null;
+  /** Trunk instances by placement id — lets drag-move shift the trunk too. */
+  trunkIndex: { mesh: THREE.InstancedMesh; indexById: Map<string, number> } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -807,6 +809,7 @@ export function buildMassing3D(
   }
   let trunks: THREE.InstancedMesh | null = null;
   let trunkIdx = 0;
+  const trunkIndexById = new Map<string, number>();
   if (treeCount > 0) {
     // Unit trunk: base radius 1 tapering to 0.55, height 1, base at z=0.
     const trunkGeo = new THREE.CylinderGeometry(0.55, 1, 1, 7, 1);
@@ -851,6 +854,7 @@ export function buildMassing3D(
         trunks.setMatrixAt(trunkIdx, m);
         jitterColor(color, TRUNK_HSL, seed, 9);
         trunks.setColorAt(trunkIdx, color);
+        trunkIndexById.set(p.id, trunkIdx);
         trunkIdx++;
       }
     }
@@ -866,6 +870,25 @@ export function buildMassing3D(
   }
   if (treesGroup.children.length > 0) group.add(treesGroup);
   if (shrubsGroup.children.length > 0) group.add(shrubsGroup);
+
+  // ---- manually-moved markers: flat dashed-look ring under the plant --------
+  const movedPlacements = placements.filter((p) => p.manuallyMoved);
+  if (movedPlacements.length > 0) {
+    const marks = new THREE.Group();
+    marks.name = "movedMarks3d";
+    const markMat = new THREE.MeshBasicMaterial({
+      color: theme === "dark" ? 0xfbbf24 : 0xd97706,
+      transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide,
+    });
+    for (const p of movedPlacements) {
+      const r = Math.max(p.crownRadiusM, 0.5);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r * 1.08, r * 1.2, 36), markMat);
+      ring.position.set(p.position[0], p.position[1], 0.18);
+      ring.raycast = () => {};
+      marks.add(ring);
+    }
+    group.add(marks);
+  }
 
   // ---- existing vegetation --------------------------------------------------
   const veg: { x: number; y: number; r: number; id: string }[] = [];
@@ -1117,5 +1140,11 @@ export function buildMassing3D(
   const hasDetail = detailGroup.children.length > 0;
   if (hasDetail) group.add(detailGroup);
 
-  return { group, pickMeshes, fog, detailGroup: hasDetail ? detailGroup : null };
+  return {
+    group,
+    pickMeshes,
+    fog,
+    detailGroup: hasDetail ? detailGroup : null,
+    trunkIndex: trunks ? { mesh: trunks, indexById: trunkIndexById } : null,
+  };
 }

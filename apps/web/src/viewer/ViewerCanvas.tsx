@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { SceneManager, type HoverHit } from "./SceneManager";
+import { DragChecker, dragAnnotationHtml } from "./dragCheck";
 import { hud } from "./hud";
 import { useApp, getState, type ViewMode } from "../state/store";
-import { select, setMassingDetail, setViewMode } from "../state/actions";
+import { clearMoveToast, movePlacement, select, setMassingDetail, setViewMode } from "../state/actions";
 import { getTheme, useTheme } from "../theme";
 
 function esc(s: string): string {
@@ -57,6 +58,45 @@ function Seg({ active, label, title, onClick }: {
   );
 }
 
+/** Places the drag annotation near the cursor — above it when possible so
+ *  neither the mouse pointer nor a finger covers the text. */
+function placeDragTip(tip: HTMLDivElement, box: HTMLDivElement, px: number, py: number) {
+  const bw = box.clientWidth;
+  const bh = box.clientHeight;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  let x = px + 16;
+  if (x + tw > bw - 4) x = Math.max(px - tw - 12, 4);
+  let y = py - th - 16;
+  if (y < 4) y = Math.min(py + 20, Math.max(bh - th - 4, 4));
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+
+/** Auto-dismissing status line after a manual move ("Перемещено — …"). */
+function MoveToast() {
+  const toast = useApp((s) => s.moveToast);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => clearMoveToast(), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+  if (!toast) return null;
+  const tones = {
+    ok: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/90 dark:text-emerald-200",
+    warn: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-950/90 dark:text-amber-200",
+    error: "border-red-300 bg-red-50 text-red-800 dark:border-red-700 dark:bg-red-950/90 dark:text-red-200",
+  } as const;
+  return (
+    <div
+      className={`pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-sm border px-3 py-1.5 text-xs shadow-lg shadow-black/10 dark:shadow-black/40 ${tones[toast.tone]}`}
+      data-testid="move-toast"
+    >
+      {toast.text}
+    </div>
+  );
+}
+
 function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
   return (
     <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
@@ -85,7 +125,10 @@ export function ViewerCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const dragTipRef = useRef<HTMLDivElement>(null);
   const mgrRef = useRef<SceneManager | null>(null);
+  const checkerRef = useRef<DragChecker | null>(null);
+  if (!checkerRef.current) checkerRef.current = new DragChecker();
 
   const doc = useApp((s) => s.document);
   const constraints = useApp((s) => s.constraints);
@@ -131,6 +174,42 @@ export function ViewerCanvas() {
         tip.style.left = `${x}px`;
         tip.style.top = `${y}px`;
       },
+      // Drag-move (iteration 6): the floating annotation is written straight
+      // to the DOM (like the hover tooltip); live checks are throttled to
+      // ~4/s by DragChecker with a trailing call and stale-response guard.
+      onPlacementDrag: (p, x, y, px, py) => {
+        const tip = dragTipRef.current;
+        const box = containerRef.current;
+        if (!tip || !box) return;
+        if (tip.style.display !== "block") {
+          tip.innerHTML = dragAnnotationHtml(null); // "Проверка…"
+          tip.style.display = "block";
+        }
+        tip.dataset.px = String(px);
+        tip.dataset.py = String(py);
+        placeDragTip(tip, box, px, py);
+        const projectId = getState().document?.projectId;
+        if (!projectId) return;
+        checkerRef.current?.request(
+          { projectId, x, y, kind: p.kind, speciesId: p.speciesId, excludeId: p.id },
+          (res) => {
+            if (tip.style.display !== "block") return; // drag already ended
+            tip.innerHTML = dragAnnotationHtml(res);
+            mgrRef.current?.setDragInvalid(res.verdict === "VIOLATIONS");
+            // Re-anchor: the panel height changes with its content.
+            placeDragTip(tip, box, Number(tip.dataset.px), Number(tip.dataset.py));
+          },
+        );
+      },
+      onPlacementDrop: (p, x, y) => {
+        checkerRef.current?.reset();
+        if (dragTipRef.current) dragTipRef.current.style.display = "none";
+        void movePlacement(p, [x, y]);
+      },
+      onPlacementDragCancel: () => {
+        checkerRef.current?.reset();
+        if (dragTipRef.current) dragTipRef.current.style.display = "none";
+      },
     }, getTheme());
     mgrRef.current = mgr;
     return () => {
@@ -164,10 +243,17 @@ export function ViewerCanvas() {
         style={{ display: "none" }}
         className="pointer-events-none absolute z-20 min-w-[160px] max-w-[260px] rounded-sm border border-ink-600 bg-ink-900/95 px-2 py-1.5 text-2xs text-ink-200 shadow-lg shadow-black/10 dark:shadow-black/40"
       />
+      <div
+        ref={dragTipRef}
+        style={{ display: "none" }}
+        data-testid="drag-check-panel"
+        className="pointer-events-none absolute z-30 min-w-[200px] max-w-[300px] rounded-sm border border-ink-600 bg-ink-900/95 px-2 py-1.5 text-2xs text-ink-200 shadow-lg shadow-black/10 dark:shadow-black/40"
+      />
+      <MoveToast />
       <div className="pointer-events-none absolute bottom-2 right-2 hidden font-mono text-2xs text-ink-500 md:block">
         {viewMode === "2d"
-          ? "F — вписать · перетаскивание — сдвиг · колесо — масштаб"
-          : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение"}
+          ? "F — вписать · перетаскивание — сдвиг · колесо — масштаб · выбранную посадку можно перетащить"
+          : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
   );

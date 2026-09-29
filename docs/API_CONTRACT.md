@@ -475,3 +475,23 @@ Rerun retention rule (pipeline, deterministic): a judge-triggered rerun becomes
 the selected iteration ONLY if it is deterministically valid AND the objective
 (0.5·coverage + 0.5·distribution) improves by ≥ 0.02 AND neither component
 drops by more than 0.05; otherwise the previous selection is kept.
+
+## Manual placement editing (iteration 6)
+
+`GET /api/projects/{pid}/placements/check?x&y&kind&speciesId&excludeId`
+Stateless live check for drag preview (throttle client-side; no writes).
+Returns `{position, verdict: OK|UNVERIFIED|VIOLATIONS, insideAllowed,
+inVisibilityTriangle, spacing: {ruleId, nearestM, requiredM, role, result} | null,
+checks: [...build_explanation checks: ruleId, result PASS|FAIL|UNVERIFIED|NOT_APPLICABLE,
+actualM, requiredM, source{document, clause, title, status}, reason]}`.
+`excludeId` removes the dragged placement itself from spacing comparisons.
+
+`POST /api/projects/{pid}/placements/{placementId}/move`
+Body `{position: [x, y], iterationId?}` (defaults to the selected iteration).
+Persists the move, recomputes the placement's stored distances, re-runs the
+FULL deterministic validation + regulatory verdict for the iteration, appends
+`{placementId, from, to, at}` to the iteration's `manualEdits`, sets
+`manuallyMoved: true` on the placement. Returns `{placement, validation
+{valid, hardViolations, warnings}, regulatory, metrics}`. A move INTO a
+violation is saved AND reported (valid=false) — the user sees the consequence;
+nothing is silently blocked or hidden.

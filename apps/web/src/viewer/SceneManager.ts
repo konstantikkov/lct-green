@@ -25,6 +25,25 @@ export interface SceneCallbacks {
   onZoom: (pxPerMeter: number) => void;
   /** rAF-throttled hover; px/py are viewer-local pixels. */
   onHover: (hit: HoverHit, px: number, py: number) => void;
+  /** Dragging a selected planting; x/y in meters, px/py viewer-local pixels. */
+  onPlacementDrag: (p: Placement, x: number, y: number, px: number, py: number) => void;
+  /** Drop at x/y (meters) — the consumer persists the move. */
+  onPlacementDrop: (p: Placement, x: number, y: number) => void;
+  /** Drag aborted (Escape / touch cancel) — visuals already restored. */
+  onPlacementDragCancel: () => void;
+}
+
+/** Transient state of an in-progress placement drag. */
+interface PlacementDragState {
+  placement: Placement;
+  origX: number;
+  origY: number;
+  lastX: number;
+  lastY: number;
+  moved: boolean;
+  tinted: boolean;
+  /** Original 3D crown instance color (restored when the tint clears). */
+  orig3dColor: THREE.Color | null;
 }
 
 // 3D clear color matches the sky-dome horizon so extreme zoom-outs stay seamless.
@@ -75,6 +94,7 @@ export class SceneManager {
   private root3d = new THREE.Group();
   private massing: THREE.Object3D | null = null;
   private pickMeshes3d: PlacementsBuild["pickMeshes"] = [];
+  private trunks3d: { mesh: THREE.InstancedMesh; indexById: Map<string, number> } | null = null;
   private massingDirty = true;
   private fog3d: THREE.Fog | null = null;
   /** "Detailed" extras subgroup (CAD underlay, lanterns, fences). */
@@ -105,6 +125,10 @@ export class SceneManager {
   private downPx = 0;
   private downPy = 0;
 
+  // placement drag-move (iteration 6)
+  private placementDrag: PlacementDragState | null = null;
+  private scratchM = new THREE.Matrix4();
+
   // hover (rAF-throttled)
   private hoverPending = false;
   private hoverPx = 0;
@@ -113,7 +137,7 @@ export class SceneManager {
 
   // touch interaction (pointerType === "touch"; mouse path is untouched)
   private touchPoints = new Map<number, { x: number; y: number }>();
-  private touchMode: "none" | "drag" | "pinch" = "none";
+  private touchMode: "none" | "drag" | "pinch" | "movePlacement" = "none";
   private tapCandidate = false;
   private touchDownTime = 0;
   private pinchDist = 1;
@@ -278,6 +302,13 @@ export class SceneManager {
     this.invalidate();
   }
 
+  /** Tints the dragged planting red while the live check reports violations. */
+  setDragInvalid(invalid: boolean) {
+    const d = this.placementDrag;
+    if (!d || d.tinted === invalid) return;
+    this.applyDragTint(d, invalid);
+  }
+
   /** Live theme switch: recolors CAD linework and rebuilds tinted overlays. */
   setTheme(theme: Theme) {
     if (theme === this.theme) return;
@@ -360,7 +391,7 @@ export class SceneManager {
 
   private loop = () => {
     if (this.disposed) return;
-    if (this.hoverPending && !this.dragging) {
+    if (this.hoverPending && !this.dragging && !this.placementDrag) {
       this.hoverPending = false;
       this.processHover();
     }
@@ -433,6 +464,7 @@ export class SceneManager {
       this.massing = null;
     }
     this.pickMeshes3d = [];
+    this.trunks3d = null;
     this.fog3d = null;
     this.detailGroup3d = null;
     if (this.doc) {
@@ -446,6 +478,7 @@ export class SceneManager {
       );
       this.massing = build.group;
       this.pickMeshes3d = build.pickMeshes;
+      this.trunks3d = build.trunkIndex;
       this.fog3d = build.fog;
       this.detailGroup3d = build.detailGroup;
       if (this.detailGroup3d) this.detailGroup3d.visible = this.massingDetail;
@@ -488,6 +521,122 @@ export class SceneManager {
     const t = -origin.z / direction.z;
     if (t < 0) return null;
     return [origin.x + direction.x * t, origin.y + direction.y * t];
+  }
+
+  // ---------- placement drag-move (iteration 6) ----------
+
+  /** Finds the instanced-mesh slot of a placement in a pick-mesh list. */
+  private instanceOf(
+    list: PlacementsBuild["pickMeshes"], id: string,
+  ): { mesh: THREE.InstancedMesh; index: number } | null {
+    for (const { mesh, placements } of list) {
+      const i = placements.findIndex((p) => p.id === id);
+      if (i >= 0) return { mesh, index: i };
+    }
+    return null;
+  }
+
+  /** Moves every visual of a placement (2D symbol, 3D crown+trunk, ring). */
+  private movePlacementVisual(id: string, x: number, y: number) {
+    const m = this.scratchM;
+    const shift = (mesh: THREE.InstancedMesh, index: number) => {
+      mesh.getMatrixAt(index, m);
+      m.elements[12] = x;
+      m.elements[13] = y;
+      mesh.setMatrixAt(index, m);
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    const hit2d = this.instanceOf(this.pickMeshes, id);
+    if (hit2d) shift(hit2d.mesh, hit2d.index);
+    const hit3d = this.instanceOf(this.pickMeshes3d, id);
+    if (hit3d) shift(hit3d.mesh, hit3d.index);
+    const trunkIdx = this.trunks3d?.indexById.get(id);
+    if (this.trunks3d && trunkIdx != null) shift(this.trunks3d.mesh, trunkIdx);
+    if (this.selectedPlacement?.id === id) {
+      this.selectionRing.position.x = x;
+      this.selectionRing.position.y = y;
+    }
+    this.invalidate();
+  }
+
+  private applyDragTint(d: PlacementDragState, invalid: boolean) {
+    d.tinted = invalid;
+    const red = new THREE.Color(0xef4444);
+    const white = new THREE.Color(0xffffff);
+    const hit2d = this.instanceOf(this.pickMeshes, d.placement.id);
+    if (hit2d) {
+      // setColorAt allocates a zero-filled buffer — prefill with white first
+      // (instanceColor multiplies the symbol texture).
+      if (!hit2d.mesh.instanceColor) {
+        for (let i = 0; i < hit2d.mesh.count; i++) hit2d.mesh.setColorAt(i, white);
+      }
+      hit2d.mesh.setColorAt(hit2d.index, invalid ? red : white);
+      if (hit2d.mesh.instanceColor) hit2d.mesh.instanceColor.needsUpdate = true;
+    }
+    const hit3d = this.instanceOf(this.pickMeshes3d, d.placement.id);
+    if (hit3d) {
+      hit3d.mesh.setColorAt(hit3d.index, invalid ? red : (d.orig3dColor ?? white));
+      if (hit3d.mesh.instanceColor) hit3d.mesh.instanceColor.needsUpdate = true;
+    }
+    this.invalidate();
+  }
+
+  private startPlacementDrag(p: Placement) {
+    let orig3dColor: THREE.Color | null = null;
+    const hit3d = this.instanceOf(this.pickMeshes3d, p.id);
+    if (hit3d?.mesh.instanceColor) {
+      orig3dColor = new THREE.Color();
+      hit3d.mesh.getColorAt(hit3d.index, orig3dColor);
+    }
+    this.placementDrag = {
+      placement: p,
+      origX: p.position[0],
+      origY: p.position[1],
+      lastX: p.position[0],
+      lastY: p.position[1],
+      moved: false,
+      tinted: false,
+      orig3dColor,
+    };
+    this.canvas.style.cursor = "grabbing";
+    this.clearHover();
+  }
+
+  /** clientX/Y in screen px, px/py viewer-local px (world-lookup source). */
+  private updatePlacementDrag(clientX: number, clientY: number, px: number, py: number) {
+    const d = this.placementDrag;
+    if (!d) return;
+    // 3px dead zone distinguishes click (re-pick) from an actual move.
+    if (!d.moved && Math.hypot(clientX - this.downPx, clientY - this.downPy) < 3) return;
+    d.moved = true;
+    const wp = this.mode === "2d" ? this.screenToWorld(px, py) : this.groundPoint(px, py);
+    if (!wp) return; // 3D ray missed the ground plane — keep the last position
+    d.lastX = wp[0];
+    d.lastY = wp[1];
+    this.movePlacementVisual(d.placement.id, wp[0], wp[1]);
+    this.cb.onPlacementDrag(d.placement, wp[0], wp[1], px, py);
+  }
+
+  /** Drop: commit if actually moved, otherwise treat as a plain click. */
+  private finishPlacementDrag() {
+    const d = this.placementDrag;
+    if (!d) return;
+    this.placementDrag = null;
+    if (d.tinted) this.applyDragTint(d, false);
+    this.canvas.style.cursor = "grab";
+    if (d.moved) this.cb.onPlacementDrop(d.placement, d.lastX, d.lastY);
+    else this.cb.onPickPlacement(d.placement);
+  }
+
+  /** Escape / pointer-cancel: restore the original position. */
+  private cancelPlacementDrag() {
+    const d = this.placementDrag;
+    if (!d) return;
+    this.placementDrag = null;
+    if (d.tinted) this.applyDragTint(d, false);
+    this.movePlacementVisual(d.placement.id, d.origX, d.origY);
+    this.canvas.style.cursor = "default";
+    this.cb.onPlacementDragCancel();
   }
 
   private applyVisibility() {
@@ -545,7 +694,12 @@ export class SceneManager {
 
   private processHover() {
     const hit = this.pickAt(this.hoverPx, this.hoverPy);
-    this.canvas.style.cursor = hit ? "pointer" : "default";
+    // The selected planting is draggable — signal it with a grab cursor.
+    this.canvas.style.cursor = hit
+      ? hit.kind === "placement" && hit.placement.id === this.selectedPlacement?.id
+        ? "grab"
+        : "pointer"
+      : "default";
     const key = hit == null
       ? null
       : hit.kind === "placement" ? `p:${hit.placement.id}` : `z:${hit.zone.id}`;
@@ -575,6 +729,19 @@ export class SceneManager {
         return;
       }
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+      // Pointer-down on the SELECTED planting starts a drag-move; anywhere
+      // else keeps the existing pan/orbit behavior.
+      if (e.button === 0 && this.selectedPlacement) {
+        const rect = c.getBoundingClientRect();
+        const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
+        if (hit?.kind === "placement" && hit.placement.id === this.selectedPlacement.id) {
+          this.downPx = e.clientX;
+          this.downPy = e.clientY;
+          c.setPointerCapture(e.pointerId);
+          this.startPlacementDrag(hit.placement);
+          return;
+        }
+      }
       this.dragging = true;
       this.dragButton = e.button;
       this.panned = false;
@@ -599,6 +766,11 @@ export class SceneManager {
       } else {
         const gp = this.groundPoint(px, py);
         if (gp) this.cb.onCursor(gp[0], gp[1]);
+      }
+
+      if (this.placementDrag) {
+        this.updatePlacementDrag(e.clientX, e.clientY, px, py);
+        return;
       }
 
       if (this.dragging) {
@@ -646,6 +818,9 @@ export class SceneManager {
     c.addEventListener("pointercancel", (e) => {
       if (e.pointerType === "touch") {
         this.onTouchUp(e, true);
+      } else if (this.placementDrag) {
+        this.cancelPlacementDrag();
+        if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
       } else if (this.dragging) {
         this.dragging = false;
         if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
@@ -657,7 +832,16 @@ export class SceneManager {
         this.onTouchUp(e, false);
         return;
       }
-      if (!this.dragging) return;
+      if (this.placementDrag) {
+        if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+        this.finishPlacementDrag();
+        return;
+      }
+      if (!this.dragging) {
+        // e.g. drag cancelled via Escape while the button was still down
+        if (c.hasPointerCapture(e.pointerId)) c.releasePointerCapture(e.pointerId);
+        return;
+      }
       this.dragging = false;
       c.releasePointerCapture(e.pointerId);
       if (!this.panned && e.button === 0) {
@@ -702,12 +886,24 @@ export class SceneManager {
     this.canvas.setPointerCapture(e.pointerId);
     this.clearHover();
     if (this.touchPoints.size === 1) {
-      this.touchMode = "drag";
       this.tapCandidate = true;
       this.touchDownTime = performance.now();
       this.lastPx = this.downPx = e.clientX;
       this.lastPy = this.downPy = e.clientY;
+      // Touch on the SELECTED planting drags it; anywhere else pans as before.
+      if (this.selectedPlacement) {
+        const rect = this.canvas.getBoundingClientRect();
+        const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
+        if (hit?.kind === "placement" && hit.placement.id === this.selectedPlacement.id) {
+          this.touchMode = "movePlacement";
+          this.startPlacementDrag(hit.placement);
+          return;
+        }
+      }
+      this.touchMode = "drag";
     } else if (this.touchPoints.size === 2) {
+      // A second finger during a placement move aborts it — pinch wins.
+      if (this.touchMode === "movePlacement") this.cancelPlacementDrag();
       this.touchMode = "pinch";
       this.tapCandidate = false;
       this.updatePinchBase();
@@ -768,6 +964,21 @@ export class SceneManager {
       return;
     }
 
+    if (this.touchMode === "movePlacement") {
+      // 8px dead zone — a quick tap on the selected planting is still a pick.
+      if (this.tapCandidate &&
+          Math.hypot(e.clientX - this.downPx, e.clientY - this.downPy) >= 8) {
+        this.tapCandidate = false;
+      }
+      if (!this.tapCandidate) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.updatePlacementDrag(
+          e.clientX, e.clientY, e.clientX - rect.left, e.clientY - rect.top,
+        );
+      }
+      return;
+    }
+
     if (this.touchMode === "drag") {
       // 8px dead zone distinguishes tap (pick) from drag.
       if (this.tapCandidate &&
@@ -798,6 +1009,14 @@ export class SceneManager {
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
 
     if (this.touchPoints.size === 0) {
+      if (this.touchMode === "movePlacement") {
+        this.touchMode = "none";
+        this.tapCandidate = false;
+        if (cancelled) this.cancelPlacementDrag();
+        else this.finishPlacementDrag(); // drop if moved, plain pick otherwise
+        this.canvas.style.cursor = "default";
+        return;
+      }
       const isTap = !cancelled && this.touchMode === "drag" && this.tapCandidate &&
         performance.now() - this.touchDownTime < 250;
       this.touchMode = "none";
@@ -822,6 +1041,10 @@ export class SceneManager {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && this.placementDrag) {
+      this.cancelPlacementDrag();
+      return;
+    }
     if (e.key === "f" || e.key === "F") {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;

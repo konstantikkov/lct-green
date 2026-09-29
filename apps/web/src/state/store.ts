@@ -116,6 +116,9 @@ export interface AppState {
   explanationLoading: boolean;
   explanationError: string | null;
 
+  /** Brief status toast after a manual placement move (auto-dismissed). */
+  moveToast: { text: string; tone: "ok" | "warn" | "error" } | null;
+
   /** Overall pipeline chip in the top bar. */
   pipelineState: PipelineState | null;
 
@@ -223,6 +226,7 @@ const initialState: AppState = {
   explanation: null,
   explanationLoading: false,
   explanationError: null,
+  moveToast: null,
   pipelineState: null,
   mobileTab: "panel",
   sheetSnap: "peek",

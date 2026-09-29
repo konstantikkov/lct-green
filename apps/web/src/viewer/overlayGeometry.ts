@@ -161,6 +161,37 @@ export function buildPlacementsGroup(placements: Placement[], theme: Theme): Pla
 
   make(trees, makeTreeSymbolTexture(theme), Z.trees, "trees");
   make(shrubs, makeShrubSymbolTexture(theme), Z.shrubs, "shrubs");
+
+  // Manually-moved plantings get a small dashed ring around the symbol.
+  const moved = placements.filter((p) => p.manuallyMoved);
+  if (moved.length > 0) {
+    const sub = new THREE.Group();
+    sub.name = "movedMarks";
+    const color = theme === "dark" ? 0xfbbf24 : 0xd97706;
+    for (const p of moved) {
+      const r = Math.max(p.crownRadiusM, 0.15) * 1.25;
+      const pts: number[] = [];
+      const SEG = 48;
+      for (let i = 0; i <= SEG; i++) {
+        const a = (i / SEG) * Math.PI * 2;
+        pts.push(p.position[0] + Math.cos(a) * r, p.position[1] + Math.sin(a) * r, Z.selection - 0.02);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      const line = new THREE.Line(
+        geo,
+        new THREE.LineDashedMaterial({
+          color, dashSize: Math.max(r * 0.18, 0.05), gapSize: Math.max(r * 0.12, 0.03),
+          transparent: true, opacity: 0.9,
+        }),
+      );
+      line.computeLineDistances();
+      line.raycast = () => {};
+      line.frustumCulled = false;
+      sub.add(line);
+    }
+    group.add(sub);
+  }
   return { group, pickMeshes };
 }
 
