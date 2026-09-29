@@ -595,3 +595,31 @@ def test_upload_zip_package_endpoint(tmp_path, monkeypatch):
 
         bad = client.post("/api/projects", files={"file": ("x.zip", b"not a zip", "application/zip")})
         assert bad.status_code == 422
+
+
+def test_oda_failure_falls_back_to_libredwg(tmp_path, monkeypatch):
+    """ODA is preferred when installed; a file it cannot convert goes to
+    LibreDWG instead of failing the whole upload."""
+    from app.services.dwg_converter import ConverterInfo, DwgConversionError, DwgConverter
+    conv = DwgConverter(ConverterInfo(True, "oda", "/usr/local/bin/oda-convert",
+                                      fallback="/opt/libredwg/bin/dwg2dxf"))
+    calls = []
+
+    def oda_fails(self, src, out):
+        raise DwgConversionError("DWG_CONVERSION_FAILED", "ODA File Converter produced no DXF output.")
+
+    def libredwg(self, src, out, extra_args=(), binary=None):
+        calls.append(binary)
+        out.write_text("0\nEOF\n")
+        return out
+
+    monkeypatch.setattr(DwgConverter, "_convert_oda", oda_fails)
+    monkeypatch.setattr(DwgConverter, "_convert_libredwg", libredwg)
+    src = tmp_path / "a.dwg"
+    src.write_bytes(b"AC1032")
+    out = conv.convert_to_dxf(src, tmp_path / "a.dxf")
+    assert out.read_text().endswith("EOF\n") and calls == ["/opt/libredwg/bin/dwg2dxf"]
+    # without a fallback the ODA error surfaces
+    alone = DwgConverter(ConverterInfo(True, "oda", "/usr/local/bin/oda-convert"))
+    with pytest.raises(DwgConversionError):
+        alone.convert_to_dxf(src, tmp_path / "b.dxf")

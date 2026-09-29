@@ -5,6 +5,7 @@ import { Btn, Spinner } from "./ui";
 import { ConstraintsPanel } from "./panels/ConstraintsPanel";
 import { GeneratePanel } from "./panels/GeneratePanel";
 import { LayersPanel } from "./panels/LayersPanel";
+import { LawnSection } from "./panels/LawnSection";
 import { QualityCard } from "./panels/QualityCard";
 import { RejectionsSection } from "./panels/RejectionsSection";
 
@@ -100,6 +101,7 @@ export function ResultPanelContent() {
     <>
       <ResultSummary />
       <QualityCard />
+      <LawnSection />
       <RejectionsSection />
       <AuditSection />
     </>

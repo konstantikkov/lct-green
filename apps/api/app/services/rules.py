@@ -101,6 +101,8 @@ class RegulatoryRule(BaseModel):
             return bool(self.constraint.get("species"))
         if ctype == "custom_geometry":
             return bool(self.constraint.get("legs_m"))
+        if ctype == "lawn_area":
+            return self.constraint.get("min_width_m") is not None
         return False
 
     @property

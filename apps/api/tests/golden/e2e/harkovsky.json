@@ -1,0 +1,24 @@
+{
+ "sources": {
+  "merged": 9,
+  "missing": 2
+ },
+ "sourcesNotMerged": [
+  "Бортовой камень: missing",
+  "Сетка_Харьковский проезд: missing"
+ ],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:14"
+ ],
+ "trees": 326,
+ "shrubs": 400,
+ "allowedAreaM2": 51228.3,
+ "lawnM2": 118528.3,
+ "rejected": 28382,
+ "topReasons3": [
+  "NARROW_STRIP",
+  "SHRUB_ROAD_MIN_DISTANCE",
+  "TREE_EXISTING_TREE_MIN_DISTANCE"
+ ]
+}

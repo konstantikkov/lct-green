@@ -20,6 +20,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,6 +51,8 @@ class ConverterInfo:
     kind: str | None  # "oda" | "libredwg"
     path: str | None
     detail: str = ""
+    # auto mode with both installed: LibreDWG takes over a file ODA fails on
+    fallback: str | None = None
 
 
 def _which(candidates: list[str]) -> str | None:
@@ -77,9 +80,9 @@ def detect_converter() -> ConverterInfo:
     if mode == "libredwg":
         return ConverterInfo(bool(libre), "libredwg" if libre else None, libre)
 
-    # auto: prefer ODA (better fidelity), fall back to LibreDWG
+    # auto: prefer ODA (better fidelity), fall back to LibreDWG per file
     if oda:
-        return ConverterInfo(True, "oda", oda)
+        return ConverterInfo(True, "oda", oda, fallback=libre)
     if libre:
         return ConverterInfo(True, "libredwg", libre)
     return ConverterInfo(False, None, None,
@@ -89,6 +92,11 @@ def detect_converter() -> ConverterInfo:
 
 class DwgConverter:
     """Converts DWG files to DXF using an external, safely-invoked binary."""
+
+    # ODA runs under xvfb-run (its Linux build has only the xcb Qt plugin);
+    # concurrent xvfb-run -a calls race for a display, so ODA runs one at a
+    # time — a file takes seconds, a whole package well under a minute
+    _oda_lock = threading.Lock()
 
     def __init__(self, info: ConverterInfo | None = None):
         self.info = info or detect_converter()
@@ -107,9 +115,36 @@ class DwgConverter:
         output_path = Path(output_path).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # the same DWG converted before (a repeated upload) comes from the cache
+        from . import cache
+        key = None
+        if cache.enabled():
+            import sys
+            key = cache.make_key("dwg", cache.file_sha256(input_path), str(self.info.kind),
+                                 str(self.info.path), str(self.info.fallback), ",".join(extra_args),
+                                 cache.code_fingerprint(sys.modules[__name__]))
+            hit = cache.get(key)
+            if hit is not None:
+                shutil.copyfile(hit / "out.dxf", output_path)
+                return output_path
+        result = self._convert_uncached(input_path, output_path, extra_args)
+        if key is not None:
+            cache.put(key, lambda d: shutil.copyfile(result, d / "out.dxf"))
+        return result
+
+    def _convert_uncached(self, input_path: Path, output_path: Path,
+                          extra_args: tuple[str, ...]) -> Path:
         if self.info.kind == "libredwg":
             return self._convert_libredwg(input_path, output_path, extra_args)
-        return self._convert_oda(input_path, output_path)
+        try:
+            with self._oda_lock:
+                return self._convert_oda(input_path, output_path)
+        except DwgConversionError as exc:
+            if not self.info.fallback:
+                raise
+            log.warning("ODA File Converter failed on %s (%s); converting with LibreDWG",
+                        input_path.name, exc)
+            return self._convert_libredwg(input_path, output_path, extra_args, self.info.fallback)
 
     def _run(self, argv: list[str]) -> subprocess.CompletedProcess:
         # argv list form — user-controlled names are never interpolated into a shell.
@@ -124,8 +159,9 @@ class DwgConverter:
     _FALLBACK_ARGS = (["--as", "r2000"], ["--minimal"])
 
     def _convert_libredwg(self, input_path: Path, output_path: Path,
-                          extra_args: tuple[str, ...] = ()) -> Path:
-        proc = self._run([str(self.info.path), *extra_args, "-y", "-o", str(output_path), str(input_path)])
+                          extra_args: tuple[str, ...] = (), binary: str | None = None) -> Path:
+        binary = binary or str(self.info.path)
+        proc = self._run([binary, *extra_args, "-y", "-o", str(output_path), str(input_path)])
         if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
             raise DwgConversionError(
                 "DWG_CONVERSION_FAILED",
@@ -135,7 +171,7 @@ class DwgConverter:
             if _has_eof(output_path):
                 break
             log.warning("dwg2dxf output of %s is truncated; retrying with %s", input_path.name, extra)
-            self._run([str(self.info.path), *extra, "-y", "-o", str(output_path), str(input_path)])
+            self._run([binary, *extra, "-y", "-o", str(output_path), str(input_path)])
         if not _has_eof(output_path):
             raise DwgConversionError("DWG_CONVERSION_FAILED",
                                      "dwg2dxf produced an incomplete DXF (no EOF) in every mode")

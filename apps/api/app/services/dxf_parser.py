@@ -338,6 +338,34 @@ def _read_dxf(path: Path, log: list[str]):
             return last_resort(path)
 
 
+def parse_dxf_cached(path: Path, document_id: str, file_name: str, source_format: str = "DXF",
+                     conversion_log: list[str] | None = None) -> CadDocument:
+    """parse_dxf through the ingest cache (app/services/cache.py): the same
+    DXF parsed by the same code comes back without re-reading it."""
+    import json
+    import sys
+    from . import cache
+    from ..models import ir
+    prior = list(conversion_log or [])
+    key = None
+    if cache.enabled():
+        key = cache.make_key("parse", cache.file_sha256(path),
+                             cache.code_fingerprint(sys.modules[__name__], ir))
+        hit = cache.get(key)
+        if hit is not None:
+            data = json.loads((hit / "document.json").read_text(encoding="utf-8"))
+            data.update(documentId=document_id, fileName=file_name, format=source_format,
+                        conversionLog=prior + data["conversionLog"]
+                        + ["parse: taken from the ingest cache (same file, same code)"])
+            return CadDocument.model_validate(data)
+    doc = parse_dxf(path, document_id, file_name, source_format, prior)
+    if key is not None:
+        own_log = doc.conversionLog[len(prior):]
+        cache.put(key, lambda d: (d / "document.json").write_text(
+            json.dumps({**doc.model_dump(), "conversionLog": own_log}, ensure_ascii=False), encoding="utf-8"))
+    return doc
+
+
 def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str = "DXF",
               conversion_log: list[str] | None = None) -> CadDocument:
     _log = list(conversion_log or [])

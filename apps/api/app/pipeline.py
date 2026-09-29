@@ -408,6 +408,13 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
             _set_stage(run_id, "JUDGING", "done",
                        (judge_report or {}).get("decision", "skipped"))
 
+            # lawn (ТЗ §2 п. 3): the unpaved domain outside the shrub beds
+            from .services.lawn import LAWN_RULE_ID, recommend_lawn
+            lawn_rule = registry.get(LAWN_RULE_ID)
+            _, lawn_summary = recommend_lawn(
+                constraints, idx, all_placements,
+                min_width_m=float((lawn_rule.constraint if lawn_rule else {}).get("min_width_m", 1.0)))
+
             decision = (judge_report or {}).get("decision", "ACCEPT")
             iteration_id = f"{run_id}_it{it}"
             iter_record = {
@@ -429,6 +436,7 @@ def _run_generation(pid: str, run_id: str, req: dict) -> None:
                 # ТЗ п. 8: why each rejected candidate may not be planted, with
                 # the norm (counts per reason + evenly spaced samples)
                 "rejections": explain_rejections(rejected_all, constraints, registry, idx),
+                "lawn": lawn_summary,
                 "candidateCount": candidate_total,
                 "validation": validation,
                 "rejectedSpecies": rejected_species,

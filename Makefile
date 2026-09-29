@@ -1,4 +1,4 @@
-.PHONY: dev api web test fixture docker eval
+.PHONY: dev api web test fixture docker eval e2e
 
 # one-command local dev (backend :8000 + frontend :5173)
 dev:
@@ -22,6 +22,12 @@ test:
 
 docker:
 	docker compose up --build
+
+# end-to-end run through the running API with every result checked against
+# the invariants (scripts/invariants.py); results in outputs/e2e/<name>/.
+#   make e2e IN="object.zip other.dxf" [REF="object=designers_plan.dwg"] [E2E_ARGS=--update-golden]
+e2e:
+	python3 apps/api/scripts/e2e_run.py $(IN) $(foreach r,$(REF),--reference "$(r)") $(E2E_ARGS)
 
 # --- evaluation & regression pipeline (WS3) ----------------------------------
 # Level A deterministic checks gate (exit 1); judge benchmark runs in mock

@@ -36,7 +36,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export interface Capabilities {
-  dwgConverter: { available: boolean; kind: string | null; path: string | null };
+  dwgConverter: { available: boolean; kind: string | null; path: string | null; fallback?: string | null };
   localLlm: { enabled: boolean; baseUrl: string | null; model: string | null; reachable: boolean };
 }
 
@@ -476,7 +476,20 @@ export type IterationDetail = IterationSummary & {
   validation: ValidationReport;
   /** absent on iterations computed before reasons were recorded */
   rejections?: Rejections;
+  /** recommended lawn (ТЗ §2 п. 3); absent on older iterations */
+  lawn?: LawnInfo;
 };
+
+export interface LawnInfo {
+  areaM2: number;
+  polygonCount: number;
+  polygons: PolygonWithHoles[];
+  explanation: string;
+  /** rule id in the registry — its source is the norm (743-ПП п. 3.8) */
+  ruleId: string;
+  basis: string;
+  minWidthM: number;
+}
 
 export interface ExplanationCheck {
   ruleId: string;

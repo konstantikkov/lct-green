@@ -44,6 +44,9 @@ def entity_to_geometry(e: IREntity, repair_log: list[str] | None = None) -> Base
             pts = g.get("points") or []
             if len(pts) < 2:
                 return None
+            rings = g.get("rings") or []
+            if e.kind == "polygon" and len(rings) > 1:
+                return _hatch_area(rings, e, repair_log)
             if e.kind == "polygon" and len(pts) >= 3:
                 poly = Polygon(pts)
                 if not poly.is_valid:
@@ -66,18 +69,64 @@ def entity_to_geometry(e: IREntity, repair_log: list[str] | None = None) -> Base
     return None
 
 
+def _hatch_area(rings: list, e: IREntity, repair_log: list[str] | None) -> BaseGeometry | None:
+    """A hatch with several boundary loops, filled by parity as AutoCAD does:
+    an island inside the outer loop is a hole (a lawn or a tree pit inside
+    the asphalt of a cover plan), an island inside that is filled again."""
+    polys = []
+    for r in rings:
+        if len(r) < 3:
+            continue
+        p = Polygon(r)
+        if not p.is_valid:
+            p = p.buffer(0)
+        if not p.is_empty and p.area > 0:
+            polys.append(p)
+    if not polys:
+        return None
+    polys.sort(key=lambda p: -p.area)
+    area = polys[0]
+    if len(polys) <= 200:
+        for p in polys[1:]:
+            area = area.symmetric_difference(p)
+    else:  # many loops: holes inside the outer loop only (two-level parity)
+        inner = unary_union([p for p in polys[1:] if polys[0].contains(p.representative_point())])
+        area = polys[0].difference(inner)
+    if not area.is_valid:
+        area = area.buffer(0)
+        if repair_log is not None:
+            repair_log.append(f"repaired hatch {e.id} ({e.layer})")
+    return None if area.is_empty else area
+
+
+def _linear_categories() -> set[str]:
+    from ..models.ir import UTILITY_CATEGORIES
+    return {"CURB", "FENCE"} | UTILITY_CATEGORIES
+
+
 def build_geometry_index(doc: CadDocument) -> GeometryIndex:
     idx = GeometryIndex()
     lm = doc.layer_map()
+    linear = _linear_categories()
+    outlines = 0
     for e in doc.entities:
         geom = entity_to_geometry(e, idx.repair_log)
         if geom is None or geom.is_empty:
             continue
-        idx.by_entity[e.id] = geom
-        idx.entity_meta[e.id] = e
         li = lm.get(e.layer)
         cat = li.classification.category if li else "UNKNOWN"
+        # a curb, fence or network drawn as a CLOSED outline (a curb ring
+        # around a lawn, a fence around a yard, a cable loop) is still a line:
+        # the ground inside the ring is not the object — measure to the line
+        if cat in linear and geom.geom_type in ("Polygon", "MultiPolygon"):
+            geom = geom.boundary
+            outlines += 1
+        idx.by_entity[e.id] = geom
+        idx.entity_meta[e.id] = e
         idx.by_category.setdefault(cat, []).append(e.id)
+    if outlines:
+        idx.repair_log.append(f"{outlines} closed outline(s) of curbs, fences or networks "
+                              "taken as lines, not areas")
     link_power_line_symbols(idx)
     return idx
 

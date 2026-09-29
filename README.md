@@ -87,7 +87,9 @@ docker compose up --build
 # web: http://localhost:5173   api: http://localhost:8000
 ```
 
-The API image compiles LibreDWG, so DWG upload works out of the box.
+The API image compiles LibreDWG and downloads ODA File Converter from the Open
+Design Alliance at build time, so DWG upload works out of the box (without
+internet access to ODA the build goes on with LibreDWG only).
 Point `LOCAL_LLM_BASE_URL` at a host-side LLM runtime (see below).
 
 ### Local development
@@ -96,15 +98,27 @@ Point `LOCAL_LLM_BASE_URL` at a host-side LLM runtime (see below).
 make install     # pip deps + npm install
 make fixture     # regenerate fixtures/synthetic_site.dxf
 make dev         # api :8000 + vite :5173 (or run `make api` / `make web`)
-make test        # 33 pytest tests
+make test        # pytest suite
+make e2e IN="object.zip"   # end-to-end run through the running API, results checked
 ```
+
+`make e2e` uploads each drawing or xref package, generates, and checks every
+result against invariants (no violations, plantings inside the allowed area,
+every check sourced, AutoCAD-safe DXF) and against the golden metrics in
+`apps/api/tests/golden/e2e/`; pictures and a summary land in
+`outputs/e2e/index.html`. Checked results of the pilot objects are in
+[`examples/`](examples/README.md).
 
 Requirements: Python ≥3.11, Node ≥20. Copy `.env.example` → `.env` as needed.
 
 ## DWG support
 
 DWG is a proprietary binary format; GreenPlan integrates **external converters**
-through `DwgConverter` (no proprietary binaries bundled):
+through `DwgConverter` (no proprietary binaries bundled in this repository).
+The Docker image builds LibreDWG and downloads ODA File Converter — freeware of
+the Open Design Alliance without a redistribution grant — from ODA itself
+(`--build-arg WITH_ODA=0` skips it); ODA runs under `xvfb-run`, and a file ODA
+fails on falls back to LibreDWG:
 
 | Converter | Config |
 |---|---|

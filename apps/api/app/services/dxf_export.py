@@ -19,6 +19,7 @@ LAYERS = {
     "AI_GREENING_EXCLUSIONS": 1,     # red
     "AI_GREENING_DEBUG": 8,          # grey
     "AI_GREENING_REJECTED": 6,       # magenta: rejected candidates + reason
+    "AI_GREENING_LAWN": 82,          # green: recommended lawn (herbaceous cover)
 }
 
 
@@ -60,7 +61,8 @@ def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
                         allowed_area, exclusion_zones, scale_to_meters: float,
                         iteration_index: int, ruleset_version: str,
                         include_debug_zones: bool = True,
-                        rejected_samples: list | None = None) -> Path:
+                        rejected_samples: list | None = None,
+                        lawn=None) -> Path:
     from .cad_package import make_autocad_safe
     doc = ezdxf.readfile(str(original_dxf))
     # the source is LibreDWG output: repair what AutoCAD would reject as a
@@ -89,6 +91,9 @@ def export_greening_dxf(original_dxf: Path, out_path: Path, placements: list,
 
     if allowed_area is not None:
         _add_poly_rings(msp, allowed_area, "AI_GREENING_ALLOWED_ZONE", scale_to_meters)
+
+    if lawn is not None and not lawn.is_empty:
+        _add_poly_rings(msp, lawn, "AI_GREENING_LAWN", scale_to_meters)
 
     if include_debug_zones and exclusion_zones:
         # merged per rule to keep the file light

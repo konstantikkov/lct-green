@@ -1,13 +1,14 @@
 import * as THREE from "three";
-import type { ChunkInfo, ConstraintsResponse, ExclusionZone, Placement } from "../api/types";
+import type { ChunkInfo, ConstraintsResponse, ExclusionZone, Placement, PolygonWithHoles } from "../api/types";
 import { mergeShapeGeometries, ringOutlinePositions, shapeWithHoles, disposeObject } from "./cadGeometry";
 import { makeShrubSymbolTexture, makeTreeSymbolTexture, SYMBOL_PLANE_HALF } from "./plantSymbols";
 import type { Theme } from "../theme";
 
-// Z stacking (ortho top-down): cad=0, allowed=0.1, zones=0.2, chunks=0.3,
-// rejected=0.35, placements=0.4..0.5, selection=0.6
+// Z stacking (ortho top-down): cad=0, allowed=0.1, lawn=0.15, zones=0.2,
+// chunks=0.3, rejected=0.35, placements=0.4..0.5, selection=0.6
 export const Z = {
   allowed: 0.1,
+  lawn: 0.15,
   zones: 0.2,
   chunks: 0.3,
   rejected: 0.35,
@@ -23,6 +24,8 @@ interface OverlayPalette {
   allowed: number;
   allowedFillOpacity: number;
   allowedLineOpacity: number;
+  lawn: number;
+  lawnFillOpacity: number;
   rejected: number;
   chunkGrid: number;
 }
@@ -37,11 +40,13 @@ const PALETTES: Record<Theme, OverlayPalette> = {
   light: {
     zone: 0xdc2626, zoneFillOpacity: 0.09, zoneLineOpacity: 0.4,
     allowed: 0x16a34a, allowedFillOpacity: 0.1, allowedLineOpacity: 0.45,
+    lawn: 0x65a30d, lawnFillOpacity: 0.22,
     rejected: 0x8a93a0, chunkGrid: 0xaab2bc,
   },
   dark: {
     zone: 0xef4444, zoneFillOpacity: 0.12, zoneLineOpacity: 0.55,
     allowed: 0x22c55e, allowedFillOpacity: 0.1, allowedLineOpacity: 0.5,
+    lawn: 0x84cc16, lawnFillOpacity: 0.2,
     rejected: 0x64748b, chunkGrid: 0x475569,
   },
 };
@@ -110,6 +115,40 @@ export function buildAllowedGroup(constraints: ConstraintsResponse, theme: Theme
     line.frustumCulled = false;
     group.add(line);
   }
+  return group;
+}
+
+/** Recommended lawn (ТЗ §2 п. 3): filled polygons with a thin outline. */
+export function buildLawnGroup(polygons: PolygonWithHoles[], theme: Theme): THREE.Group {
+  const pal = PALETTES[theme];
+  const group = new THREE.Group();
+  group.name = "lawn";
+  const shapes: THREE.Shape[] = [];
+  const outline: number[] = [];
+  for (const poly of polygons) {
+    if (!poly.shell || poly.shell.length < 6) continue;
+    shapes.push(shapeWithHoles(poly.shell, poly.holes ?? []));
+    appendAll(outline, ringOutlinePositions([poly.shell, ...(poly.holes ?? [])], Z.lawn + 0.01));
+  }
+  if (shapes.length === 0) return group;
+  const mesh = new THREE.Mesh(
+    mergeShapeGeometries(shapes, Z.lawn),
+    new THREE.MeshBasicMaterial({
+      color: pal.lawn, transparent: true, opacity: pal.lawnFillOpacity, depthWrite: false, side: THREE.DoubleSide,
+    }),
+  );
+  mesh.frustumCulled = false;
+  mesh.raycast = () => {};
+  group.add(mesh);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(outline, 3));
+  const line = new THREE.LineSegments(
+    geo,
+    new THREE.LineBasicMaterial({ color: pal.lawn, transparent: true, opacity: 0.6 }),
+  );
+  line.frustumCulled = false;
+  line.raycast = () => {};
+  group.add(line);
   return group;
 }
 

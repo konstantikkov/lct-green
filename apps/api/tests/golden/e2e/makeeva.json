@@ -1,0 +1,25 @@
+{
+ "sources": {
+  "merged": 15,
+  "missing": 1,
+  "empty": 1
+ },
+ "sourcesNotMerged": [
+  "xref_ИТП_Макеева С. ул: empty",
+  "xref_УО: missing"
+ ],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:3"
+ ],
+ "trees": 1,
+ "shrubs": 8,
+ "allowedAreaM2": 218.3,
+ "lawnM2": 36781.1,
+ "rejected": 9660,
+ "topReasons3": [
+  "SHRUB_ROAD_MIN_DISTANCE",
+  "NARROW_STRIP",
+  "SHRUB_UTILITY_ELECTRICITY_PROTECTION_ZONE"
+ ]
+}

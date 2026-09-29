@@ -1,0 +1,26 @@
+{
+ "sources": {
+  "merged": 33,
+  "missing": 1
+ },
+ "sourcesNotMerged": [
+  "_01_борт: missing"
+ ],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:14"
+ ],
+ "trees": 96,
+ "shrubs": 400,
+ "allowedAreaM2": 15038.3,
+ "lawnM2": 140534.2,
+ "rejected": 52090,
+ "topReasons3": [
+  "NOT_PLANTING_AREA",
+  "TREE_EXISTING_TREE_MIN_DISTANCE",
+  "NARROW_STRIP"
+ ],
+ "refTreesBreakingNormsPct": 56.8,
+ "refShrubsBreakingNormsPct": 60.0,
+ "refTreesInOurAllowedArea": 328
+}

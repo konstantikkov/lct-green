@@ -949,6 +949,41 @@ def make_autocad_safe(doc) -> dict[str, int]:
     return fixes
 
 
+def ingest_package_cached(zip_path: Path, workdir: Path) -> PackageResult:
+    """ingest_package through the ingest cache: the same package uploaded
+    again with the same code and converter comes back in seconds."""
+    import json
+    import sys
+    from . import cache, dwg_converter, dxf_parser
+    key = None
+    if cache.enabled():
+        info = DwgConverter().info
+        key = cache.make_key("package", cache.file_sha256(zip_path), str(info.kind), str(info.fallback),
+                             cache.code_fingerprint(sys.modules[__name__], dxf_parser, dwg_converter))
+        hit = cache.get(key)
+        if hit is not None:
+            workdir.mkdir(parents=True, exist_ok=True)
+            merged = workdir / "merged.dxf"
+            shutil.copyfile(hit / "merged.dxf", merged)
+            meta = json.loads((hit / "package.json").read_text(encoding="utf-8"))
+            sources = [PackageSource(name=s["name"], kind=s["kind"], file=s["file"], prefix=s["prefix"],
+                                     status=s["status"], entities_in=s["entitiesIn"],
+                                     entities_kept=s["entitiesKept"], detail=s["detail"])
+                       for s in meta["sources"]]
+            return PackageResult(merged_dxf=merged, base_file=meta["baseFile"], sources=sources,
+                                 clip=meta["clip"], boundary_layers=meta["boundaryLayers"],
+                                 log=meta["log"] + ["package: taken from the ingest cache "
+                                                    "(same file, same code and converter)"])
+    res = ingest_package(zip_path, workdir)
+    if key is not None:
+        def fill(d: Path) -> None:
+            shutil.copyfile(res.merged_dxf, d / "merged.dxf")
+            (d / "package.json").write_text(json.dumps({**res.to_api(), "log": res.log},
+                                                       ensure_ascii=False), encoding="utf-8")
+        cache.put(key, fill)
+    return res
+
+
 def _safe_prefix(name: str) -> str:
     """Layer-name-safe xref prefix (DXF forbids <>/\\":;?*|=`)."""
     return re.sub(r'[<>/\\":;?*|=`]', "_", name).strip() or "xref"

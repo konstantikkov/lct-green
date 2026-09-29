@@ -6,7 +6,7 @@ import type {
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
 import { buildMassing3D } from "./massing3d";
 import {
-  buildAllowedGroup, buildChunkGridGroup, buildPlacementsGroup,
+  buildAllowedGroup, buildChunkGridGroup, buildLawnGroup, buildPlacementsGroup,
   buildRejectedGroup, buildZonesGroup, swapChild, Z, type PlacementsBuild,
 } from "./overlayGeometry";
 import type { OverlayState, ViewMode } from "../state/store";
@@ -65,6 +65,7 @@ export class SceneManager {
   private allowedObj: THREE.Object3D | null = null;
   private chunksObj: THREE.Object3D | null = null;
   private rejectedObj: THREE.Object3D | null = null;
+  private lawnObj: THREE.Object3D | null = null;
   private placementsObj: THREE.Object3D | null = null;
   private pickMeshes: PlacementsBuild["pickMeshes"] = [];
   private zoneById = new Map<string, ExclusionZone>();
@@ -238,6 +239,10 @@ export class SceneManager {
     this.rejectedObj = swapChild(
       this.slotRoot, this.rejectedObj,
       it ? buildRejectedGroup(it.rejectedCandidates, this.theme) : null,
+    );
+    this.lawnObj = swapChild(
+      this.slotRoot, this.lawnObj,
+      it?.lawn?.polygons?.length ? buildLawnGroup(it.lawn.polygons, this.theme) : null,
     );
     this.massingDirty = true;
     if (this.mode === "3d") this.rebuild3d();
@@ -502,6 +507,7 @@ export class SceneManager {
     if (this.allowedObj) this.allowedObj.visible = o?.allowedArea !== false;
     if (this.chunksObj) this.chunksObj.visible = o?.chunkGrid === true;
     if (this.rejectedObj) this.rejectedObj.visible = o?.rejectedCandidates === true;
+    if (this.lawnObj) this.lawnObj.visible = o?.lawn === true;
     if (this.placementsObj) {
       for (const child of this.placementsObj.children) {
         if (child.name === "trees") child.visible = o?.trees !== false;

@@ -1,0 +1,18 @@
+{
+ "sources": {},
+ "sourcesNotMerged": [],
+ "status": "NEEDS_REVIEW",
+ "blockers": [
+  "UNVERIFIED_HARD_RULES:5"
+ ],
+ "trees": 132,
+ "shrubs": 400,
+ "allowedAreaM2": 20770.5,
+ "lawnM2": 21768.1,
+ "rejected": 2558,
+ "topReasons3": [
+  "ON_OBJECT:BUILDING",
+  "ON_OBJECT:ROAD",
+  "NARROW_STRIP"
+ ]
+}

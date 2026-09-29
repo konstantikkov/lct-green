@@ -20,7 +20,9 @@ from .services import cad_package, classification, dxf_export
 from .services.dwg_converter import DwgConversionError, DwgConverter, detect_converter
 from .services.explain import build_explanation
 from .services.geometry import as_polygon_list
+from .services.lawn import LAWN_RULE_ID, lawn_geometry
 from .services.llm import LocalLLM, capabilities as llm_capabilities
+from .services.rejections import cite
 from .services.rules import load_registry, load_species, save_override
 from .services.validator import Placement, RuleDistanceOracle, validate_plan
 from .regulations.router import router as regulations_router
@@ -50,7 +52,8 @@ async def get_capabilities():
     conv = detect_converter()
     return {
         "dwgConverter": {"available": conv.available, "kind": conv.kind,
-                         "path": conv.path, "detail": conv.detail},
+                         "path": conv.path, "detail": conv.detail,
+                         "fallback": "libredwg" if conv.fallback else None},
         "localLlm": await llm_capabilities(),
     }
 
@@ -205,7 +208,7 @@ async def create_project(file: UploadFile = File(...)):
         store.update_project(pid, state="CONVERTING")
         workdir = config.DATA_DIR / "uploads" / f"{uuid.uuid4().hex}_pkg"
         try:
-            package = await asyncio.to_thread(cad_package.ingest_package, upload_path, workdir)
+            package = await asyncio.to_thread(cad_package.ingest_package_cached, upload_path, workdir)
         except cad_package.PackageError as exc:
             store.update_project(pid, state="FAILED")
             shutil.rmtree(workdir, ignore_errors=True)
@@ -231,9 +234,9 @@ async def create_project(file: UploadFile = File(...)):
             _err(422, exc.code, str(exc))
 
     store.update_project(pid, dxf_path=str(dxf_path), state="PARSING")
-    from .services.dxf_parser import parse_dxf
+    from .services.dxf_parser import parse_dxf_cached
     try:
-        doc = await asyncio.to_thread(parse_dxf, dxf_path, pid, fname, fmt, conversion_log)
+        doc = await asyncio.to_thread(parse_dxf_cached, dxf_path, pid, fname, fmt, conversion_log)
     except Exception as exc:  # noqa: BLE001
         store.update_project(pid, state="FAILED")
         _err(422, "PARSE_FAILED", f"DXF parsing failed: {exc}")
@@ -677,7 +680,8 @@ def export_dxf(pid: str, layers: str = "all"):
         src_dxf, out, placements,
         constraints.allowed_area, constraints.exclusion_zones,
         rt.doc.unitsScaleToMeters, rec["index"], registry.version,
-        rejected_samples=(rec.get("rejections") or {}).get("samples"))
+        rejected_samples=(rec.get("rejections") or {}).get("samples"),
+        lawn=lawn_geometry(rec.get("lawn")))
     return FileResponse(out, filename=out.name, media_type="application/dxf")
 
 
@@ -769,6 +773,9 @@ def export_report(pid: str):
         "placements": rec.get("placements", []),
         "explanations": explanations,
         "rejections": _cited_rejections(rec.get("rejections"), registry),
+        # recommended lawn (ТЗ §2 п. 3) with its norm; geometry is in the DXF
+        "lawn": ({**{k: v for k, v in rec["lawn"].items() if k != "polygons"},
+                  "source": cite(registry, LAWN_RULE_ID)} if rec.get("lawn") else None),
         "disclaimer": headline + " Rules with status=missing_source_data use explicitly "
                       "flagged ASSUMED demo distances (see effectiveSource per check); "
                       "they are NOT verified regulatory values. The LLM judge decision "

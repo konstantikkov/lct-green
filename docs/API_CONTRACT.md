@@ -201,7 +201,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 ### `GET /api/capabilities`
 ```json
 {
-  "dwgConverter": {"available": true, "kind": "libredwg", "path": "/usr/bin/dwg2dxf"},
+  "dwgConverter": {"available": true, "kind": "oda", "path": "/usr/local/bin/oda-convert", "fallback": "libredwg"},
   "localLlm": {"enabled": true, "baseUrl": "http://localhost:8080", "model": "qwen2.5", "reachable": false}
 }
 ```
@@ -285,6 +285,15 @@ geometric reason (`OUTSIDE_SITE`, `NOT_PLANTING_AREA`, `ON_OBJECT:<category>`,
 (document, clause, title, alsoCited, requiredM) or `description`. The DXF
 export has an `AI_GREENING_REJECTED` layer with the sample points, reasons in
 XDATA (`reason=<key>`).
+
+### Lawn (ТЗ §2 п. 3)
+Iteration records carry `lawn: {areaM2, polygonCount, polygons:
+PolygonWithHoles[], explanation, ruleId: "LAWN_RECOMMENDATION", basis,
+minWidthM}` — the planting domain without hard surfaces and shrub beds (utility
+buffers and protection zones are not subtracted: they concern trees and
+shrubs). The JSON report has `lawn` without `polygons` plus `source` (743-ПП
+п. 3.8.1–3.8.2, also cited СП 42 п. 9.6 and ПП РФ № 160 п. 11). The DXF export
+has an `AI_GREENING_LAWN` layer with the lawn outlines.
 
 ### `GET /api/rules` → `RegulatoryRule[]`
 ```ts
