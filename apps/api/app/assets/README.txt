@@ -14,3 +14,13 @@ Blender 4.0 or later is recommended for this library.
 Mesh origins are ground level; reference crown radius is 1.45 m. Planting crown
 radii from the selected plan scale the linked meshes. Forms are illustrative
 and are not an exact botanical depiction of each species in the plan.
+
+Photographic environment and ground maps (CC0, Poly Haven):
+https://polyhaven.com/a/kloofendal_48d_partly_cloudy
+https://polyhaven.com/a/grass_ground
+License: https://polyhaven.com/license (CC0)
+
+environment.hdr: 1K Kloofendal 48d Partly Cloudy HDRI.
+ground_diff.jpg / ground_normal.jpg / ground_rough.jpg: 1K Grass Ground maps.
+Downloaded from https://dl.polyhaven.org/ and bundled for offline rendering.
+The environment and surface appearance are illustrative, not a site survey.

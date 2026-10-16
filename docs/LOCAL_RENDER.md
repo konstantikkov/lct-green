@@ -35,7 +35,7 @@ radius of 1.45 m. Their mesh data and materials are instanced at plan coordinate
 Planting coordinates and crown radii come directly from the selected plan.
 Only classified building, road, sidewalk, parking and green-area polygons become
 surfaces. Unknown objects are retained in the CAD drawing. Building heights
-are illustrative (12 m unless an entity supplies `heightM`); facades, terrain,
+are illustrative (12 m unless an entity supplies `heightM`); regular facade windows are generic. Real facades, terrain,
 and a surveyed 3D environment cannot be recovered from a flat drawing. This is
 an architectural visualization, not a surveyed digital twin. Scene assumptions
 are included in `scene.json`. Production quality requires camera composition,
@@ -113,3 +113,14 @@ bash scripts/install_local_blender.sh /opt/greenplan
 The installer verifies the archive against Blender's published SHA-256 list.
 Downloading happens once at installation; rendering works offline. The host can
 use any compatible installed Blender by setting `BLENDER_EXECUTABLE`.
+
+## Photographic materials
+
+The package includes Poly Haven CC0 photographic ground color/normal/roughness
+maps and an HDR environment. They improve lighting, reflections, and surface
+detail without any runtime downloads. Asset links and license credits ship as
+`ASSET_CREDITS.txt` in each portable package. The photographed HDR environment
+is illustrative, not the actual surroundings of the project. Replace
+`environment.hdr` with a site-matched environment when available; omit it to use
+the procedural sky. Facade windows are generic visual detail. Exported editable
+Blender scenes pack their image resources for portability.

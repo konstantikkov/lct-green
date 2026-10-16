@@ -963,7 +963,7 @@ class RenderSettings(BaseModel):
     azimuth: float = Field(default=225, ge=0, le=360)
     elevation: float = Field(default=23, ge=5, le=85)
     distance: float = Field(default=.8, ge=.2, le=3)
-    exposure: float = Field(default=-1, ge=-4, le=4)
+    exposure: float = Field(default=-.2, ge=-4, le=4)
     target_x: float | None = Field(default=None, allow_inf_nan=False)
     target_y: float | None = Field(default=None, allow_inf_nan=False)
 

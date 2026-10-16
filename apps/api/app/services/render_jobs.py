@@ -37,9 +37,11 @@ def submit(pid, data, settings):
     root = job_dir(pid, jid)
     try:
         root.mkdir(parents=True, exist_ok=True)
-        trees = Path(__file__).parents[1]/'assets'/'trees.blend'
-        if trees.is_file():
-            shutil.copyfile(trees, root/'trees.blend')
+        assets = Path(__file__).parents[1]/'assets'
+        if assets.is_dir():
+            for asset in assets.iterdir():
+                if asset.suffix in {'.blend','.hdr','.jpg'}:
+                    shutil.copyfile(asset,root/asset.name)
         (root/'scene.json').write_text(json.dumps(data), encoding='utf-8')
         _write_status(root/'status.json', {'state':'QUEUED'})
         _active.add(jid)

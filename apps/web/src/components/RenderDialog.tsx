@@ -45,7 +45,7 @@ export function RenderDialog({ projectId }: { projectId: string }) {
     {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Локальный фоторендер">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded border border-ink-600 bg-ink-900 p-5 text-ink-100">
         <div className="flex justify-between gap-4"><h2 className="text-lg">Фоторендер · Cycles</h2><Btn onClick={() => setOpen(false)}>Закрыть</Btn></div>
-        <p className="my-3 text-sm text-ink-300">Посадки — по выбранному плану. Высоты зданий и внешний вид окружения — иллюстративные.</p>
+        <p className="my-3 text-sm text-ink-300">Посадки — по выбранному плану. Высоты, фасады и окружение — иллюстративные.</p>
         <div className="my-3 flex flex-wrap gap-4 text-sm">
           <label>Направление {azimuth}°<input className="block" type="range" min="0" max="360" value={azimuth} onChange={e => setAzimuth(+e.target.value)} /></label>
           <label>Высота камеры {elevation}°<input className="block" type="range" min="5" max="85" value={elevation} onChange={e => setElevation(+e.target.value)} /></label>

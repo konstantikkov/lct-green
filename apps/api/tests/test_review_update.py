@@ -40,7 +40,7 @@ def test_bundle_preserves_planting_coordinates_and_offline_script(tmp_path):
     with ZipFile(dst) as z:
         data = json.loads(z.read('scene.json'))
         assert data['placements'] == placements
-        assert {'plan.dxf','render.py','README.txt','scene.json'} <= set(z.namelist())
+        assert {'plan.dxf','render.py','README.txt','scene.json','ASSET_CREDITS.txt','environment.hdr','ground_diff.jpg'} <= set(z.namelist())
         assert b"scene.render.engine = 'CYCLES'" in z.read('render.py')
         assert data['assumptions']
 

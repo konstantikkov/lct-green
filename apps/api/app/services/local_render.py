@@ -50,7 +50,7 @@ def scene_data(doc, iteration):
             surfaces.append({'category':'BUILDING', 'layer':layer, 'triangles':faces,'height':12})
     return {"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
-            "assumptions": ["2D building footprints use an illustrative 12 m height unless heightM is supplied.",
+            "assumptions": ["Building footprints use illustrative 12 m heights and generic facade windows; these details are not surveyed.",
                             "Vegetation depicts indicative mature form, not a survey of existing trees.",
                             "Unknown layers remain in the accompanying CAD drawing; they are not invented as 3D objects."]}
 
@@ -60,9 +60,13 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
     with ZipFile(path, "w", ZIP_DEFLATED) as z:
         z.writestr("scene.json", json.dumps(scene_data(doc, iteration), ensure_ascii=False))
         z.write(script, "render.py")
-        trees = Path(__file__).parents[1]/'assets'/'trees.blend'
-        if trees.is_file():
-            z.write(trees, 'trees.blend')
+        assets = Path(__file__).parents[1]/'assets'
+        if assets.is_dir():
+            for asset in assets.iterdir():
+                if asset.suffix in {'.blend','.hdr','.jpg'}:
+                    z.write(asset,asset.name)
+            credits = assets/'README.txt'
+            if credits.is_file(): z.write(credits,'ASSET_CREDITS.txt')
         z.write(dxf, "plan.dxf")
         z.writestr("README.txt", "GreenPlan local render — Blender 4.0+ / Cycles\n\n"
                     "Unzip, open a terminal in this directory, then run:\n"

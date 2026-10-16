@@ -21,7 +21,7 @@ def main():
     p.add_argument('--target-x', type=float)
     p.add_argument('--target-y', type=float)
     p.add_argument('--target-z', type=float, default=2)
-    p.add_argument('--exposure', type=float, default=-1)
+    p.add_argument('--exposure', type=float, default=-.2)
     p.add_argument('--elevation', type=float, default=23)
     p.add_argument('--distance', type=float, default=.8)
     p.add_argument('--blend')
@@ -81,6 +81,70 @@ def main():
         bs = m.node_tree.nodes.get('Principled BSDF')
         socket = bs.inputs.get('Subsurface Weight') or bs.inputs.get('Subsurface')
         if socket is not None: socket.default_value = .08
+
+    # Photographic, CC0 ground maps are bundled and loaded entirely offline.
+    asset_root = Path(a.scene).resolve().parent
+    ground_image = asset_root/'ground_diff.jpg'
+    if ground_image.is_file():
+        nodes, links = grass.node_tree.nodes, grass.node_tree.links
+        bs = nodes.get('Principled BSDF')
+        coords = nodes.new('ShaderNodeTexCoord')
+        mapping = nodes.new('ShaderNodeVectorMath'); mapping.operation = 'SCALE'
+        mapping.inputs[3].default_value = .2
+        links.new(coords.outputs['Object'],mapping.inputs[0])
+        for filename, socket in [('ground_diff.jpg','Base Color'),('ground_rough.jpg','Roughness')]:
+            path = asset_root/filename
+            if path.is_file():
+                tex = nodes.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(str(path))
+                if socket == 'Roughness': tex.image.colorspace_settings.name = 'Non-Color'
+                links.new(mapping.outputs[0],tex.inputs['Vector'])
+                if socket == 'Base Color':
+                    tint = nodes.new('ShaderNodeHueSaturation')
+                    tint.inputs['Hue'].default_value=.57
+                    tint.inputs['Saturation'].default_value=1.2
+                    tint.inputs['Value'].default_value=1.15
+                    links.new(tex.outputs['Color'],tint.inputs['Color'])
+                    links.new(tint.outputs['Color'],bs.inputs[socket])
+                else:
+                    links.new(tex.outputs['Color'],bs.inputs[socket])
+        path = asset_root/'ground_normal.jpg'
+        if path.is_file():
+            tex = nodes.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(str(path))
+            tex.image.colorspace_settings.name = 'Non-Color'
+            normal = nodes.new('ShaderNodeNormalMap');normal.inputs['Strength'].default_value = .65
+            links.new(mapping.outputs[0],tex.inputs['Vector'])
+            links.new(tex.outputs['Color'],normal.inputs['Color'])
+            links.new(normal.outputs[0],bs.inputs['Normal'])
+
+    # Generic facade articulation is illustrative; footprints remain CAD-derived.
+    nodes, links = wall.node_tree.nodes, wall.node_tree.links
+    bs = nodes.get('Principled BSDF')
+    coords = nodes.new('ShaderNodeTexCoord'); xyz = nodes.new('ShaderNodeSeparateXYZ')
+    links.new(coords.outputs['Object'],xyz.inputs[0])
+    geometry = nodes.new('ShaderNodeNewGeometry'); normal = nodes.new('ShaderNodeSeparateXYZ')
+    links.new(geometry.outputs['Normal'],normal.inputs[0])
+    def math_node(operation, left, right=None):
+        node = nodes.new('ShaderNodeMath');node.operation = operation
+        if isinstance(left,(int,float)): node.inputs[0].default_value=left
+        else: links.new(left,node.inputs[0])
+        if right is not None:
+            if isinstance(right,(int,float)): node.inputs[1].default_value=right
+            else: links.new(right,node.inputs[1])
+        return node.outputs[0]
+    uv = nodes.new('ShaderNodeMixRGB')
+    links.new(math_node('ABSOLUTE',normal.outputs['X']),uv.inputs[0])
+    links.new(xyz.outputs['X'],uv.inputs[1]);links.new(xyz.outputs['Y'],uv.inputs[2])
+    u=math_node('FRACT',math_node('MULTIPLY',uv.outputs[0],1/3))
+    v=math_node('FRACT',math_node('MULTIPLY',xyz.outputs['Z'],1/3))
+    mask=math_node('MULTIPLY',math_node('GREATER_THAN',u,.18),math_node('LESS_THAN',u,.82))
+    mask=math_node('MULTIPLY',mask,math_node('GREATER_THAN',v,.22))
+    mask=math_node('MULTIPLY',mask,math_node('LESS_THAN',v,.8))
+    mask=math_node('MULTIPLY',mask,math_node('LESS_THAN',math_node('ABSOLUTE',normal.outputs['Z']),.5))
+    mix=nodes.new('ShaderNodeMixRGB');mix.inputs[2].default_value=(.025,.06,.085,1)
+    links.new(bs.inputs['Base Color'].links[0].from_socket,mix.inputs[1])
+    links.new(mask,mix.inputs[0]);links.new(mix.outputs[0],bs.inputs['Base Color'])
+    links.new(math_node('SUBTRACT',.85,math_node('MULTIPLY',mask,.68)),bs.inputs['Roughness'])
+    links.new(math_node('MULTIPLY',mask,.35),bs.inputs['Metallic'])
 
     def mesh(name, verts, faces, mat):
         geo = bpy.data.meshes.new(name)
@@ -190,6 +254,12 @@ def main():
     sky.altitude=.15
     nodes.get('Background').inputs['Strength'].default_value=.18
     world.node_tree.links.new(sky.outputs[0],nodes.get('Background').inputs['Color'])
+    hdr=asset_root/'environment.hdr'
+    if hdr.is_file():
+        environment=nodes.new('ShaderNodeTexEnvironment')
+        environment.image=bpy.data.images.load(str(hdr))
+        world.node_tree.links.new(environment.outputs['Color'],nodes.get('Background').inputs['Color'])
+        nodes.get('Background').inputs['Strength'].default_value=.65
     bpy.ops.object.light_add(type='SUN', location=(0,0,50))
     sun=bpy.context.object;sun.data.energy=2.5;sun.data.angle=math.radians(2)
     sun.rotation_euler=(math.radians(55),math.radians(-15),math.radians(-35))
@@ -200,7 +270,9 @@ def main():
     bpy.ops.object.camera_add(location=target+Vector((dist*math.cos(el)*math.cos(az),dist*math.cos(el)*math.sin(az),dist*math.sin(el))))
     cam=bpy.context.object;cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
     cam.data.lens=36;cam.data.clip_end=max(span*10,1000);scene.camera=cam
-    if a.blend: bpy.ops.wm.save_as_mainfile(filepath=str(Path(a.blend).resolve()))
+    if a.blend:
+        bpy.ops.file.pack_all()
+        bpy.ops.wm.save_as_mainfile(filepath=str(Path(a.blend).resolve()))
     try:
         bpy.ops.render.render(write_still=True)
     except RuntimeError as exc:
