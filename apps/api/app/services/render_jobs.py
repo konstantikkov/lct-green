@@ -1,6 +1,7 @@
 """Bounded CPU-only Blender worker. No shell commands or external rendering API."""
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,7 +28,7 @@ def job_dir(pid, jid):
 
 
 def submit(pid, data, settings):
-    blender = shutil.which('blender')
+    blender = shutil.which(os.environ.get('BLENDER_EXECUTABLE', 'blender'))
     if not blender:
         raise FileNotFoundError('Install Blender on the API host, or download the portable render bundle.')
     if not _slots.acquire(blocking=False):

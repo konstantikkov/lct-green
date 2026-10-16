@@ -11,9 +11,11 @@ addon_utils.enable('add_curve_sapling', default_set=False)
 import add_curve_sapling
 bpy.ops.object.select_all(action='SELECT'); bpy.ops.object.delete(use_global=False)
 assets=set()
-for index, preset in enumerate(('small_maple','white_birch','japanese_maple','quaking_aspen')):
+for index, preset in enumerate(('small_maple','white_birch','small_maple','japanese_maple')):
     params=ast.literal_eval((Path(add_curve_sapling.__file__).parent/'presets'/f'{preset}.py').read_text().split('\n\n')[-1].strip())
-    params.update(seed=42+index,showLeaves=True,bevel=True,useArm=False,armAnim=False,leafAnim=False)
+    params.update(seed=42+index,showLeaves=True,bevel=True,useArm=False,armAnim=False,leafAnim=False,
+                  leafScale=params['leafScale']*1.7,leafScaleX=max(.6,params['leafScaleX']),
+                  leaves=max(48,abs(params['leaves'])*2),levels=min(3,params['levels']))
     before=set(bpy.data.objects)
     bpy.ops.curve.tree_add(**params)
     objects=set(bpy.data.objects)-before

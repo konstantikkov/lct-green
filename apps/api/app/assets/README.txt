@@ -1,7 +1,8 @@
 Botanical render meshes
 
 Four generic trees authored for GreenPlan with Blender's Sapling generator:
-small_maple, white_birch, japanese_maple, quaking_aspen presets, seeds 42–45.
+small_maple, white_birch and japanese_maple presets, seeds 42–45,
+with denser summer foliage and normalized crown radius.
 Sapling / Blender Foundation: https://www.blender.org/
 Sapling implements procedural tree generation based on Weber & Penn (1995).
 

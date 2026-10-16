@@ -100,3 +100,16 @@ when no longer required. Full offline operation needs no LLM or internet.
 
 The bundled tree library is generated offline by the authoring script in
 `apps/api/scripts/create_render_assets.py`; Blender Sapling is not a runtime dependency.
+
+Some distro Blender packages omit CPU denoising. To install an official local
+Blender build with OpenImageDenoise, run:
+
+```sh
+bash scripts/install_local_blender.sh /opt/greenplan
+# Add to the API environment and restart:
+# BLENDER_EXECUTABLE=/opt/greenplan/blender-4.5.3-linux-x64/blender
+```
+
+The installer verifies the archive against Blender's published SHA-256 list.
+Downloading happens once at installation; rendering works offline. The host can
+use any compatible installed Blender by setting `BLENDER_EXECUTABLE`.

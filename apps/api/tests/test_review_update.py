@@ -120,3 +120,16 @@ def test_render_surfaces_keep_hatch_holes_and_disconnected_shells(tmp_path):
     assert sum(Polygon(t).area for t in tris) == 100
     hole=Polygon([(2,2),(4,2),(4,4),(2,4)])
     assert all(Polygon(t).intersection(hole).area == 0 for t in tris)
+
+
+def test_renderer_reconstructs_building_from_line_entities(tmp_path):
+    from app.models.ir import IREntity, LayerInfo, LayerClassification
+    from app.services.local_render import scene_data
+    from shapely.geometry import Polygon
+    cad=ezdxf.new();src=tmp_path/'lines.dxf';cad.saveas(src)
+    doc=parse_dxf(src,'p','lines.dxf')
+    doc.layers=[LayerInfo(name='random-name',classification=LayerClassification(category='BUILDING',source='user'))]
+    pts=[(0,0),(4,0),(4,3),(0,3),(0,0)]
+    doc.entities=[IREntity(id=str(i),layer='random-name',type='LINE',kind='polyline',geometry={'points':[a,b]}) for i,(a,b) in enumerate(zip(pts,pts[1:]))]
+    data=scene_data(doc,{'placements':[]})
+    assert sum(Polygon(t).area for s in data['surfaces'] for t in s['triangles']) == 12
