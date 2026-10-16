@@ -46,6 +46,12 @@ RUN if [ "$WITH_ODA" = "1" ]; then \
 # used only when the wrapper exists (detect_converter checks the file)
 ENV ODA_FILE_CONVERTER_PATH=/usr/local/bin/oda-convert
 
+# Optional CPU rendering worker. The portable bundle also works without this.
+ARG WITH_BLENDER=1
+RUN if [ "$WITH_BLENDER" = "1" ]; then apt-get update \
+    && apt-get install -y --no-install-recommends blender \
+    && rm -rf /var/lib/apt/lists/*; fi
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

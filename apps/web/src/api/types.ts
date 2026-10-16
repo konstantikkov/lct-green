@@ -65,6 +65,7 @@ export interface LayerInfo {
 }
 
 export interface EntityRender {
+  color?: string;
   id: string;
   sourceHandle: string | null;
   type: string;

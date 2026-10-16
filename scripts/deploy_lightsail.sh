@@ -24,7 +24,7 @@ sudo apt-get update -qq
 # libc6-dev is explicit on purpose: bare gcc cannot link, and relying on
 # another package to pull the headers in breaks on slim base images.
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    python3-venv python3-pip nginx gcc make libc6-dev curl > /dev/null
+    python3-venv python3-pip nginx gcc make libc6-dev curl blender > /dev/null
 
 sudo mkdir -p /opt/greenplan && sudo chown "$USER" /opt/greenplan
 tar xzf /tmp/greenplan_api.tar.gz -C /opt/greenplan
@@ -111,6 +111,10 @@ server {
     location = /manifest.webmanifest {
         default_type application/manifest+json;
         add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location ~ ^/(docs|redoc|openapi.json)(/|$) {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
     }
     location /api/ {
         proxy_pass http://127.0.0.1:8000;

@@ -1,3 +1,4 @@
+import { RenderDialog } from "./RenderDialog";
 import { useState } from "react";
 import { api } from "../api/client";
 import { isDebug } from "../debug";
@@ -350,6 +351,18 @@ export function TopBar() {
         </div>
       )}
 
+      {doc && <div className="flex items-center gap-2">
+        <Btn disabled={runActive} onClick={async () => {
+          try {
+            const r = await fetch(`/api/projects/${doc.projectId}/refresh-import`, {method: "POST"});
+            if (!r.ok) throw new Error(await r.text());
+            await openProject(doc.projectId);
+            window.alert("Импорт обновлён. Сгенерируйте план заново для проверки по полной геометрии.");
+          } catch (e) { window.alert(String(e)); }
+        }} title="Повторно прочитать сохранённый CAD новым импортёром; после обновления пересчитайте план">Обновить импорт</Btn>
+        <Btn onClick={() => window.open(`/api/projects/${doc.projectId}/cad-preview.svg`, "_blank")} title="Исходный CAD: текст, штриховки, блоки и цвета без фильтрации по классификации">CAD оригинал</Btn>
+        {hasIterations && <RenderDialog key={doc.projectId} projectId={doc.projectId} />}
+      </div>}
       {doc && <MobileOverflowMenu />}
 
       <ThemeToggle />

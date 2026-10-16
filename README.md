@@ -276,3 +276,9 @@ See [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). Highlights:
 `GET .../constraints`, `POST .../generate`, `GET .../runs/{id}/events` (SSE),
 `GET .../iterations/{id}`, `GET .../placements/{id}/explanation`,
 `GET .../export/dxf`, `GET .../export/report`, `GET/PATCH /api/rules`.
+
+## Local Cycles rendering and source CAD preview
+
+See [local rendering and CAD import update](docs/LOCAL_RENDER.md) for offline
+Blender rendering, arbitrary layer mappings, source CAD preview, and refreshing
+previously imported projects.

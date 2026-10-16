@@ -29,7 +29,7 @@ export function categoryColor(cat: Category, theme: Theme): string {
 }
 
 export function layerColor(layer: LayerInfo, theme: Theme): string {
-  return categoryColor(layer.classification.category, theme);
+  return layer.color || (theme === "light" ? "#344054" : "#cad4e0");
 }
 
 /** Groups keyed by layer name; each group holds merged geometry for that layer. */
@@ -72,12 +72,16 @@ export function buildCadGroups(
     group.name = `layer:${name}`;
 
     const linePositions: number[] = [];
+    const lineColors: number[] = [];
     const pointPositions: number[] = [];
     const fillShapes: THREE.Shape[] = [];
 
     for (const e of ents) {
       if (e.kind === "polyline" || e.kind === "polygon") {
+        const before = linePositions.length;
         appendSegments(linePositions, e.points, e.kind === "polygon" || e.closed === true);
+        const nativeColor = new THREE.Color(e.color || color);
+        for (let i = before; i < linePositions.length; i += 3) lineColors.push(nativeColor.r, nativeColor.g, nativeColor.b);
         if (isBuilding && (e.kind === "polygon" || e.closed) && e.points.length >= 6) {
           fillShapes.push(shapeFromFlat(e.points));
         }
@@ -90,7 +94,8 @@ export function buildCadGroups(
     if (linePositions.length > 0) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(linePositions, 3));
-      const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 });
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(lineColors, 3));
+      const mat = new THREE.LineBasicMaterial({ vertexColors: true });
       const lines = new THREE.LineSegments(geo, mat);
       lines.frustumCulled = false;
       group.add(lines);

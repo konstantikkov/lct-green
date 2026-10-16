@@ -12,7 +12,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import config, pipeline, store
 from .models.ir import CATEGORIES, CadDocument, LayerClassification
@@ -86,41 +86,9 @@ def _validate_signature(path: Path, ext: str) -> None:
             _err(422, "INVALID_FILE", "File does not look like a DXF (no SECTION header).")
 
 
-# what the viewer must show first when a drawing exceeds the render cap
-_RENDER_PRIORITY = ["SITE_BOUNDARY", "UTILITY_HEAT", "UTILITY_GAS", "UTILITY_WATER",
-                    "UTILITY_SEWER", "UTILITY_DRAINAGE", "UTILITY_ELECTRICITY",
-                    "POWER_LINE_OVERHEAD", "UTILITY_COMMUNICATION", "UTILITY", "BUILDING", "GREEN_AREA", "ROAD",
-                    "SIDEWALK", "CURB", "PARKING", "EXISTING_TREE", "EXISTING_SHRUB",
-                    "LIGHTING", "FENCE", "ACCESS_ROUTE", "UNKNOWN", "ANNOTATION"]
-
-
 def _render_selection(doc: CadDocument) -> list:
-    """≤ MAX_RENDER_ENTITIES entities for the viewer. Small drawings go out
-    whole and in order; merged xref packages (300k+ entities) are cut by
-    category priority — boundary and utilities first, contour lines last —
-    and the category that crosses the cap is thinned evenly, not truncated,
-    so it still covers the whole site."""
-    cap = config.MAX_RENDER_ENTITIES
-    if len(doc.entities) <= cap:
-        return doc.entities
-    lm = doc.layer_map()
-    by_cat: dict[str, list] = {}
-    for e in doc.entities:
-        li = lm.get(e.layer)
-        by_cat.setdefault(li.classification.category if li else "UNKNOWN", []).append(e)
-    order = _RENDER_PRIORITY + [c for c in by_cat if c not in _RENDER_PRIORITY]
-    out: list = []
-    for cat in order:
-        ents = by_cat.get(cat, [])
-        room = cap - len(out)
-        if room <= 0:
-            break
-        if len(ents) <= room:
-            out.extend(ents)
-        else:
-            step = len(ents) / room
-            out.extend(ents[int(i * step)] for i in range(room))
-    return out
+    """All imported geometry, including unclassified and annotation layers."""
+    return doc.entities
 
 
 def _document_response(pid: str, doc: CadDocument, state: str) -> dict:
@@ -128,7 +96,7 @@ def _document_response(pid: str, doc: CadDocument, state: str) -> dict:
     for e in _render_selection(doc):
         g = e.geometry
         item: dict = {"id": e.id, "sourceHandle": e.sourceHandle, "type": e.type,
-                      "layer": e.layer, "kind": e.kind}
+                      "layer": e.layer, "kind": e.kind, "color": e.attributes.get("color")}
         if e.kind in ("polyline", "polygon"):
             item["points"] = [c for xy in g.get("points", []) for c in xy]
             item["closed"] = e.kind == "polygon" or bool(g.get("closed"))
@@ -732,7 +700,7 @@ async def get_explanation(pid: str, placement_id: str):
     llm = LocalLLM()
     if llm.enabled and await llm.is_reachable():
         try:
-            from pydantic import BaseModel as BM
+            from pydantic import BaseModel, Field as BM
 
             class Narrative(BM):
                 narrative: str
@@ -903,3 +871,139 @@ def export_report(pid: str):
     out = config.OUTPUT_DIR / f"{stem}_greening_report.json"
     dxf_export.export_report(out, report)
     return FileResponse(out, filename=out.name, media_type="application/json")
+
+# Portable Cycles package + original CAD depiction, independent of classifications.
+@app.get('/api/projects/{pid}/export/render-bundle')
+def export_render_bundle(pid: str):
+    from .services.local_render import write_bundle
+    rt = _get_rt(pid)
+    rec = _selected_iteration(pid)
+    # Bonus visualization always follows a successful final DXF export.
+    dxf_response = export_dxf(pid)
+    out = config.OUTPUT_DIR / f'{pid}_local_render.zip'
+    write_bundle(out, rt.doc, rec, Path(dxf_response.path))
+    return FileResponse(out, filename=out.name, media_type='application/zip')
+
+
+@app.get('/api/projects/{pid}/cad-preview.svg')
+def cad_preview(pid: str):
+    """Source modelspace via ezdxf's CAD drawing frontend (text, hatch, blocks).
+
+    Includes every source layer irrespective of its semantic classification;
+    original CAD visibility and styles are respected. This is a 2D CAD preview,
+    not a promise of identical rendering of proprietary AutoCAD proxy entities.
+    """
+    from ezdxf.addons.drawing import Frontend, RenderContext, layout, svg
+    from ezdxf.addons.drawing.config import Configuration, ColorPolicy, BackgroundPolicy
+    from .services.dxf_parser import _read_dxf
+    _get_rt(pid)
+    proj = store.get_project(pid)
+    src = Path(proj['dxf_path'])
+    if not src.exists() and not store.restore_file_blob(pid, 'source_dxf', src):
+        _err(409, 'SOURCE_MISSING', 'Source drawing unavailable.')
+    doc = _read_dxf(src, [])
+    backend = svg.SVGBackend()
+    conf = Configuration(color_policy=ColorPolicy.COLOR,
+                         background_policy=BackgroundPolicy.WHITE)
+    Frontend(RenderContext(doc), backend, config=conf).draw_layout(doc.modelspace(), finalize=True)
+    out = config.OUTPUT_DIR / f'{pid}_cad.svg'
+    out.write_text(backend.get_string(layout.Page(0, 0)), encoding='utf-8')
+    return FileResponse(out, media_type='image/svg+xml')
+
+class LayerMappingRequest(BaseModel):
+    mappings: dict[str, str]
+
+
+@app.put('/api/projects/{pid}/layer-mapping')
+def set_layer_mapping(pid: str, request: LayerMappingRequest):
+    """User-defined semantic mapping for arbitrary CAD names; drawing unaffected."""
+    rt = _get_rt(pid)
+    lm = rt.doc.layer_map()
+    invalid = {name: category for name, category in request.mappings.items()
+               if name not in lm or category not in CATEGORIES}
+    if invalid:
+        _err(422, 'INVALID_MAPPING', 'Every key must be an imported layer and every value a supported category.')
+    for name, category in request.mappings.items():
+        lm[name].classification = LayerClassification(category=category, confidence=1,
+                                                       source='user', requiresReview=False)
+    rt.invalidate_semantics()
+    store.save_json(pid, 'document', rt.doc.model_dump())
+    return {'layers': [li.model_dump() for li in rt.doc.layers], 'regenerateRequired': True}
+
+
+@app.post('/api/projects/{pid}/refresh-import')
+def refresh_import(pid: str):
+    """Refresh saved preview geometry; preserve user mappings and original input.
+
+    Existing results are retained as historical results; regenerate after refresh
+    before relying on their compliance checks against the expanded import.
+    """
+    from .services.dxf_parser import parse_dxf
+    old = _get_rt(pid)
+    proj = store.get_project(pid)
+    src = Path(proj['dxf_path'])
+    if not src.exists() and not store.restore_file_blob(pid, 'source_dxf', src):
+        _err(409, 'SOURCE_MISSING', 'Source drawing unavailable.')
+    doc = parse_dxf(src, old.doc.documentId, old.doc.fileName, old.doc.format)
+    classification.classify_document(doc)
+    old_layers = old.doc.layer_map()
+    for li in doc.layers:
+        previous = old_layers.get(li.name)
+        if previous and previous.classification.source in ('user', 'package'):
+            li.classification = previous.classification
+    doc.conversionLog.append('Import refreshed; regenerate the plan before checking compliance against the expanded geometry.')
+    pipeline.put_runtime(pid, doc)
+    store.save_json(pid, 'document', doc.model_dump())
+    return {'regenerateRequired': True, 'entityCount': len(doc.entities), 'layerCount': len(doc.layers)}
+
+class RenderSettings(BaseModel):
+    width: int = Field(default=1280, ge=320, le=3840)
+    height: int = Field(default=720, ge=240, le=2160)
+    samples: int = Field(default=128, ge=16, le=512)
+    azimuth: float = Field(default=225, ge=0, le=360)
+    elevation: float = Field(default=23, ge=5, le=85)
+    distance: float = Field(default=.8, ge=.2, le=3)
+    exposure: float = Field(default=-1, ge=-4, le=4)
+    target_x: float | None = Field(default=None, allow_inf_nan=False)
+    target_y: float | None = Field(default=None, allow_inf_nan=False)
+
+
+@app.post('/api/projects/{pid}/renders', status_code=202)
+def create_render(pid: str, settings: RenderSettings):
+    """Ray trace the selected plan with local CPU Blender; bounded single-worker queue."""
+    from .services import render_jobs
+    from .services.local_render import scene_data
+    rt = _get_rt(pid)
+    rec = _selected_iteration(pid)
+    export_dxf(pid)
+    try:
+        jid = render_jobs.submit(pid, scene_data(rt.doc, rec), settings.model_dump())
+    except FileNotFoundError as exc:
+        _err(503, 'BLENDER_UNAVAILABLE', str(exc))
+    except RuntimeError as exc:
+        _err(429, 'RENDER_QUEUE_FULL', str(exc))
+    return {'jobId':jid, 'statusUrl':f'/api/projects/{pid}/renders/{jid}',
+            'imageUrl':f'/api/projects/{pid}/renders/{jid}/image'}
+
+
+@app.get('/api/projects/{pid}/renders/{jid}')
+def get_render_status(pid: str, jid: str):
+    from .services import render_jobs
+    _get_rt(pid)
+    try:
+        return render_jobs.status(pid,jid)
+    except (ValueError, FileNotFoundError):
+        _err(404, 'RENDER_NOT_FOUND', 'No such render.')
+
+
+@app.get('/api/projects/{pid}/renders/{jid}/image')
+def get_render_image(pid: str, jid: str):
+    from .services import render_jobs
+    _get_rt(pid)
+    try:
+        if render_jobs.status(pid,jid)['state'] != 'COMPLETED':
+            _err(409, 'RENDER_NOT_READY', 'The render is not complete.')
+        image = render_jobs.job_dir(pid,jid)/'render.png'
+    except (ValueError, FileNotFoundError):
+        _err(404, 'RENDER_NOT_FOUND', 'No such render.')
+    return FileResponse(image, media_type='image/png', filename=f'{pid}_render.png')

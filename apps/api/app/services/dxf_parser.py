@@ -30,7 +30,7 @@ _INSUNITS = {
 }
 
 _CURVE_TYPES = {"ARC", "CIRCLE", "ELLIPSE", "SPLINE"}
-_MAX_INSERT_VIRTUAL = 400
+_MAX_INSERT_DEPTH = 32
 _FLATTEN_DIST = 0.05  # drawing units before scaling; refined by unit scale below
 
 
@@ -43,6 +43,18 @@ def _aci_hex(aci: int) -> str:
     if (r, g, b) in ((255, 255, 255), (0, 0, 0)):
         r, g, b = (148, 163, 184)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _entity_color(entity, doc, layer):
+    if entity.dxf.hasattr("true_color"):
+        return f"#{entity.dxf.true_color:06x}"
+    aci = int(entity.dxf.get("color", 256))
+    if aci in (0, 256):
+        entry = doc.layers.get(layer) if layer in doc.layers else None
+        if entry is not None and entry.dxf.hasattr("true_color"):
+            return f"#{entry.dxf.true_color:06x}"
+        aci = abs(entry.color) if entry is not None else 7
+    return _aci_hex(aci)
 
 
 def _guess_units(code: int, span: float) -> tuple[str, float, str]:
@@ -111,7 +123,7 @@ def _entity_points(e, dist: float) -> tuple[str, dict] | None:
             outer = max(rings, key=lambda r: abs(_ring_area(r)))
             return "polyline", {"points": outer, "closed": True, "rings": rings}
         if t == "DIMENSION":
-            return None  # annotation only; geometry preserved in source file for export
+            return None  # precise annotation is available in the source CAD SVG preview
         if t in ("SOLID", "3DFACE", "TRACE"):
             pts = [(e.dxf.vtx0.x, e.dxf.vtx0.y), (e.dxf.vtx1.x, e.dxf.vtx1.y),
                    (e.dxf.vtx2.x, e.dxf.vtx2.y)]
@@ -387,22 +399,48 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
             block_name = e.dxf.name
             ins = e.dxf.insert
             raw_entities.append((e, "insert_point", ("point", {"position": (ins.x, ins.y)}), block_name))
-            count = 0
+            # Expand nested blocks; preserve inherited layer 0 and BYBLOCK color.
+            def expand(block, parent_layer, parent_color, depth=0):
+                if depth >= _MAX_INSERT_DEPTH:
+                    conversion_log.append(f"block recursion limit: {block.dxf.name}")
+                    return
+                for ve in block.virtual_entities():
+                    layer = ve.dxf.layer if ve.dxf.layer != "0" else parent_layer
+                    color = int(ve.dxf.get("color", 256))
+                    if color == 0:
+                        ve.dxf.color = parent_color
+                        if block.dxf.hasattr("true_color"):
+                            ve.dxf.true_color = block.dxf.true_color
+                    if ve.dxftype() == "INSERT":
+                        yield from expand(ve, layer, int(ve.dxf.get("color", 256)), depth + 1)
+                    else:
+                        kg = _entity_points(ve, _FLATTEN_DIST)
+                        if kg:
+                            yield ((e, ve, layer), "virtual", kg, block_name)
+                for attr in getattr(block, "attribs", []):
+                    kg = _entity_points(attr, _FLATTEN_DIST)
+                    if kg:
+                        yield ((e, attr, parent_layer), "virtual", kg, block_name)
+            try:
+                raw_entities.extend(expand(e, e.dxf.layer, int(e.dxf.get("color", 256))))
+            except Exception as exc:
+                conversion_log.append(f"block {block_name}: {exc}")
+            continue
+        if t in {"DIMENSION", "LEADER", "MLEADER"} and hasattr(e, "virtual_entities"):
             try:
                 for ve in e.virtual_entities():
-                    if count >= _MAX_INSERT_VIRTUAL:
-                        break
                     kg = _entity_points(ve, _FLATTEN_DIST)
                     if kg:
-                        layer = ve.dxf.layer if ve.dxf.layer not in ("0",) else e.dxf.layer
-                        raw_entities.append(((e, ve, layer), "virtual", kg, block_name))
-                        count += 1
-            except Exception:
-                pass
+                        layer = ve.dxf.layer if ve.dxf.layer != "0" else e.dxf.layer
+                        raw_entities.append(((e, ve, layer), "virtual", kg, None))
+            except Exception as exc:
+                conversion_log.append(f"{t}: {exc}")
             continue
         kg = _entity_points(e, _FLATTEN_DIST)
         if kg:
             raw_entities.append((e, "direct", kg, None))
+        else:
+            conversion_log.append(f"Unsupported preview entity: {t} handle={e.dxf.get('handle', '')}; retained in source DXF")
 
     minx = miny = math.inf
     maxx = maxy = -math.inf
@@ -477,12 +515,14 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
             kind="polygon" if (kind == "polyline" and geom.get("closed")) else kind,
             geometry=geom,
             blockName=clean_text(block_name),
+            attributes={"color": _entity_color(ve if mode == "virtual" else e, doc, layer)},
         ))
         layer_counts[layer] = layer_counts.get(layer, 0) + 1
 
     layers = []
     doc_layers = {l.dxf.name: l for l in doc.layers}
-    for name, count in sorted(layer_counts.items()):
+    for name in sorted(set(layer_counts) | set(doc_layers)):
+        count = layer_counts.get(name, 0)
         aci = 7
         if name in doc_layers:
             try:
