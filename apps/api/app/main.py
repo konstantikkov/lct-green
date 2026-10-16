@@ -7,6 +7,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -957,6 +958,8 @@ def refresh_import(pid: str):
     return {'regenerateRequired': True, 'entityCount': len(doc.entities), 'layerCount': len(doc.layers)}
 
 class RenderSettings(BaseModel):
+    detail: Literal["presentation", "cad"] = "presentation"
+    view: Literal["aerial", "pedestrian"] = "aerial"
     width: int = Field(default=1280, ge=320, le=3840)
     height: int = Field(default=720, ge=240, le=2160)
     samples: int = Field(default=128, ge=16, le=512)

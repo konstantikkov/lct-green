@@ -10,9 +10,17 @@ def scene_data(doc, iteration):
     layers = doc.layer_map()
     surfaces = []
     building_lines = {}
+    linear_features, point_features = [], []
     for e in doc.entities:
         li = layers.get(e.layer)
         cat = li.classification.category if li else "UNKNOWN"
+        if cat == 'FENCE' and e.kind in ('polyline','polygon'):
+            pts=e.geometry.get('points',[])
+            if e.kind=='polygon' and pts: pts=pts+[pts[0]]
+            linear_features.append({'category':cat,'points':pts})
+        if cat == 'LIGHTING':
+            pt=e.geometry.get('center') or (e.geometry.get('position') if e.kind=='point' else None)
+            if pt: point_features.append({'category':cat,'position':pt})
         if cat not in {"BUILDING", "ROAD", "SIDEWALK", "PARKING", "GREEN_AREA"}:
             continue
         if e.kind != "polygon":
@@ -50,8 +58,10 @@ def scene_data(doc, iteration):
             surfaces.append({'category':'BUILDING', 'layer':layer, 'triangles':faces,'height':12})
     return {"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
+            "linearFeatures":linear_features,"pointFeatures":point_features,
             "assumptions": ["Building footprints use illustrative 12 m heights and generic facade windows; these details are not surveyed.",
                             "Vegetation depicts indicative mature form, not a survey of existing trees.",
+                            "Presentation mode adds illustrative paving detail, perennial beds, furniture and facade detail; these are not validated design objects or DXF additions.",
                             "Unknown layers remain in the accompanying CAD drawing; they are not invented as 3D objects."]}
 
 
@@ -60,18 +70,24 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
     with ZipFile(path, "w", ZIP_DEFLATED) as z:
         z.writestr("scene.json", json.dumps(scene_data(doc, iteration), ensure_ascii=False))
         z.write(script, "render.py")
+        for dependency in ("blender_landscape.py","render_geometry.py"):
+            z.write(script.with_name(dependency),dependency)
         assets = Path(__file__).parents[1]/'assets'
         if assets.is_dir():
             for asset in assets.iterdir():
                 if asset.suffix in {'.blend','.hdr','.jpg'}:
                     z.write(asset,asset.name)
+            demo = assets/'courtyard-demo.json'
+            if demo.is_file(): z.write(demo,'courtyard-demo.json')
             credits = assets/'README.txt'
             if credits.is_file(): z.write(credits,'ASSET_CREDITS.txt')
         z.write(dxf, "plan.dxf")
         z.writestr("README.txt", "GreenPlan local render — Blender 4.0+ / Cycles\n\n"
                     "Unzip, open a terminal in this directory, then run:\n"
                     "blender -b -t 8 --python render.py -- --scene scene.json --output render.png --samples 128 --width 1920 --height 1080\n\n"
+                    "Presentation detail: --detail presentation; omit illustrative landscape additions: --detail cad. Camera: --view aerial or --view pedestrian.\n"
                     "No internet, paid API, or GPU required. CPU rendering can take several minutes.\n"
+                    "Reference-inspired demo (not your CAD): --scene courtyard-demo.json --elevation 48 --distance .95 --azimuth 300 --target-x 38 --target-y 32\n"
                     "For production: --samples 512 --width 3840 --height 2160\n"
                     "Use --blend scene.blend to save an editable scene and choose your own camera/materials in Blender.\n"
                     "Camera: --azimuth 225 --elevation 30 --distance 1.0 (relative to site span).\n"

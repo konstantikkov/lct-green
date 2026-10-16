@@ -26,6 +26,8 @@ def main():
     p.add_argument('--distance', type=float, default=.8)
     p.add_argument('--blend')
     p.add_argument('--assets')
+    p.add_argument('--detail', choices=['presentation','cad'], default='presentation')
+    p.add_argument('--view', choices=['aerial','pedestrian'], default='aerial')
     a = p.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
     data = json.loads(Path(a.scene).read_text())
     rng = random.Random(data['seed'])
@@ -36,6 +38,10 @@ def main():
     scene.cycles.device = 'CPU'
     scene.cycles.samples = a.samples
     scene.cycles.use_denoising = True
+    scene.cycles.max_bounces = 6
+    scene.cycles.diffuse_bounces = 3
+    scene.cycles.glossy_bounces = 3
+    scene.cycles.adaptive_threshold = .03
     scene.render.resolution_x, scene.render.resolution_y = a.width, a.height
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = 'PNG'
@@ -74,6 +80,7 @@ def main():
     asphalt = material('Asphalt', (.12,.135,.15), 110)
     paving = material('Warm stone', (.55,.52,.44), 65)
     wall = material('Mineral facade', (.67,.64,.56), 20)
+    rubber = material('Warm ochre play surface',(.39,.20,.10),70)
     bark = material('Bark', (.22,.12,.055), 8)
     leaves = [material('Leaf '+str(i), c, 5, .55) for i,c in enumerate([
         (.13,.29,.045),(.22,.38,.065),(.30,.40,.09),(.095,.23,.055)])]
@@ -100,7 +107,7 @@ def main():
                 links.new(mapping.outputs[0],tex.inputs['Vector'])
                 if socket == 'Base Color':
                     tint = nodes.new('ShaderNodeHueSaturation')
-                    tint.inputs['Hue'].default_value=.57
+                    tint.inputs['Hue'].default_value=.62
                     tint.inputs['Saturation'].default_value=1.2
                     tint.inputs['Value'].default_value=1.15
                     links.new(tex.outputs['Color'],tint.inputs['Color'])
@@ -116,35 +123,28 @@ def main():
             links.new(tex.outputs['Color'],normal.inputs['Color'])
             links.new(normal.outputs[0],bs.inputs['Normal'])
 
-    # Generic facade articulation is illustrative; footprints remain CAD-derived.
     nodes, links = wall.node_tree.nodes, wall.node_tree.links
     bs = nodes.get('Principled BSDF')
-    coords = nodes.new('ShaderNodeTexCoord'); xyz = nodes.new('ShaderNodeSeparateXYZ')
-    links.new(coords.outputs['Object'],xyz.inputs[0])
-    geometry = nodes.new('ShaderNodeNewGeometry'); normal = nodes.new('ShaderNodeSeparateXYZ')
+    brick=nodes.new('ShaderNodeTexBrick')
+    brick.inputs['Color1'].default_value=(.32,.22,.14,1)
+    brick.inputs['Color2'].default_value=(.53,.43,.29,1)
+    brick.inputs['Mortar'].default_value=(.29,.27,.23,1)
+    brick.inputs['Scale'].default_value=2.0
+    brick.inputs['Mortar Size'].default_value=.012
+    brick.inputs['Brick Width'].default_value=.5
+    brick.inputs['Row Height'].default_value=.23
+    coords=nodes.new('ShaderNodeTexCoord')
+    xyz=nodes.new('ShaderNodeSeparateXYZ');links.new(coords.outputs['Object'],xyz.inputs[0])
+    geometry=nodes.new('ShaderNodeNewGeometry');normal=nodes.new('ShaderNodeSeparateXYZ')
     links.new(geometry.outputs['Normal'],normal.inputs[0])
-    def math_node(operation, left, right=None):
-        node = nodes.new('ShaderNodeMath');node.operation = operation
-        if isinstance(left,(int,float)): node.inputs[0].default_value=left
-        else: links.new(left,node.inputs[0])
-        if right is not None:
-            if isinstance(right,(int,float)): node.inputs[1].default_value=right
-            else: links.new(right,node.inputs[1])
-        return node.outputs[0]
-    uv = nodes.new('ShaderNodeMixRGB')
-    links.new(math_node('ABSOLUTE',normal.outputs['X']),uv.inputs[0])
+    absolute=nodes.new('ShaderNodeMath');absolute.operation='ABSOLUTE';links.new(normal.outputs['X'],absolute.inputs[0])
+    uv=nodes.new('ShaderNodeMixRGB');links.new(absolute.outputs[0],uv.inputs[0])
     links.new(xyz.outputs['X'],uv.inputs[1]);links.new(xyz.outputs['Y'],uv.inputs[2])
-    u=math_node('FRACT',math_node('MULTIPLY',uv.outputs[0],1/3))
-    v=math_node('FRACT',math_node('MULTIPLY',xyz.outputs['Z'],1/3))
-    mask=math_node('MULTIPLY',math_node('GREATER_THAN',u,.18),math_node('LESS_THAN',u,.82))
-    mask=math_node('MULTIPLY',mask,math_node('GREATER_THAN',v,.22))
-    mask=math_node('MULTIPLY',mask,math_node('LESS_THAN',v,.8))
-    mask=math_node('MULTIPLY',mask,math_node('LESS_THAN',math_node('ABSOLUTE',normal.outputs['Z']),.5))
-    mix=nodes.new('ShaderNodeMixRGB');mix.inputs[2].default_value=(.025,.06,.085,1)
-    links.new(bs.inputs['Base Color'].links[0].from_socket,mix.inputs[1])
-    links.new(mask,mix.inputs[0]);links.new(mix.outputs[0],bs.inputs['Base Color'])
-    links.new(math_node('SUBTRACT',.85,math_node('MULTIPLY',mask,.68)),bs.inputs['Roughness'])
-    links.new(math_node('MULTIPLY',mask,.35),bs.inputs['Metallic'])
+    combine=nodes.new('ShaderNodeCombineXYZ');links.new(uv.outputs[0],combine.inputs[0]);links.new(xyz.outputs['Z'],combine.inputs[1])
+    links.new(combine.outputs[0],brick.inputs['Vector'])
+    links.new(brick.outputs['Color'],bs.inputs['Base Color'])
+    bump=nodes.new('ShaderNodeBump');bump.inputs['Distance'].default_value=.018
+    links.new(brick.outputs['Fac'],bump.inputs['Height']);links.new(bump.outputs[0],bs.inputs['Normal'])
 
     def mesh(name, verts, faces, mat):
         geo = bpy.data.meshes.new(name)
@@ -157,7 +157,7 @@ def main():
 
     mesh('Landscape ground', [(-span*2,-span*2,-.08),(span*2,-span*2,-.08),
         (span*2,span*2,-.08),(-span*2,span*2,-.08)], [(0,1,2,3)], grass)
-    for surface in data['surfaces']:
+    for surface_index,surface in enumerate(data['surfaces']):
         cat = surface['category']
         verts, faces = [], []
         z = .04 if cat != 'GREEN_AREA' else 0
@@ -165,9 +165,15 @@ def main():
             start = len(verts)
             verts.extend((x-ox,y-oy,z) for x,y in tri)
             faces.append((start,start+1,start+2))
-        obj = mesh(surface['layer'], verts, faces, wall if cat=='BUILDING' else
+        obj = mesh(surface['layer'], verts, faces, rubber if surface.get('style')=='play' else wall if cat=='BUILDING' else
                    asphalt if cat in ('ROAD','PARKING') else grass if cat=='GREEN_AREA' else paving)
         if cat == 'BUILDING':
+            facade=wall.copy()
+            palette=[((.48,.42,.32,1),(.65,.59,.47,1)),((.30,.095,.055,1),(.47,.19,.10,1)),((.25,.29,.28,1),(.41,.43,.39,1))]
+            colors=palette[surface_index%len(palette)]
+            brick_node=next(n for n in facade.node_tree.nodes if n.type=='TEX_BRICK')
+            brick_node.inputs['Color1'].default_value=colors[0];brick_node.inputs['Color2'].default_value=colors[1]
+            obj.data.materials.clear();obj.data.materials.append(facade)
             mod = obj.modifiers.new('Survey footprint / illustrative height','SOLIDIFY')
             mod.thickness = float(surface['height'])
             mod.offset = 1
@@ -193,6 +199,14 @@ def main():
                         bs = m.node_tree.nodes.get('Principled BSDF')
                         bs.inputs['Base Color'].default_value = (.065,.18,.02,1)
                         bs.inputs['Roughness'].default_value = .48
+                        if a.detail=='presentation' and not m.node_tree.nodes.get('Season palette'):
+                            nodes=m.node_tree.nodes;links=m.node_tree.links
+                            info=nodes.new('ShaderNodeObjectInfo');ramp=nodes.new('ShaderNodeValToRGB');ramp.name='Season palette'
+                            ramp.color_ramp.elements[0].color=(.035,.12,.015,1)
+                            ramp.color_ramp.elements[1].color=(.32,.075,.015,1)
+                            ramp.color_ramp.elements.new(.70).color=(.13,.24,.035,1)
+                            ramp.color_ramp.elements.new(.9).color=(.42,.25,.035,1)
+                            links.new(info.outputs['Random'],ramp.inputs[0]);links.new(ramp.outputs[0],bs.inputs['Base Color'])
                     elif m:
                         m.use_nodes = True
                         m.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value = (.16,.08,.03,1)
@@ -247,6 +261,9 @@ def main():
         r=float(item['crownRadiusM'])
         obj.scale=(r/1.45,r/1.45,r/1.45)
         obj.rotation_euler.z=rng.random()*math.tau
+    sys.path.insert(0,str(Path(__file__).resolve().parent))
+    from blender_landscape import enrich
+    enrich(data,ox,oy,presentation=a.detail=='presentation')
     world=bpy.data.worlds.new('Physical sky');scene.world=world;world.use_nodes=True
     nodes=world.node_tree.nodes
     sky=nodes.new('ShaderNodeTexSky');sky.sky_type='NISHITA'
@@ -269,7 +286,17 @@ def main():
                    (a.target_y-oy) if a.target_y is not None else 0,a.target_z))
     bpy.ops.object.camera_add(location=target+Vector((dist*math.cos(el)*math.cos(az),dist*math.cos(el)*math.sin(az),dist*math.sin(el))))
     cam=bpy.context.object;cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
-    cam.data.lens=36;cam.data.clip_end=max(span*10,1000);scene.camera=cam
+    if a.view == 'pedestrian':
+        eye_distance=max(6,min(30,span*a.distance*.25))
+        cam.location=target+Vector((eye_distance*math.cos(az),eye_distance*math.sin(az),1.7-target.z))
+        cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
+    cam.data.lens=46;cam.data.clip_end=max(span*10,1000);scene.camera=cam
+    import json as _json
+    manifest={'detail':a.detail,'view':a.view,'sourcePlantingCount':len(data['placements']),
+              'assumptions':data.get('assumptions',[]),'sourcePlantingCoordinates':[p['position'] for p in data['placements']],
+              'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
+              'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects)}
+    Path(a.output).with_suffix('.manifest.json').write_text(_json.dumps(manifest,ensure_ascii=False),encoding='utf-8')
     if a.blend:
         bpy.ops.file.pack_all()
         bpy.ops.wm.save_as_mainfile(filepath=str(Path(a.blend).resolve()))

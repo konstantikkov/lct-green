@@ -124,3 +124,41 @@ is illustrative, not the actual surroundings of the project. Replace
 `environment.hdr` with a site-matched environment when available; omit it to use
 the procedural sky. Facade windows are generic visual detail. Exported editable
 Blender scenes pack their image resources for portability.
+
+## Reference-style architectural presentation
+
+Presentation mode adds real modeled window frames/sills and optional balconies,
+individual stone pavers on CAD sidewalks, layered mulched perennial beds,
+ornamental grasses and flower accents, timber seating and raised planters.
+Classified CAD fences become pickets/rails and CAD lights become physical columns.
+The building footprints and generated planting coordinates stay unchanged.
+Added ornamental vegetation/furniture and facade styling are illustrative and
+are excluded from the DXF export and regulatory checks. Select **CAD и посадки**
+(`--detail cad`) to omit illustrative landscape additions. Geometry derived from
+source footprints remains subject to the documented height/style assumptions.
+
+The renderer supports aerial and pedestrian cameras (`--view aerial` /
+`--view pedestrian`). The presentation preview uses 900×600 / 32 samples;
+1280×800 / 96 samples is available for a slower presentation-quality pass.
+Dense landscape scenes take longer on CPU; full-resolution final work is best
+run locally from the portable bundle. Geometry is batched by material to keep
+memory and draw-object overhead controlled.
+
+`apps/api/scripts/make_render_reference.py` authors a **demonstration courtyard**
+inspired by the supplied visual references. It is not an imported customer site.
+It demonstrates perimeter buildings, winding paths, a central court, pergolas,
+raised planters, figures, fencing, lights and layered vegetation. Example:
+
+```sh
+python apps/api/scripts/make_render_reference.py /path/to/bundle/courtyard.json
+blender -b -t 8 --python /path/to/bundle/render.py -- --scene /path/to/bundle/courtyard.json --output courtyard.png --detail presentation --samples 128 --elevation 48 --distance 1 --azimuth 300 --target-x 38 --target-y 32
+```
+
+Each render also writes `render.manifest.json` beside its PNG, recording source
+planting coordinates/count, camera, assumptions and illustrative object names.
+User-authored `presentationObjects` can explicitly request PERGOLA,
+RAISED_PLANTER, PLAYGROUND and PERSON assets for composition without modifying CAD data.
+
+The portable package also includes `courtyard-demo.json` so the reference-inspired
+courtyard can be rendered offline without installing the API or GIS libraries.
+It is clearly labeled as a demonstration, separate from `scene.json` and `plan.dxf`.

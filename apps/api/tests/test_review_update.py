@@ -40,7 +40,7 @@ def test_bundle_preserves_planting_coordinates_and_offline_script(tmp_path):
     with ZipFile(dst) as z:
         data = json.loads(z.read('scene.json'))
         assert data['placements'] == placements
-        assert {'plan.dxf','render.py','README.txt','scene.json','ASSET_CREDITS.txt','environment.hdr','ground_diff.jpg'} <= set(z.namelist())
+        assert {'plan.dxf','render.py','README.txt','scene.json','ASSET_CREDITS.txt','environment.hdr','ground_diff.jpg','blender_landscape.py','render_geometry.py'} <= set(z.namelist())
         assert b"scene.render.engine = 'CYCLES'" in z.read('render.py')
         assert data['assumptions']
 
@@ -133,3 +133,41 @@ def test_renderer_reconstructs_building_from_line_entities(tmp_path):
     doc.entities=[IREntity(id=str(i),layer='random-name',type='LINE',kind='polyline',geometry={'points':[a,b]}) for i,(a,b) in enumerate(zip(pts,pts[1:]))]
     data=scene_data(doc,{'placements':[]})
     assert sum(Polygon(t).area for s in data['surfaces'] for t in s['triangles']) == 12
+
+
+def test_cad_fences_and_lights_are_exported_without_layer_name_assumptions(tmp_path):
+    from app.models.ir import IREntity, LayerInfo, LayerClassification
+    from app.services.local_render import scene_data
+    cad=ezdxf.new();src=tmp_path/'features.dxf';cad.saveas(src)
+    doc=parse_dxf(src,'p','features.dxf')
+    doc.layers=[LayerInfo(name='x1',classification=LayerClassification(category='FENCE',source='user')),
+                LayerInfo(name='x2',classification=LayerClassification(category='LIGHTING',source='user'))]
+    doc.entities=[IREntity(id='f',layer='x1',type='LINE',kind='polyline',geometry={'points':[(0,0),(4,0)]}),
+                  IREntity(id='l',layer='x2',type='CIRCLE',kind='polygon',geometry={'center':(3,4),'points':[(2,3),(3,4),(4,3)]})]
+    before=doc.model_dump()
+    result=scene_data(doc,{'placements':[]})
+    assert result['linearFeatures']==[{'category':'FENCE','points':[(0,0),(4,0)]}]
+    assert result['pointFeatures']==[{'category':'LIGHTING','position':(3,4)}]
+    assert doc.model_dump()==before
+    assert any('illustrative' in s for s in result['assumptions'])
+
+
+def test_presentation_options_are_explicit_and_validated():
+    from app.main import RenderSettings
+    from pydantic import ValidationError
+    import pytest
+    assert RenderSettings(detail='cad',view='pedestrian').detail=='cad'
+    with pytest.raises(ValidationError):RenderSettings(detail='invalid')
+
+
+def test_blender_triangle_grid_matches_surface_coverage():
+    from app.services.render_geometry import TriangleIndex
+    from shapely.geometry import Polygon, Point
+    triangles=[[[-4,-2],[3,-2],[3,4]],[[-4,-2],[3,4],[-4,4]],[[7,8],[9,8],[9,10]]]
+    index=TriangleIndex(triangles)
+    for x in range(-6,12):
+        for y in range(-4,13):
+            p=[x+.13,y+.27]
+            expected=any(Polygon(t).covers(Point(p)) for t in triangles)
+            assert index.contains(p)==expected
+    assert TriangleIndex([]).contains([0,0]) is False
