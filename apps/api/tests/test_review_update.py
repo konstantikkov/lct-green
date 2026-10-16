@@ -171,3 +171,30 @@ def test_blender_triangle_grid_matches_surface_coverage():
             expected=any(Polygon(t).covers(Point(p)) for t in triangles)
             assert index.contains(p)==expected
     assert TriangleIndex([]).contains([0,0]) is False
+
+
+def test_editor_preview_cache_uses_source_geometry_not_planting_moves(tmp_path, monkeypatch):
+    from app import config
+    from app.services import preview_jobs
+    from app.models.ir import IREntity,LayerInfo,LayerClassification
+    monkeypatch.setattr(config,'OUTPUT_DIR',tmp_path/'outputs')
+    monkeypatch.setattr(preview_jobs.shutil,'which',lambda _: '/stub/blender')
+    calls=[]
+    monkeypatch.setattr(preview_jobs._pool,'submit',lambda *args:calls.append(args))
+    src=tmp_path/'source.dxf';ezdxf.new().saveas(src)
+    doc=parse_dxf(src,'test','source.dxf')
+    try:
+        first=preview_jobs.request('cache-test',doc)
+        second=preview_jobs.request('cache-test',doc)
+        assert first['previewId']==second['previewId'] and len(calls)==1
+        folder=preview_jobs.root('cache-test',first['previewId'])
+        assert json.loads((folder/'scene.json').read_text())['placements']==[]
+        # Completed environments are reusable independently of proposed points.
+        (folder/'environment.glb').write_bytes(b'glTF')
+        assert preview_jobs.status('cache-test',first['previewId'])['state']=='COMPLETED'
+        doc.layers.append(LayerInfo(name='arbitrary',classification=LayerClassification(category='BUILDING',source='user')))
+        doc.entities.append(IREntity(id='new',type='LWPOLYLINE',layer='arbitrary',kind='polygon',geometry={'points':[(0,0),(4,0),(4,4),(0,4)]}))
+        changed=preview_jobs.request('cache-test',doc)
+        assert changed['previewId']!=first['previewId'] and len(calls)==2
+    finally:
+        preview_jobs._active.clear()

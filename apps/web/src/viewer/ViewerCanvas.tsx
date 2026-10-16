@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SceneManager, type HoverHit } from "./SceneManager";
 import { DragChecker, dragAnnotationHtml } from "./dragCheck";
 import { hud } from "./hud";
@@ -101,19 +101,15 @@ function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
   return (
     <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
       <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
-        <Seg active={mode === "2d"} label="2D" title="План сверху"
+        <Seg active={mode === "2d"} label="CAD" title="Исходный план и посадки"
           onClick={() => setViewMode("2d")} />
-        <Seg active={mode === "3d"} label="3D" title="Объёмный вид"
+        <Seg active={mode === "3d"} label="3D-редактор" title="Сцена Blender с редактируемыми посадками"
           onClick={() => setViewMode("3d")} />
       </div>
       {mode === "3d" && (
         <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
-          <Seg active={!detail} label="Просто"
-            title="Только объёмы: земля, дороги, здания, посадки"
-            onClick={() => setMassingDetail(false)} />
-          <Seg active={detail} label="Подробно"
-            title="Плюс линии исходного чертежа, фонари и ограждения"
-            onClick={() => setMassingDetail(true)} />
+          <Seg active={detail} label="CAD-подложка" title="Показать или скрыть исходные линии под сценой"
+            onClick={() => setMassingDetail(!detail)} />
         </div>
       )}
     </div>
@@ -122,6 +118,7 @@ function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
 
 /** React wrapper around the imperative SceneManager. */
 export function ViewerCanvas() {
+  const [previewStatus,setPreviewStatus]=useState("Подготовка 3D-сцены…");
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -144,6 +141,7 @@ export function ViewerCanvas() {
   useEffect(() => {
     if (!canvasRef.current) return;
     const mgr = new SceneManager(canvasRef.current, {
+      onPreviewStatus:setPreviewStatus,
       onPickPlacement: (p) => select({ type: "placement", placement: p }),
       onPickZone: (zoneId) => {
         const zone = getState().constraints?.exclusionZones.find((z) => z.id === zoneId);
@@ -238,6 +236,7 @@ export function ViewerCanvas() {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <ViewerToggles mode={viewMode} detail={massingDetail} />
+      {viewMode === "3d" && <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[55%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div></div>}
       <div
         ref={tooltipRef}
         style={{ display: "none" }}

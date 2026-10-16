@@ -70,7 +70,7 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
     with ZipFile(path, "w", ZIP_DEFLATED) as z:
         z.writestr("scene.json", json.dumps(scene_data(doc, iteration), ensure_ascii=False))
         z.write(script, "render.py")
-        for dependency in ("blender_landscape.py","render_geometry.py"):
+        for dependency in ("blender_landscape.py","render_geometry.py","preview_materials.py"):
             z.write(script.with_name(dependency),dependency)
         assets = Path(__file__).parents[1]/'assets'
         if assets.is_dir():

@@ -1010,3 +1010,31 @@ def get_render_image(pid: str, jid: str):
     except (ValueError, FileNotFoundError):
         _err(404, 'RENDER_NOT_FOUND', 'No such render.')
     return FileResponse(image, media_type='image/png', filename=f'{pid}_render.png')
+
+
+@app.post('/api/projects/{pid}/editor-preview',status_code=202)
+def create_editor_preview(pid: str):
+    from .services import preview_jobs
+    rt=_get_rt(pid)
+    try:return preview_jobs.request(pid,rt.doc)
+    except FileNotFoundError as exc:_err(503,'BLENDER_UNAVAILABLE',str(exc))
+    except RuntimeError as exc:_err(429,'PREVIEW_QUEUE_FULL',str(exc))
+
+
+@app.get('/api/projects/{pid}/editor-preview/{key}')
+def editor_preview_status(pid: str,key: str):
+    from .services import preview_jobs
+    _get_rt(pid)
+    try:return preview_jobs.status(pid,key)
+    except (ValueError,FileNotFoundError):_err(404,'PREVIEW_NOT_FOUND','No such preview.')
+
+
+@app.get('/api/projects/{pid}/editor-preview/{key}/model')
+def editor_preview_model(pid: str,key: str):
+    from .services import preview_jobs
+    _get_rt(pid)
+    try:
+        folder=preview_jobs.root(pid,key)
+        if not (folder/'environment.glb').is_file():_err(409,'PREVIEW_NOT_READY','Preview is still building.')
+    except ValueError:_err(404,'PREVIEW_NOT_FOUND','No such preview.')
+    return FileResponse(folder/'environment.glb',media_type='model/gltf-binary',headers={'Cache-Control':'private, max-age=86400'})

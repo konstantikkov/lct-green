@@ -44,7 +44,7 @@ export function RenderDialog({ projectId }: { projectId: string }) {
     } catch (e) { setStatus(String(e)); setBusy(false); }
   }
   return <>
-    <Btn onClick={() => setOpen(true)}>Фоторендер</Btn>
+    <Btn onClick={() => setOpen(true)} title="Финальное изображение; редактирование доступно прямо в 3D-сцене">Экспорт PNG</Btn>
     {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Локальный фоторендер">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded border border-ink-600 bg-ink-900 p-5 text-ink-100">
         <div className="flex justify-between gap-4"><h2 className="text-lg">Фоторендер · Cycles</h2><Btn onClick={() => setOpen(false)}>Закрыть</Btn></div>

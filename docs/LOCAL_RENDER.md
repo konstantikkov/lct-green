@@ -1,13 +1,21 @@
 # Local rendering and CAD fidelity update
 
-The interactive Three.js view remains a fast planning view. Final images can now
-be rendered offline with Blender/Cycles on CPU. No external image service or
-paid API is required.
+The default 3D editor displays Blender-exported environment geometry and detailed
+vegetation in a real-time browser viewport. Crown circles select and move each
+plant immediately, with live distance checks and saved coordinates. The previous
+stylized massing view is hidden. **CAD** switches back to source linework; **F**
+frames the site. **CAD-подложка** overlays source geometry in the 3D editor.
+
+The API builds and caches the environment locally with Blender (configured through
+`BLENDER_EXECUTABLE`). Moving plants reuses that environment and does not run
+Blender again. The browser uses WebGL with simplified plant meshes at a distance;
+it does not run the Cycles path tracer per frame. Final images render separately
+with Blender/Cycles on CPU. No external image service or paid API is required.
 
 ## Render a selected plan
 
 1. Open a project and generate/select a plan.
-2. Open **Фоторендер** → **Скачать сцену для Blender**. The API first exports the final DXF, then packages
+2. Open **Экспорт PNG** → **Скачать сцену для Blender**. The API first exports the final DXF, then packages
    `plan.dxf`, `scene.json`, `render.py`, and instructions into a ZIP.
 3. Extract it, install Blender 4.0 or later, and run from the extracted directory:
 
@@ -84,7 +92,7 @@ the already merged DXF, retaining its existing clipping and missing-xref limitat
 
 ## Render directly in the application
 
-Open **Фоторендер**, set the camera direction/elevation/distance and click
+Open **Экспорт PNG**, set the camera direction/elevation/distance and click
 **Создать изображение**. The API runs CPU Blender locally, then offers PNG
 preview/download. The server queue permits one active job and two waiting jobs;
 other requests receive HTTP 429. Each job has a 30 minute timeout. The API host

@@ -4,7 +4,8 @@ import type {
   LayerInfo, Placement, ProjectDocument,
 } from "../api/types";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
-import { buildMassing3D } from "./massing3d";
+import { buildEditablePreview, type EditablePreview } from "./blenderPreview";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   buildAllowedGroup, buildChunkGridGroup, buildLawnGroup, buildPlacementsGroup,
   buildRejectedGroup, buildZonesGroup, swapChild, Z, type PlacementsBuild,
@@ -18,6 +19,7 @@ export type HoverHit =
   | null;
 
 export interface SceneCallbacks {
+  onPreviewStatus: (text: string) => void;
   onPickPlacement: (p: Placement) => void;
   onPickZone: (zoneId: string) => void;
   onPickNothing: () => void;
@@ -44,6 +46,8 @@ interface PlacementDragState {
   tinted: boolean;
   /** Original 3D crown instance color (restored when the tint clears). */
   orig3dColor: THREE.Color | null;
+  grabOffsetX: number;
+  grabOffsetY: number;
 }
 
 // 3D clear color matches the sky-dome horizon so extreme zoom-outs stay seamless.
@@ -94,6 +98,8 @@ export class SceneManager {
   // 3D massing
   private root3d = new THREE.Group();
   private massing: THREE.Object3D | null = null;
+  private editablePreview: EditablePreview | null = null;
+  private environmentMap: THREE.WebGLRenderTarget;
   private pickMeshes3d: PlacementsBuild["pickMeshes"] = [];
   private trunks3d: { mesh: THREE.InstancedMesh; indexById: Map<string, number> } | null = null;
   private massingDirty = true;
@@ -157,6 +163,9 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = true; // only 3D materials/lights use it
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const pmrem=new THREE.PMREMGenerator(this.renderer);
+    const room=new RoomEnvironment();this.environmentMap=pmrem.fromScene(room,.04);
+    room.dispose();pmrem.dispose();
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
     this.camera.position.set(0, 0, 100);
@@ -334,6 +343,8 @@ export class SceneManager {
     this.renderer.setClearColor(CLEAR_COLORS[this.theme][mode], 1);
     this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.scene.fog = mode === "3d" ? this.fog3d : null;
+    this.scene.environment = mode === "3d" ? this.environmentMap.texture : null;
+    this.renderer.toneMappingExposure = mode === "3d" ? 1.12 : 1;
     if (mode === "3d") {
       if (this.massingDirty) this.rebuild3d();
       if (!this.orbit.initialized) this.fit3d();
@@ -381,6 +392,8 @@ export class SceneManager {
     }
     this.selectionRing.geometry.dispose();
     (this.selectionRing.material as THREE.Material).dispose();
+    this.editablePreview?.dispose();
+    this.environmentMap.dispose();
     this.renderer.dispose();
   }
 
@@ -463,36 +476,21 @@ export class SceneManager {
   }
 
   private rebuild3d() {
-    if (this.massing) {
-      this.root3d.remove(this.massing);
-      disposeObject(this.massing);
-      this.massing = null;
+    this.editablePreview?.dispose();this.editablePreview=null;
+    if(this.massing){this.root3d.remove(this.massing);disposeObject(this.massing);this.massing=null;}
+    this.pickMeshes3d=[];this.trunks3d=null;this.fog3d=null;this.detailGroup3d=null;
+    if(this.doc){
+      const build=buildEditablePreview(this.doc,this.iteration?.placements??[],this.theme,
+        ()=>this.invalidate(),text=>{
+          if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
+          this.cb.onPreviewStatus(text);
+        });
+      this.editablePreview=build;this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
+      this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
+      this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
     }
-    this.pickMeshes3d = [];
-    this.trunks3d = null;
-    this.fog3d = null;
-    this.detailGroup3d = null;
-    if (this.doc) {
-      const build = buildMassing3D(
-        this.doc.entities,
-        this.doc.layers,
-        this.iteration?.placements ?? [],
-        this.doc.extents,
-        this.constraints?.allowedArea.polygons ?? [],
-        this.theme,
-      );
-      this.massing = build.group;
-      this.pickMeshes3d = build.pickMeshes;
-      this.trunks3d = build.trunkIndex;
-      this.fog3d = build.fog;
-      this.detailGroup3d = build.detailGroup;
-      if (this.detailGroup3d) this.detailGroup3d.visible = this.massingDetail;
-      this.root3d.add(build.group);
-    }
-    if (this.mode === "3d") this.scene.fog = this.fog3d;
-    this.massingDirty = false;
-    this.applyVisibility();
-    this.invalidate();
+    if(this.mode==="3d")this.scene.fog=this.fog3d;
+    this.massingDirty=false;this.applyVisibility();this.invalidate();
   }
 
   private updateSelectionRing() {
@@ -550,11 +548,15 @@ export class SceneManager {
       m.elements[13] = y;
       mesh.setMatrixAt(index, m);
       mesh.instanceMatrix.needsUpdate = true;
+      mesh.boundingSphere=null;mesh.boundingBox=null;
     };
     const hit2d = this.instanceOf(this.pickMeshes, id);
     if (hit2d) shift(hit2d.mesh, hit2d.index);
-    const hit3d = this.instanceOf(this.pickMeshes3d, id);
-    if (hit3d) shift(hit3d.mesh, hit3d.index);
+    for(const {mesh,placements} of this.pickMeshes3d){
+      const i=placements.findIndex(p=>p.id===id);if(i>=0)shift(mesh,i);
+    }
+    const plant=this.editablePreview?.plantGroups.get(id);
+    if(plant){plant.position.x=x;plant.position.y=y;}
     const trunkIdx = this.trunks3d?.indexById.get(id);
     if (this.trunks3d && trunkIdx != null) shift(this.trunks3d.mesh, trunkIdx);
     if (this.selectedPlacement?.id === id) {
@@ -602,7 +604,11 @@ export class SceneManager {
       moved: false,
       tinted: false,
       orig3dColor,
+      grabOffsetX:0,grabOffsetY:0,
     };
+    const box=this.canvas.getBoundingClientRect();
+    const grab=this.mode==="2d"?this.screenToWorld(this.downPx-box.left,this.downPy-box.top):this.groundPoint(this.downPx-box.left,this.downPy-box.top);
+    if(grab){this.placementDrag.grabOffsetX=p.position[0]-grab[0];this.placementDrag.grabOffsetY=p.position[1]-grab[1];}
     this.canvas.style.cursor = "grabbing";
     this.clearHover();
   }
@@ -616,10 +622,9 @@ export class SceneManager {
     d.moved = true;
     const wp = this.mode === "2d" ? this.screenToWorld(px, py) : this.groundPoint(px, py);
     if (!wp) return; // 3D ray missed the ground plane — keep the last position
-    d.lastX = wp[0];
-    d.lastY = wp[1];
-    this.movePlacementVisual(d.placement.id, wp[0], wp[1]);
-    this.cb.onPlacementDrag(d.placement, wp[0], wp[1], px, py);
+    d.lastX=wp[0]+d.grabOffsetX;d.lastY=wp[1]+d.grabOffsetY;
+    this.movePlacementVisual(d.placement.id,d.lastX,d.lastY);
+    this.cb.onPlacementDrag(d.placement,d.lastX,d.lastY,px,py);
   }
 
   /** Drop: commit if actually moved, otherwise treat as a plain click. */

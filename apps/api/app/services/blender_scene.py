@@ -25,6 +25,8 @@ def main():
     p.add_argument('--elevation', type=float, default=23)
     p.add_argument('--distance', type=float, default=.8)
     p.add_argument('--blend')
+    p.add_argument('--gltf')
+    p.add_argument('--preview-only', action='store_true')
     p.add_argument('--assets')
     p.add_argument('--detail', choices=['presentation','cad'], default='presentation')
     p.add_argument('--view', choices=['aerial','pedestrian'], default='aerial')
@@ -253,7 +255,7 @@ def main():
         prototypes[key]=obj
         return obj
 
-    for i,item in enumerate(data['placements']):
+    for i,item in enumerate([] if a.preview_only else data['placements']):
         kind=item['kind']; proto=plant(kind,i%4)
         obj=bpy.data.objects.new(item['id'],proto.data)
         scene.collection.objects.link(obj)
@@ -263,7 +265,7 @@ def main():
         obj.rotation_euler.z=rng.random()*math.tau
     sys.path.insert(0,str(Path(__file__).resolve().parent))
     from blender_landscape import enrich
-    enrich(data,ox,oy,presentation=a.detail=='presentation')
+    enrich({**data,'placements':[]} if a.preview_only else data,ox,oy,presentation=a.detail=='presentation')
     world=bpy.data.worlds.new('Physical sky');scene.world=world;world.use_nodes=True
     nodes=world.node_tree.nodes
     sky=nodes.new('ShaderNodeTexSky');sky.sky_type='NISHITA'
@@ -297,6 +299,12 @@ def main():
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
               'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects)}
     Path(a.output).with_suffix('.manifest.json').write_text(_json.dumps(manifest,ensure_ascii=False),encoding='utf-8')
+    if a.gltf:
+        from preview_materials import prepare_materials
+        prepare_materials(asset_root)
+        bpy.ops.export_scene.gltf(filepath=str(Path(a.gltf).resolve()),export_format='GLB',
+                                 export_extras=True,export_lights=False,export_cameras=False)
+        if a.preview_only:return
     if a.blend:
         bpy.ops.file.pack_all()
         bpy.ops.wm.save_as_mainfile(filepath=str(Path(a.blend).resolve()))

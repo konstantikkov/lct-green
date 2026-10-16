@@ -36,13 +36,13 @@ export interface GenOptions {
 }
 
 /** Persisted like the theme; "simple" hides the 3D detail layer. */
-export const MASSING_DETAIL_STORAGE_KEY = "greenplan.massingDetail";
+export const MASSING_DETAIL_STORAGE_KEY = "greenplan.editorCadUnderlay";
 
 function readInitialMassingDetail(): boolean {
   try {
-    return localStorage.getItem(MASSING_DETAIL_STORAGE_KEY) !== "simple";
+    return localStorage.getItem(MASSING_DETAIL_STORAGE_KEY) === "detailed";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -206,7 +206,7 @@ const initialState: AppState = {
   summaries: null,
   summariesError: null,
   routeError: null,
-  viewMode: "2d",
+  viewMode: "3d",
   massingDetail: readInitialMassingDetail(),
   layerVisibility: {},
   overlays: initialOverlays,

@@ -216,6 +216,7 @@ export function disposeObject(obj: THREE.Object3D) {
     m.dispose();
   };
   obj.traverse((child) => {
+    if (child.userData.sharedPreviewResource) return;
     const anyChild = child as THREE.Mesh;
     if ((anyChild as THREE.InstancedMesh).isInstancedMesh) {
       (anyChild as THREE.InstancedMesh).dispose(); // frees instance buffers
