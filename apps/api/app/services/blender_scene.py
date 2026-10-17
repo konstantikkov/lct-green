@@ -20,7 +20,7 @@ def main():
     p.add_argument('--azimuth', type=float, default=315)
     p.add_argument('--target-x', type=float)
     p.add_argument('--target-y', type=float)
-    p.add_argument('--target-z', type=float, default=2)
+    p.add_argument('--target-z', type=float, default=None)
     p.add_argument('--exposure', type=float, default=-.2)
     p.add_argument('--elevation', type=float, default=48)
     p.add_argument('--distance', type=float, default=1.25)
@@ -28,7 +28,7 @@ def main():
     p.add_argument('--gltf')
     p.add_argument('--preview-only', action='store_true')
     p.add_argument('--assets')
-    p.add_argument('--detail', choices=['presentation','cad'], default='presentation')
+    p.add_argument('--detail', choices=['presentation','cad'], default='cad')
     p.add_argument('--view', choices=['aerial','pedestrian'], default='aerial')
     a = p.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
     data = json.loads(Path(a.scene).read_text())
@@ -40,8 +40,8 @@ def main():
     scene.cycles.device = 'CPU'
     scene.cycles.samples = a.samples
     scene.cycles.use_denoising = True
-    scene.cycles.max_bounces = 6
-    scene.cycles.diffuse_bounces = 3
+    scene.cycles.max_bounces = 8
+    scene.cycles.diffuse_bounces = 4
     scene.cycles.glossy_bounces = 3
     scene.cycles.adaptive_threshold = .03
     scene.render.resolution_x, scene.render.resolution_y = a.width, a.height
@@ -157,12 +157,12 @@ def main():
         obj.data.materials.append(mat)
         return obj
 
-    mesh('Landscape ground', [(-span*2,-span*2,-.08),(span*2,-span*2,-.08),
-        (span*2,span*2,-.08),(-span*2,span*2,-.08)], [(0,1,2,3)], grass)
+    mesh('Studio background', [(-span*2,-span*2,-.08),(span*2,-span*2,-.08),
+        (span*2,span*2,-.08),(-span*2,span*2,-.08)], [(0,1,2,3)], material('Studio background',(.30,.32,.30),80))
     for surface_index,surface in enumerate(data['surfaces']):
         cat = surface['category']
         verts, faces = [], []
-        z = .04 if cat != 'GREEN_AREA' else 0
+        z = 0 if cat=='BUILDING' else .015 if cat != 'GREEN_AREA' else .002
         for tri in surface['triangles']:
             start = len(verts)
             verts.extend((x-ox,y-oy,z) for x,y in tri)
@@ -176,12 +176,17 @@ def main():
             brick_node=next(n for n in facade.node_tree.nodes if n.type=='TEX_BRICK')
             brick_node.inputs['Color1'].default_value=colors[0];brick_node.inputs['Color2'].default_value=colors[1]
             obj.data.materials.clear();obj.data.materials.append(facade)
+            import bmesh
+            bm=bmesh.new();bm.from_mesh(obj.data);bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=.00001);bm.to_mesh(obj.data);bm.free()
+            roof=material('Source roof',(.38,.39,.37),45);obj.data.materials.append(roof)
+            obj['cadLayer']=surface['layer'];obj['cadCategory']=cat
             mod = obj.modifiers.new('Survey footprint / illustrative height','SOLIDIFY')
+            mod.material_offset=1;mod.material_offset_rim=0
             mod.thickness = float(surface['height'])
             mod.offset = 1
             bevel = obj.modifiers.new('Facade edges', 'BEVEL')
-            bevel.width = .08
-            bevel.segments = 2
+            bevel.width = .035
+            bevel.segments = 3
 
     # Four linked, deterministic botanical meshes: visible branches and thousands
     # of separate leaf blades, rather than opaque spheres representing crowns.
@@ -265,7 +270,9 @@ def main():
         obj.rotation_euler.z=rng.random()*math.tau
     sys.path.insert(0,str(Path(__file__).resolve().parent))
     from blender_landscape import enrich
-    enrich({**data,'placements':[]} if a.preview_only else data,ox,oy,presentation=a.detail=='presentation')
+    enrich({**data,'placements':[]} if a.preview_only else data,ox,oy,presentation=False)
+    from source_materials import apply_source_materials
+    apply_source_materials(asset_root)
     world=bpy.data.worlds.new('Physical sky');scene.world=world;world.use_nodes=True
     nodes=world.node_tree.nodes
     sky=nodes.new('ShaderNodeTexSky');sky.sky_type='NISHITA'
@@ -280,12 +287,19 @@ def main():
         world.node_tree.links.new(environment.outputs['Color'],nodes.get('Background').inputs['Color'])
         nodes.get('Background').inputs['Strength'].default_value=.65
     bpy.ops.object.light_add(type='SUN', location=(0,0,50))
-    sun=bpy.context.object;sun.data.energy=2.5;sun.data.angle=math.radians(2)
+    sun=bpy.context.object;sun.data.energy=1.8;sun.data.angle=math.radians(2.5)
     sun.rotation_euler=(math.radians(55),math.radians(-15),math.radians(-35))
     az,el=math.radians(a.azimuth),math.radians(a.elevation)
-    dist=span*max(a.distance,.25)
+    bpy.context.view_layer.update()
+    corners=[obj.matrix_world@Vector(c) for obj in scene.objects if obj.type=='MESH' and obj.name!='Studio background' for c in obj.bound_box]
+    low=min((p.z for p in corners),default=0);high=max((p.z for p in corners),default=4)
     target=Vector(((a.target_x-ox) if a.target_x is not None else 0,
-                   (a.target_y-oy) if a.target_y is not None else 0,a.target_z))
+                   (a.target_y-oy) if a.target_y is not None else 0,a.target_z if a.target_z is not None else (low+high)/2))
+    direction=Vector((math.cos(el)*math.cos(az),math.cos(el)*math.sin(az),math.sin(el)))
+    right=Vector((-direction.y,direction.x,0)).normalized();up=right.cross(-direction).normalized()
+    tanh=36/(2*46);tanv=tanh/(a.width/a.height)
+    fit=max((max(abs((p-target).dot(right))/tanh,abs((p-target).dot(up))/tanv)+(p-target).dot(direction) for p in corners),default=span)
+    dist=max(span*.5,fit)*max(a.distance,.25)
     bpy.ops.object.camera_add(location=target+Vector((dist*math.cos(el)*math.cos(az),dist*math.cos(el)*math.sin(az),dist*math.sin(el))))
     cam=bpy.context.object;cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
     if a.view == 'pedestrian':
@@ -293,8 +307,14 @@ def main():
         cam.location=target+Vector((eye_distance*math.cos(az),eye_distance*math.sin(az),1.7-target.z))
         cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
     cam.data.lens=46;cam.data.clip_end=max(span*10,1000);scene.camera=cam
+    cam.data.dof.use_dof=True;cam.data.dof.focus_distance=(target-cam.location).length;cam.data.dof.aperture_fstop=11
+    try:scene.view_settings.look='AgX - Medium High Contrast'
+    except (TypeError,ValueError):pass
     import json as _json
-    manifest={'detail':a.detail,'view':a.view,'sourcePlantingCount':len(data['placements']),
+    manifest={'sourceOnly':True,'sourceBuildingCount':sum(s['category']=='BUILDING' for s in data['surfaces']),
+              'sourceSurfaceCount':len(data['surfaces']),
+              'texturedMaterials':sum(m.use_nodes and any(n.type=='TEX_IMAGE' for n in m.node_tree.nodes) for m in bpy.data.materials),
+              'detail':a.detail,'view':a.view,'sourcePlantingCount':len(data['placements']),
               'assumptions':data.get('assumptions',[]),'sourcePlantingCoordinates':[p['position'] for p in data['placements']],
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
               'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects)}
@@ -302,7 +322,10 @@ def main():
     if a.gltf:
         from preview_materials import prepare_materials
         prepare_materials(asset_root)
-        bpy.ops.export_scene.gltf(filepath=str(Path(a.gltf).resolve()),export_format='GLB',
+        # The studio shadow receiver is a render helper, never a CAD object
+        # in the downloaded 3D scene.
+        for obj in scene.objects:obj.select_set(obj.name!='Studio background')
+        bpy.ops.export_scene.gltf(filepath=str(Path(a.gltf).resolve()),export_format='GLB',use_selection=True,
                                  export_extras=True,export_lights=False,export_cameras=False)
         if a.preview_only:return
     if a.blend:

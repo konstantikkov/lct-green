@@ -6,6 +6,7 @@ import bpy
 def prepare_materials(asset_root):
     for material in bpy.data.materials:
         if not material.use_nodes:continue
+        if any(n.type=='TEX_IMAGE' for n in material.node_tree.nodes):continue
         old=material.node_tree.nodes.get('Principled BSDF')
         if not old:continue
         color=tuple(material.diffuse_color)

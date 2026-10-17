@@ -10,9 +10,9 @@ export function RenderDialog({ projectId }: { projectId: string }) {
   const [elevation, setElevation] = useState(48);
   const [azimuth, setAzimuth] = useState(315);
   const [distance, setDistance] = useState(1.25);
-  const [detail, setDetail] = useState("presentation");
+  const [detail, setDetail] = useState("cad");
   const [view, setView] = useState("aerial");
-  const [quality, setQuality] = useState("preview");
+  const [quality, setQuality] = useState("final");
   useEffect(() => {
     if (!job) return;
     let stopped = false;
@@ -37,21 +37,21 @@ export function RenderDialog({ projectId }: { projectId: string }) {
     try {
       const r = await fetch(`/api/projects/${projectId}/renders`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ elevation, azimuth, distance, detail, view, ...(quality === "preview" ? {width:900,height:600,samples:32} : {width:1280,height:800,samples:96}) }),
+        body: JSON.stringify({ elevation, azimuth, distance, detail, view, ...(quality === "preview" ? {width:900,height:600,samples:32} : {width:1920,height:1080,samples:256}) }),
       });
       if (!r.ok) throw new Error(await r.text());
       setJob(await r.json());
     } catch (e) { setStatus(String(e)); setBusy(false); }
   }
   return <>
-    <Btn onClick={() => setOpen(true)} title="Финальное изображение; редактирование доступно прямо в 3D-сцене">Экспорт PNG</Btn>
+    <Btn onClick={() => setOpen(true)} title="Финальное изображение; редактирование доступно прямо в 3D-сцене">Фото · Cycles</Btn>
     {open && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Локальный фоторендер">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded border border-ink-600 bg-ink-900 p-5 text-ink-100">
         <div className="flex justify-between gap-4"><h2 className="text-lg">Фоторендер · Cycles</h2><Btn onClick={() => setOpen(false)}>Закрыть</Btn></div>
-        <p className="my-3 text-sm text-ink-300">Посадки — по выбранному плану. Фасады, клумбы, мощение и мебель в презентационном режиме — иллюстративные; в DXF и нормативную проверку они не добавляются.</p>
+        <p className="my-3 text-sm text-ink-300">Только объекты исходного CAD и выбранные посадки. Материалы назначаются исходным поверхностям; новые здания, дорожки и мебель не добавляются. Высоты из плоского чертежа условные.</p>
         <div className="my-3 flex flex-wrap gap-4 text-sm">
-          <label>Детализация<select className="block rounded bg-ink-800 p-2" value={detail} onChange={e => setDetail(e.target.value)}><option value="presentation">Презентация: архитектура и ландшафт</option><option value="cad">CAD и посадки</option></select></label>
-          <label>Качество<select className="block rounded bg-ink-800 p-2" value={quality} onChange={e => setQuality(e.target.value)}><option value="preview">Просмотр · 900×600</option><option value="final">Презентация · 1280×800</option></select></label>
+          <label>Детализация<select className="block rounded bg-ink-800 p-2" value={detail} onChange={e => setDetail(e.target.value)}><option value="cad">Фотоматериалы по CAD</option></select></label>
+          <label>Качество<select className="block rounded bg-ink-800 p-2" value={quality} onChange={e => setQuality(e.target.value)}><option value="preview">Просмотр · 900×600</option><option value="final">Фото · 1920×1080</option></select></label>
           <label>Камера<select className="block rounded bg-ink-800 p-2" value={view} onChange={e => setView(e.target.value)}><option value="aerial">Вид сверху</option><option value="pedestrian">С уровня человека</option></select></label>
           <label>Направление {azimuth}°<input className="block" type="range" min="0" max="360" value={azimuth} onChange={e => setAzimuth(+e.target.value)} /></label>
           <label>Высота камеры {elevation}°<input className="block" type="range" min="5" max="85" value={elevation} onChange={e => setElevation(+e.target.value)} /></label>
@@ -62,7 +62,6 @@ export function RenderDialog({ projectId }: { projectId: string }) {
           <Btn onClick={() => window.open(`/api/projects/${projectId}/export/render-bundle`, "_blank")}>Скачать сцену для Blender</Btn>
           {image && <a href={image} target="_blank" rel="noreferrer" className="p-2 underline">Скачать PNG</a>}
         </div>
-        <details className="my-3 text-sm text-ink-300"><summary className="cursor-pointer">Пример детализации: жилой двор</summary><p className="my-2">Иллюстративный проект для демонстрации материалов, архитектуры и благоустройства.</p><a href="/example/courtyard-reference.png" target="_blank" rel="noreferrer"><img src="/example/courtyard-reference.png" alt="Демонстрационный двор с архитектурой, мощением и многоярусным озеленением" className="mt-2 w-full rounded" loading="lazy" /></a></details>
         <p className="my-3 text-sm" role="status">{status}</p>
         {image && <img src={image} alt="Визуализация выбранного плана озеленения" className="w-full rounded" />}
       </div>

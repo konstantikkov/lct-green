@@ -3,13 +3,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Placement, ProjectDocument } from "../api/types";
 import { buildCadGroups, disposeObject } from "./cadGeometry";
 import {botanicalTree,loadBotanicalAssets} from "./botanicalAssets";
-import { plantingModel, random } from "./landscapeVegetation";
-import { buildPresentationContext } from "./presentationContext";
+import { plantingModel } from "./landscapeVegetation";
 import type { Theme } from "../theme";
 
 const loader = new GLTFLoader();
 const models = new Map<string, Promise<THREE.Group>>();
-const requests = new WeakMap<ProjectDocument, Promise<{modelUrl:string;origin:number[]}>>();
+const requests = new WeakMap<ProjectDocument, Promise<{modelUrl:string;origin:number[];sourceBuildings:number}>>();
 function model(url:string) {
   let p=models.get(url);
   if(p){models.delete(url);models.set(url,p);}
@@ -30,7 +29,7 @@ async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:st
       for(let i=0;i<300;i++) {
         const response=await fetch(job.statusUrl); if(!response.ok)throw new Error("Ошибка загрузки сцены");
         const state=await response.json();
-        if(state.state==="COMPLETED")return {modelUrl:job.modelUrl as string,origin:job.origin as number[]};
+        if(state.state==="COMPLETED")return {modelUrl:job.modelUrl as string,origin:job.origin as number[],sourceBuildings:Number(job.sourceBuildings??0)};
         if(state.state==="FAILED")throw new Error(state.error);
         await new Promise(resolve=>setTimeout(resolve,1500));
       }
@@ -41,6 +40,11 @@ async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:st
   const result=await request;
   if(signal.aborted)throw new DOMException("Aborted","AbortError");
   return result;
+}
+export async function downloadSourceModel(doc:ProjectDocument,status:(message:string)=>void) {
+  const job=await environment(doc,new AbortController().signal,status);
+  const link=document.createElement("a");link.href=job.modelUrl;link.download=`${doc.projectId}_cad_surfaces.glb`;link.click();
+  status(`3D CAD скачан · здания из чертежа: ${job.sourceBuildings} · текстуры встроены`);
 }
 function shared(object:THREE.Object3D) {
   object.traverse(o=>{
@@ -56,7 +60,6 @@ export interface EditablePreview {
   plantGroups:Map<string,THREE.Group>;
   fog:THREE.Fog;
   detailGroup:THREE.Group;
-  contextGroup:THREE.Group;
   circleMeshes:THREE.InstancedMesh[];
   dispose:()=>void;
 }
@@ -75,14 +78,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   sun.target.position.set(cx,cy,0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
   const reach=Math.min(span*.85,450);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
   sun.shadow.bias=-.00015;sun.shadow.normalBias=.035;sun.shadow.radius=3;group.add(sun,sun.target);
-  const groundCanvas=document.createElement("canvas");groundCanvas.width=groundCanvas.height=512;
-  const ctx=groundCanvas.getContext("2d")!,rng=random(12);ctx.fillStyle="#66764b";ctx.fillRect(0,0,512,512);
-  for(let i=0;i<42000;i++){const shade=55+rng()*45;ctx.strokeStyle=`hsla(${75+rng()*20},25%,${shade}%,.24)`;const x=rng()*512,y=rng()*512;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+(rng()-.5)*2,y-1-rng()*3);ctx.stroke();}
-  const turf=new THREE.CanvasTexture(groundCanvas);turf.colorSpace=THREE.SRGBColorSpace;turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(Math.max(2,(doc.extents.max[0]-doc.extents.min[0])/5),Math.max(2,(doc.extents.max[1]-doc.extents.min[1])/5));turf.anisotropy=8;
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+16,doc.extents.max[1]-doc.extents.min[1]+16),new THREE.MeshStandardMaterial({map:turf,roughness:1}));
-  floor.position.set(cx,cy,-.06);floor.receiveShadow=true;
   const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
-  const contextGroup=buildPresentationContext(doc,placements);contextGroup.add(floor);contextGroup.visible=false;group.add(contextGroup);
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const pickMeshes:EditablePreview["pickMeshes"]=[];
@@ -125,7 +121,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   void environment(doc,controller.signal,status).then(async job=>{
     if(disposed)return;const source=await model(job.modelUrl);if(disposed)return;
     const wrapper=new THREE.Group();wrapper.name="blender-environment3d";wrapper.rotation.x=Math.PI/2;wrapper.position.set(job.origin[0],job.origin[1],0);
-    const copy=shared(source.clone(true));copy.traverse(o=>{if(/Landscape.ground/i.test(o.name))o.visible=false;});wrapper.add(copy);group.add(wrapper);status("3D-редактор · сцена Blender");invalidate();
+    const copy=shared(source.clone(true));copy.traverse(o=>{if(/Landscape.ground|Studio.background/i.test(o.name))o.visible=false;});wrapper.add(copy);group.add(wrapper);status(`3D-редактор · сцена Blender · здания CAD: ${job.sourceBuildings} · PBR-материалы`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
-  return {group,pickMeshes,plantGroups,fog,detailGroup,contextGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
+  return {group,pickMeshes,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
 }

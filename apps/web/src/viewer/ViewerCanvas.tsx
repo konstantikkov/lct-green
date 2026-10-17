@@ -99,7 +99,7 @@ function MoveToast() {
   );
 }
 
-function ViewerToggles({ mode, detail, context, circles, setContext, setCircles, camera, snapshot }: { mode: ViewMode; detail: boolean; context:boolean; circles:boolean; setContext:(v:boolean)=>void; setCircles:(v:boolean)=>void; camera:(view:"aerial"|"garden")=>void; snapshot:()=>void }) {
+function ViewerToggles({ mode, detail, circles, setCircles, camera, snapshot, sourceDownload }: { mode: ViewMode; detail: boolean; circles:boolean; setCircles:(v:boolean)=>void; camera:(view:"aerial"|"garden")=>void; snapshot:()=>void; sourceDownload:()=>void }) {
   return (
     <div className="absolute right-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5">
       <div className="flex flex-wrap justify-end overflow-hidden rounded-sm border border-ink-600 shadow-sm">
@@ -110,10 +110,10 @@ function ViewerToggles({ mode, detail, context, circles, setContext, setCircles,
       </div>
       {mode === "3d" && (
         <div className="flex flex-wrap justify-end overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+          <Seg active={false} label="3D CAD" title="Скачать здания и поверхности исходного CAD со встроенными текстурами (GLB)" onClick={sourceDownload} />
           <Seg active={false} label="Снимок" title="Скачать текущий вид без редактируемых кругов" onClick={snapshot} />
           <Seg active={false} label="Общий вид" title="Архитектурный вид сверху" onClick={()=>camera("aerial")} />
           <Seg active={false} label="В саду" title="Перспектива с уровня сада" onClick={()=>camera("garden")} />
-          <Seg active={context} label="Окружение" title="Иллюстративная архитектура и благоустройство; не входят в CAD и расчёт норм" onClick={()=>setContext(!context)} />
           <Seg active={circles} label="Круги" title="Показать или скрыть контуры крон" onClick={()=>setCircles(!circles)} />
           <Seg active={detail} label="CAD-подложка" title="Показать или скрыть исходные линии под сценой"
             onClick={() => setMassingDetail(!detail)} />
@@ -125,7 +125,6 @@ function ViewerToggles({ mode, detail, context, circles, setContext, setCircles,
 
 /** React wrapper around the imperative SceneManager. */
 export function ViewerCanvas() {
-  const [context,setContext]=useState(false);
   const [filters,setFilters]=useState<RenderFilters>({...DEFAULT_FILTERS});
   const [circles,setCircles]=useState(true);
   const [previewStatus,setPreviewStatus]=useState("Подготовка 3D-сцены…");
@@ -227,7 +226,6 @@ export function ViewerCanvas() {
   }, []);
 
   useEffect(()=>{mgrRef.current?.setRenderFilters(filters);},[filters]);
-  useEffect(()=>{mgrRef.current?.setPresentationContext(context);},[context]);
   useEffect(()=>{mgrRef.current?.setPlantingCircles(circles);},[circles]);
 
   // Rebuild CAD geometry only when the entity set changes (new upload) —
@@ -249,9 +247,9 @@ export function ViewerCanvas() {
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
-      <ViewerToggles mode={viewMode} detail={massingDetail} context={context} circles={circles} setContext={setContext} setCircles={setCircles} camera={preset=>mgrRef.current?.setPresentationCamera(preset)} snapshot={()=>mgrRef.current?.downloadPresentationImage()} />
+      <ViewerToggles mode={viewMode} detail={massingDetail} circles={circles} setCircles={setCircles} camera={preset=>mgrRef.current?.setPresentationCamera(preset)} snapshot={()=>mgrRef.current?.downloadPresentationImage()} sourceDownload={()=>void mgrRef.current?.downloadSourceScene()} />
       {viewMode === "3d" && <RenderFilterPanel value={filters} onChange={setFilters} />}
-      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div>{context ? <div className="mt-1 text-2xs text-ink-400">Окружение — иллюстративный эскиз, вне CAD и расчёта норм</div> : <div className="mt-1 text-2xs text-ink-400">По исходному CAD · высоты из 2D условные · точный вид: «CAD оригинал»</div>}</div>}
+      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div><div className="mt-1 text-2xs text-ink-400">Только объекты CAD и выбранные посадки · высоты из 2D условные</div></div>}
       <div
         ref={tooltipRef}
         style={{ display: "none" }}

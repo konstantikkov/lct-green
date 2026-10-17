@@ -4,7 +4,7 @@ import type {
   LayerInfo, Placement, ProjectDocument,
 } from "../api/types";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
-import { buildEditablePreview, type EditablePreview } from "./blenderPreview";
+import { buildEditablePreview, downloadSourceModel, type EditablePreview } from "./blenderPreview";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import {RenderFilterPipeline,DEFAULT_FILTERS,type RenderFilters} from "./renderFilters";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -60,7 +60,6 @@ const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
 
 /** Owns the three.js scene; imperative API driven by React effects. */
 export class SceneManager {
-  private presentationContext=false;
   private plantingCircles=true;
   private renderer: THREE.WebGLRenderer;
   private filterPipeline:RenderFilterPipeline;
@@ -83,7 +82,7 @@ export class SceneManager {
   private height = 2;
 
   // 3D orbit state (z-up)
-  private orbit = { az: -Math.PI / 4, polar: 0.95, dist: 200, tx: 0, ty: 0, initialized: false };
+  private orbit = { az: -Math.PI / 4, polar: 0.95, dist: 200, tx: 0, ty: 0, tz:0, initialized: false };
 
   // slots (2D plan)
   private slotRoot = new THREE.Group();
@@ -178,7 +177,7 @@ export class SceneManager {
       const generator=new THREE.PMREMGenerator(this.renderer);
       const outdoor=generator.fromEquirectangular(texture);generator.dispose();texture.dispose();
       this.environmentMap.dispose();this.environmentMap=outdoor;
-      if(this.mode==="3d"){this.scene.environment=outdoor.texture;this.scene.background=this.presentationContext?outdoor.texture:null;}
+      if(this.mode==="3d"){this.scene.environment=outdoor.texture;this.scene.background=null;}
       this.scene.environmentRotation.set(Math.PI/2,0,.25);this.scene.backgroundRotation.copy(this.scene.environmentRotation);this.scene.backgroundBlurriness=.15;this.scene.backgroundIntensity=.75;this.invalidate();
     }).catch(()=>{});
 
@@ -332,6 +331,12 @@ export class SceneManager {
     this.invalidate();
   }
 
+  async downloadSourceScene() {
+    if(!this.doc)return;
+    try{await downloadSourceModel(this.doc,message=>{if(!this.disposed)this.cb.onPreviewStatus(message);});}
+    catch(e){if(!this.disposed)this.cb.onPreviewStatus(`Ошибка выгрузки 3D CAD: ${String(e)}`);}
+  }
+
   downloadPresentationImage() {
     if(this.mode!=="3d")return;
     const selected=this.selectionRing.visible;
@@ -340,7 +345,7 @@ export class SceneManager {
       this.editablePreview?.circleMeshes.forEach(m=>(m.material as THREE.MeshBasicMaterial).opacity=0);
       this.filterPipeline.render();
       const link=document.createElement("a");
-      link.download=`${this.doc?.projectId??"landscape"}_${this.presentationContext?"concept":"plan"}.png`;
+      link.download=`${this.doc?.projectId??"landscape"}_plan.png`;
       link.href=this.canvas.toDataURL("image/png");link.click();
     } finally {
       this.selectionRing.visible=selected;this.setPlantingCircles(this.plantingCircles);
@@ -353,14 +358,12 @@ export class SceneManager {
     const [x0,y0]=this.extents.min,[x1,y1]=this.extents.max;
     const w=Math.max(x1-x0,10),h=Math.max(y1-y0,10);
     this.orbit.tx=(x0+x1)/2;this.orbit.ty=(y0+y1)/2;
+    this.orbit.tz=1.7;
     const dx=w*.22,dy=-h*.92,z=Math.max(3.5,Math.min(7,w*.10));
     this.orbit.dist=Math.hypot(dx,dy,z);this.orbit.az=Math.atan2(dy,dx);this.orbit.polar=Math.acos(z/this.orbit.dist);this.orbit.initialized=true;
     this.update3dCamera();
   }
 
-  setPresentationContext(show:boolean) {
-    this.presentationContext=show;if(this.mode==="3d")this.scene.background=show?this.environmentMap.texture:null;if(this.editablePreview)this.editablePreview.contextGroup.visible=show;this.invalidate();
-  }
   setPlantingCircles(show:boolean) {
     this.plantingCircles=show;
     this.editablePreview?.circleMeshes.forEach(m=>{(m.material as THREE.MeshBasicMaterial).opacity=show?.65:0;});
@@ -401,7 +404,7 @@ export class SceneManager {
     this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.scene.fog = mode === "3d" ? this.fog3d : null;
     this.scene.environment = mode === "3d" ? this.environmentMap.texture : null;
-    this.scene.background = mode === "3d" && this.presentationContext ? this.environmentMap.texture : null;
+    this.scene.background = null;
     this.renderer.toneMappingExposure = mode === "3d" ? .88*Math.pow(2,this.renderFilters.exposure) : 1;
     this.scene.environmentIntensity=mode === "3d" ? .35 : 1;
     if (mode === "3d") {
@@ -514,26 +517,33 @@ export class SceneManager {
     const h = Math.max(maxY - minY, 10);
     this.orbit.tx = (minX + maxX) / 2;
     this.orbit.ty = (minY + maxY) / 2;
-    const radius = Math.max(Math.hypot(w, h) * 0.46 / Math.min(this.camera3d.aspect,1.25), Math.max(w,h)*.40);
-    this.orbit.dist = radius / Math.tan((this.camera3d.fov * Math.PI) / 360);
-    this.orbit.az = -Math.PI / 4;
-    this.orbit.polar = .90;
+    const bounds=this.massing?new THREE.Box3().setFromObject(this.massing):null;
+    const height=bounds&&!bounds.isEmpty()?Math.max(bounds.max.z,0):0;
+    this.orbit.tz=height/2;this.orbit.az=-Math.PI/4;this.orbit.polar=.9;
+    const direction=new THREE.Vector3(Math.sin(.9)*Math.cos(this.orbit.az),Math.sin(.9)*Math.sin(this.orbit.az),Math.cos(.9));
+    const right=new THREE.Vector3(-direction.y,direction.x,0).normalize(),up=right.clone().cross(direction.clone().negate()).normalize();
+    const tanV=Math.tan(this.camera3d.fov*Math.PI/360),tanH=tanV*this.camera3d.aspect;
+    let fit=10;
+    for(const x of [-w/2,w/2])for(const y of [-h/2,h/2])for(const z of [-height/2,height/2]){
+      const point=new THREE.Vector3(x,y,z);fit=Math.max(fit,Math.abs(point.dot(right))/tanH+point.dot(direction),Math.abs(point.dot(up))/tanV+point.dot(direction));
+    }
+    this.orbit.dist=fit*1.08;
     this.orbit.initialized = true;
     this.update3dCamera();
   }
 
   private update3dCamera() {
-    const { az, polar, dist, tx, ty } = this.orbit;
+    const { az, polar, dist, tx, ty, tz } = this.orbit;
     const sp = Math.sin(polar);
     this.camera3d.position.set(
       tx + dist * sp * Math.cos(az),
       ty + dist * sp * Math.sin(az),
-      Math.max(dist * Math.cos(polar), 0.5),
+      tz+Math.max(dist * Math.cos(polar), 0.5),
     );
     this.camera3d.near = Math.max(dist / 500, 0.1);
     this.camera3d.far = dist * 100;
     this.camera3d.updateProjectionMatrix();
-    this.camera3d.lookAt(tx, ty, Math.min(3,this.orbit.dist*.045));
+    this.camera3d.lookAt(tx, ty, tz);
     this.invalidate();
   }
 
@@ -543,11 +553,11 @@ export class SceneManager {
     this.pickMeshes3d=[];this.trunks3d=null;this.fog3d=null;this.detailGroup3d=null;
     if(this.doc){
       const build=buildEditablePreview(this.doc,this.iteration?.placements??[],this.theme,
-        ()=>this.invalidate(true),text=>{
+        ()=>{if(!this.dragging&&!this.placementDrag)this.fit3d();this.invalidate(true);},text=>{
           if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
           this.cb.onPreviewStatus(text);
         });
-      this.editablePreview=build;build.contextGroup.visible=this.presentationContext;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
+      this.editablePreview=build;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
     }

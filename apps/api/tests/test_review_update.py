@@ -42,6 +42,9 @@ def test_bundle_preserves_planting_coordinates_and_offline_script(tmp_path):
         assert data['placements'] == placements
         assert {'plan.dxf','render.py','README.txt','scene.json','ASSET_CREDITS.txt','environment.hdr','ground_diff.jpg','blender_landscape.py','render_geometry.py'} <= set(z.namelist())
         assert b"scene.render.engine = 'CYCLES'" in z.read('render.py')
+        assert data['sourceOnly'] is True
+        assert 'source_materials.py' in z.namelist()
+        assert 'courtyard-demo.json' not in z.namelist()
         assert data['assumptions']
 
 
@@ -52,6 +55,9 @@ def test_source_preview_and_user_mapping(tmp_path, monkeypatch):
     monkeypatch.setattr(config, 'DATA_DIR', tmp_path / 'data')
     monkeypatch.setattr(config, 'OUTPUT_DIR', tmp_path / 'outputs')
     config.ensure_dirs()
+    from app.services import preview_jobs
+    prepared=[]
+    monkeypatch.setattr(preview_jobs,'prepare_after_import',lambda pid,doc:prepared.append((pid,doc)))
     cad = ezdxf.new(); cad.units = 6
     cad.layers.new('X-991')
     cad.modelspace().add_text('Original text', dxfattribs={'layer':'X-991','height':1})
@@ -61,6 +67,7 @@ def test_source_preview_and_user_mapping(tmp_path, monkeypatch):
             r = c.post('/api/projects', files={'file':('site.dxf',f,'application/dxf')})
         assert r.status_code == 201, r.text
         pid = r.json()['projectId']
+        assert len(prepared)==1 and prepared[0][0]==pid
         before = src.read_bytes()
         r = c.get(f'/api/projects/{pid}/cad-preview.svg')
         assert r.status_code == 200, r.text
@@ -74,6 +81,8 @@ def test_source_preview_and_user_mapping(tmp_path, monkeypatch):
         r = c.post(f'/api/projects/{pid}/refresh-import')
         assert r.status_code == 200, r.text
         assert pipeline.get_runtime(pid).doc.layer_map()['X-991'].classification.source == 'user'
+        assert len(prepared)==2
+        assert prepared[-1][1].layer_map()['X-991'].classification.source=='user'
         assert src.read_bytes() == before
         assert c.get(f'/api/projects/{pid}/export/render-bundle').status_code == 409
 
@@ -219,3 +228,22 @@ def test_editor_preview_builds_cad_mode_not_presentation(tmp_path, monkeypatch):
     assert command[command.index('--detail')+1]=='cad'
     assert '--preview-only' in command
     assert preview_jobs.status('source-review',key)['state']=='COMPLETED'
+
+
+def test_closed_cad_outline_is_rendered_without_extra_buildings(tmp_path):
+    from app.services.local_render import scene_data
+    from app.models.ir import IREntity,LayerInfo,LayerClassification
+    cad=ezdxf.new();src=tmp_path/'closed.dxf';cad.saveas(src)
+    doc=parse_dxf(src,'closed','closed.dxf')
+    doc.layers=[LayerInfo(name='custom',classification=LayerClassification(category='BUILDING',source='user'))]
+    doc.entities=[IREntity(id='b1',type='POLYLINE',layer='custom',kind='polyline',geometry={'points':[(10,20),(16,20),(16,24),(10,24)],'closed':True})]
+    before=doc.model_dump()
+    scene=scene_data(doc,{'placements':[]})
+    assert scene['sourceOnly'] is True
+    assert len(scene['surfaces'])==1
+    surface=scene['surfaces'][0]
+    assert surface['category']=='BUILDING'
+    from shapely.geometry import Polygon
+    assert sum(Polygon(t).area for t in surface['triangles'])==24
+    assert 'presentationObjects' not in scene
+    assert doc.model_dump()==before

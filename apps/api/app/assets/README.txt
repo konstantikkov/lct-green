@@ -24,3 +24,10 @@ environment.hdr: 1K Kloofendal 48d Partly Cloudy HDRI.
 ground_diff.jpg / ground_normal.jpg / ground_rough.jpg: 1K Grass Ground maps.
 Downloaded from https://dl.polyhaven.org/ and bundled for offline rendering.
 The environment and surface appearance are illustrative, not a site survey.
+
+Source-surface photographic PBR maps (CC0, Poly Haven; 1K JPEG):
+facade_*.jpg: https://polyhaven.com/a/brick_wall_001
+asphalt_*.jpg: https://polyhaven.com/a/asphalt_02
+paving_*.jpg: https://polyhaven.com/a/concrete_pavers
+Each set contains diffuse, roughness and OpenGL normal maps. These are material
+choices applied only to source CAD surfaces, not surveyed building finishes.

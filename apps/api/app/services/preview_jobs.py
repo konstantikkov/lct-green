@@ -25,9 +25,12 @@ def request(pid,doc):
     if not blender:raise FileNotFoundError('Blender is unavailable on the API host.')
     data=scene_data(doc,{'placements':[]})
     payload=json.dumps(data,sort_keys=True,ensure_ascii=False)
-    fingerprint=hashlib.sha256(payload.encode()+b'cad-only-v2')
-    for name in ['blender_scene.py','blender_landscape.py','render_geometry.py','preview_materials.py']:
+    fingerprint=hashlib.sha256(payload.encode()+b'source-only-pbr-v3')
+    for name in ['blender_scene.py','blender_landscape.py','render_geometry.py','preview_materials.py','source_materials.py']:
         fingerprint.update(Path(__file__).with_name(name).read_bytes())
+    assets=Path(__file__).parents[1]/'assets'
+    for asset in sorted(assets.glob('*.jpg')):
+        fingerprint.update(asset.name.encode());fingerprint.update(hashlib.sha256(asset.read_bytes()).digest())
     key=fingerprint.hexdigest()[:32];folder=root(pid,key)
     with _lock:
         if not (folder/'environment.glb').is_file() and (pid,key) not in _active:
@@ -40,7 +43,7 @@ def request(pid,doc):
                 if asset.suffix in ('.jpg','.hdr'):shutil.copyfile(asset,folder/asset.name)
             (folder/'status.json').write_text(json.dumps({'state':'QUEUED'}))
             _active.add((pid,key));_pool.submit(_build,blender,pid,key)
-    return {'previewId':key,'origin':[(doc.extents.min[i]+doc.extents.max[i])/2 for i in (0,1)],
+    return {'previewId':key,'sourceBuildings':sum(s['category']=='BUILDING' for s in data['surfaces']),'origin':[(doc.extents.min[i]+doc.extents.max[i])/2 for i in (0,1)],
             'statusUrl':f'/api/projects/{pid}/editor-preview/{key}',
             'modelUrl':f'/api/projects/{pid}/editor-preview/{key}/model'}
 
@@ -73,3 +76,9 @@ def status(pid,key):
     if data['state'] in ('BUILDING','QUEUED') and (pid,key) not in _active:
         return {'state':'FAILED','error':'Preview build interrupted. Reopen the project to retry.'}
     return data
+
+
+def prepare_after_import(pid,doc):
+    """Best-effort background preparation; upload never requires Blender."""
+    try:return request(pid,doc)
+    except (FileNotFoundError,RuntimeError,OSError):return None

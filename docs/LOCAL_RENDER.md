@@ -1,221 +1,78 @@
-# Local rendering and CAD fidelity update
+# Source-only CAD rendering
 
-The 3D editor defaults to source CAD geometry with source linework visible.
-Illustrative surroundings are off by default. The cached Blender environment is
-built with `--detail cad`: it does not invent windows, balconies, curbs or garden
-furniture. Known 2D building footprints can still have illustrative extrusion
-heights; the source drawing remains authoritative and **CAD оригинал** opens the
-original DXF modelspace through ezdxf's drawing frontend.
+The editor, local scene bundle and Cycles export render source CAD objects and
+the selected planting plan. There is no generated courtyard, surrounding housing,
+pergola, furniture, additional paving or automatic perennial bed. The former
+presentation-context generator and its UI toggle were removed. Legacy
+`detail=presentation` requests remain accepted but cannot add scenery.
 
-Trees use locally bundled Sapling branch-and-leaf meshes. The browser assets
-preserve connected branch surfaces, with leaf sampling performed separately;
-`apps/api/scripts/export_botanical_trees.py` rebuilds them. Larch uses a separate
-whorled conifer form rather than a broadleaf crown. Trunks have bark texture and
-bump detail. Forms and heights are illustrative, not surveyed botanical models.
-The client measures mesh vertices and normalizes each crown to the selected
-planting radius, keeping its stem at the plan coordinates. Picking and dragging
-update the model, crown circle and saved plan together. Shrubs and loading
-fallbacks use locally generated foliage.
+## Import and regeneration
 
-The viewport uses a bundled CC0 outdoor HDR environment, physical materials,
-soft sunlight shadows, textured stone paving and masonry. No external image or
-rendering API is used. The reflection HDR is bundled under CC0; see
-`apps/web/public/maps/README.txt`. **Общий вид** frames the garden; **В саду** gives a lower
-perspective. **Круги** hides editing outlines. **Снимок** downloads the current
-WebGL view as PNG with the outlines hidden, without a server render job.
+A new DXF/DWG/ZIP upload schedules the source 3D scene and material preparation in
+the background after parsing/classification. **Обновить импорт** schedules it
+again from the refreshed drawing, preserving user layer mappings. Blender being
+unavailable does not reject the upload: CAD and planting editing remain usable.
 
-**Окружение** optionally enables an explicitly illustrative architectural setting. In a CAD
-fragment without closed building footprints, it adds surrounding facades,
-balconies, a promenade, furniture, fences, a timber shelter and perennial borders.
-Presentation paths route around planted stems, shrub crowns and imported fences.
-These additions are visual context, not a validated design: they do not enter
-the project document, planting counts, normative checks, or CAD exports. A notice
-in the viewport identifies this distinction. Where source building footprints
-exist, surrounding residential blocks are not invented. **CAD** and
-**CAD-подложка** retain access to imported linework.
+Only closed building polygons or closed cycles of source building lines become
+building volumes. Closed POLYLINE entities are supported directly. Open lines
+are not converted into guessed footprints or surrounding blocks. Surface holes
+and disconnected shells are retained. The source drawing is not overwritten.
+Building heights use source `heightM` when available, otherwise an illustrative
+12 m; materials are defaults, not surveyed facade finishes. **CAD оригинал** is
+available to compare with the original source modelspace.
 
-The source environment is cached locally by the API's Blender worker
-(`BLENDER_EXECUTABLE`). Dragging does not run Blender. The browser viewport uses
-WebGL, not the Cycles path tracer. **Экспорт PNG** remains a separate CPU Cycles
-render of source CAD geometry and the selected plantings; it does not include
-the browser-only courtyard setting. Its camera now defaults to an elevated,
-wider architectural composition rather than a close view inside the foliage.
+The preview cache fingerprints geometry, renderer code and bundled material
+images. New file uploads and changed input/materials cannot reuse an old scene
+from another project. The viewport reports the source building count and material
+readiness. Moving proposed plantings reuses the prepared source environment.
 
-## Render a selected plan
+## Photographic materials and rendering
 
-1. Open a project and generate/select a plan.
-2. Open **Экспорт PNG** → **Скачать сцену для Blender**. The API first exports the final DXF, then packages
-   `plan.dxf`, `scene.json`, `render.py`, and instructions into a ZIP.
-3. Extract it, install Blender 4.0 or later, and run from the extracted directory:
+Existing building, road, pavement and green-area surfaces receive bundled CC0
+Poly Haven diffuse, roughness and OpenGL normal maps. UVs use physical meter
+scale; building roofs have a separate material. Solidified building triangles
+are welded before extrusion and modifiers are evaluated before wall UV mapping.
+No windows or other architectural objects are invented to decorate the source.
+See `apps/api/app/assets/README.txt` for asset sources and licenses.
 
-```sh
-blender -b -t 8 --python render.py -- --scene scene.json --output render.png --samples 128 --width 1920 --height 1080 --blend scene.blend
-```
+The browser uses these embedded PBR textures with outdoor HDR illumination and
+soft shadows for interactive editing. Trees use locally bundled branch/leaf
+meshes, textured bark and a separate larch form. Their measured crown radii are
+normalized to the planting plan. Tree forms and heights are illustrative.
 
-For final delivery use 512 samples and 3840×2160. Render time depends on the
-machine and scene. CPU is the portable default. Open `scene.blend` to adjust the
-camera, materials, and Cycles device in Blender. Camera options include
-`--azimuth 225 --elevation 30 --distance 1.0`.
+**Фото · Cycles** produces a ray-traced CPU image with indirect lighting, denoising,
+AgX tone mapping, a physical camera and automatic framing of the source objects.
+The default photo quality is 1920×1080 / 256 samples. A faster 900×600 preview is
+available. This photo pipeline is separate from the interactive editor snapshot.
+The wider fitted camera avoids cropping tall source buildings by default.
 
-The scene uses physical sky and sunlight, ray-traced shadows and indirect light,
-procedural surface textures, and four bundled Sapling-generated tree meshes with branches and
-individual leaves. Denoising is enabled when supported; Linux builds without
-OpenImageDenoise automatically render without it.
+**Фильтры** provides exposure, contrast, saturation, warmth, vignette and clarity
+for the live viewport and **Снимок** PNG. Original 2D CAD colors and DXF exports
+are unaffected. Source linework remains visible and can be toggled separately.
 
-For higher botanical detail, supply your own locally licensed Blender asset
-library with mesh objects named `TREE` and `SHRUB` using `--assets trees.blend`.
-Objects should use a ground-level origin and the generator's reference crown
-radius of 1.45 m. Their mesh data and materials are instanced at plan coordinates.
+## Portable local download
 
-### Accuracy and assumptions
+**3D CAD** downloads the prepared source building/surface meshes as a GLB with
+embedded PBR textures. It does not add neighboring blocks or contain the
+proposed planting plan. The original CAD remains available separately.
 
-Planting coordinates and crown radii come directly from the selected plan.
-Only classified building, road, sidewalk, parking and green-area polygons become
-surfaces. Unknown objects are retained in the CAD drawing. Building heights
-are illustrative (12 m unless an entity supplies `heightM`); regular facade windows are generic. Real facades, terrain,
-and a surveyed 3D environment cannot be recovered from a flat drawing. This is
-an architectural visualization, not a surveyed digital twin. Scene assumptions
-are included in `scene.json`. Production quality requires camera composition,
-reviewed semantic mappings, and suitable vegetation/context assets.
-
-## CAD import and display
-
-* Import accepts arbitrary layer names. Empty declared layers are retained.
-* Nested block references expand recursively with transformed coordinates and
-  inherited layer-0/BYBLOCK properties. The former 400-object block cutoff is removed.
-* The interactive document API returns all imported entities, with no category
-  priority filtering or 20,000-entity cutoff. Large drawings use more memory.
-* Source entity/layer colors replace category colors for CAD linework.
-* **CAD оригинал** opens the source modelspace through ezdxf's drawing frontend:
-  text, hatches, dimensions and block depiction follow CAD properties rather
-  than semantic labels. CAD visibility settings are respected.
-* Proprietary proxy objects, external raster references, missing xrefs, custom
-  fonts and unsupported CAD entities can still differ from AutoCAD. Import
-  warnings identify unsupported preview entities; the source DXF is retained.
-* **Обновить импорт** reparses an existing project's saved DXF with the new
-  importer while retaining user/package mappings. Regenerate the plan afterwards;
-  historical results are retained and were validated against the previous import.
-
-Classification rules suggest categories for planning; they never decide whether
-a layer is imported or displayed. Existing per-layer editing remains available.
-Arbitrary conventions can also be mapped in one API request:
-
-```http
-PUT /api/projects/{projectId}/layer-mapping
-Content-Type: application/json
-
-{"mappings":{"A-123":"BUILDING","CUSTOM_NETWORK":"UTILITY_WATER"}}
-```
-
-Mapping validates every supplied layer/category before changing anything. It
-returns `regenerateRequired: true`; regenerate after semantic changes.
-
-Additional endpoints:
-
-* `GET /api/projects/{id}/cad-preview.svg`
-* `GET /api/projects/{id}/export/render-bundle`
-* `POST /api/projects/{id}/refresh-import`
-
-Re-upload the original package to re-run package assembly; refresh-import reads
-the already merged DXF, retaining its existing clipping and missing-xref limitations.
-
-## Render directly in the application
-
-Open **Экспорт PNG**, set the camera direction/elevation/distance and click
-**Создать изображение**. The API runs CPU Blender locally, then offers PNG
-preview/download. The server queue permits one active job and two waiting jobs;
-other requests receive HTTP 429. Each job has a 30 minute timeout. The API host
-needs `blender` in PATH (`sudo apt-get install blender` on Ubuntu). Deployment
-installs it; Docker includes it by default (`--build-arg WITH_BLENDER=0` omits it).
-
-`POST /api/projects/{id}/renders` accepts width (320–3840), height (240–2160),
-samples (16–512), azimuth, elevation, distance, exposure and optional target_x /
-target_y in source meters. Poll the returned statusUrl and retrieve imageUrl
-when state becomes COMPLETED. A service restart marks unfinished jobs failed;
-completed images remain on disk. Remove old `outputs/render_jobs` directories
-when no longer required. Full offline operation needs no LLM or internet.
-
-The bundled tree library is generated offline by the authoring script in
-`apps/api/scripts/create_render_assets.py`; Blender Sapling is not a runtime dependency.
-
-Some distro Blender packages omit CPU denoising. To install an official local
-Blender build with OpenImageDenoise, run:
+**Фото · Cycles → Скачать сцену для Blender** exports the selected DXF and packages
+`scene.json`, source render modules, photographic maps, HDR and tree assets.
+The bundle contains no unrelated demonstration courtyard. Extract and run:
 
 ```sh
-bash scripts/install_local_blender.sh /opt/greenplan
-# Add to the API environment and restart:
-# BLENDER_EXECUTABLE=/opt/greenplan/blender-4.5.3-linux-x64/blender
+blender -b -t 8 --python render.py -- --scene scene.json --output render.png --samples 256 --width 1920 --height 1080 --blend scene.blend
 ```
 
-The installer verifies the archive against Blender's published SHA-256 list.
-Downloading happens once at installation; rendering works offline. The host can
-use any compatible installed Blender by setting `BLENDER_EXECUTABLE`.
+Blender 4.0+ is recommended. No external rendering service, paid API or internet
+connection is required at runtime. Open `scene.blend` to adjust material defaults,
+height assumptions, camera or Cycles device. A render manifest records source
+building/surface counts, plant coordinates, material use and assumptions.
 
-## Photographic materials
+## Validation
 
-The package includes Poly Haven CC0 photographic ground color/normal/roughness
-maps and an HDR environment. They improve lighting, reflections, and surface
-detail without any runtime downloads. Asset links and license credits ship as
-`ASSET_CREDITS.txt` in each portable package. The photographed HDR environment
-is illustrative, not the actual surroundings of the project. Replace
-`environment.hdr` with a site-matched environment when available; omit it to use
-the procedural sky. Facade windows are generic visual detail. Exported editable
-Blender scenes pack their image resources for portability.
-
-## Reference-style architectural presentation
-
-Presentation mode adds real modeled window frames/sills and optional balconies,
-individual stone pavers on CAD sidewalks, layered mulched perennial beds,
-ornamental grasses and flower accents, timber seating and raised planters.
-Classified CAD fences become pickets/rails and CAD lights become physical columns.
-The building footprints and generated planting coordinates stay unchanged.
-Added ornamental vegetation/furniture and facade styling are illustrative and
-are excluded from the DXF export and regulatory checks. Select **CAD и посадки**
-(`--detail cad`) to omit illustrative landscape additions. Geometry derived from
-source footprints remains subject to the documented height/style assumptions.
-
-The renderer supports aerial and pedestrian cameras (`--view aerial` /
-`--view pedestrian`). The presentation preview uses 900×600 / 32 samples;
-1280×800 / 96 samples is available for a slower presentation-quality pass.
-Dense landscape scenes take longer on CPU; full-resolution final work is best
-run locally from the portable bundle. Geometry is batched by material to keep
-memory and draw-object overhead controlled.
-
-`apps/api/scripts/make_render_reference.py` authors a **demonstration courtyard**
-inspired by the supplied visual references. It is not an imported customer site.
-It demonstrates perimeter buildings, winding paths, a central court, pergolas,
-raised planters, figures, fencing, lights and layered vegetation. Example:
-
-```sh
-python apps/api/scripts/make_render_reference.py /path/to/bundle/courtyard.json
-blender -b -t 8 --python /path/to/bundle/render.py -- --scene /path/to/bundle/courtyard.json --output courtyard.png --detail presentation --samples 128 --elevation 48 --distance 1 --azimuth 300 --target-x 38 --target-y 32
-```
-
-Each render also writes `render.manifest.json` beside its PNG, recording source
-planting coordinates/count, camera, assumptions and illustrative object names.
-User-authored `presentationObjects` can explicitly request PERGOLA,
-RAISED_PLANTER, PLAYGROUND and PERSON assets for composition without modifying CAD data.
-
-The portable package also includes `courtyard-demo.json` so the reference-inspired
-courtyard can be rendered offline without installing the API or GIS libraries.
-It is clearly labeled as a demonstration, separate from `scene.json` and `plan.dxf`.
-
-## Reviewed viewport examples
-
-The example images show an illustrative courtyard around the small pilot CAD
-fragment, with the selected plan's plantings and editing circles hidden:
-
-- `apps/web/public/example/landscape-editor-aerial.png`
-- `apps/web/public/example/landscape-editor-garden.png`
-
-They demonstrate the browser renderer, not a survey of the surrounding buildings
-or an independent verification of the conceptual paving and furniture.
-
-## Render filters
-
-**Фильтры** provides neutral, natural, warm-evening and cool presets, plus
-exposure, contrast, saturation, warmth, vignette and clarity controls. **Сбросить**
-restores neutral values. A Three.js post-processing pipeline applies the same
-settings to the live 3D viewport and **Снимок** PNG. This is not a CSS filter;
-the downloaded pixels include the grade. Original 2D CAD colors and DXF exports
-bypass it. The separate server Cycles export uses its own rendering settings.
+Regression checks cover arbitrary layers and nested blocks, source preservation,
+closed building outlines, absence of demo data in downloads, preview preparation
+on upload/re-import, worker mode and planting movement. A real Blender canary
+uses a CAD fixture with two building footprints and five classified surfaces;
+its scene must contain exactly two buildings and no illustrative scenery.

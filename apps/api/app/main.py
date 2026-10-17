@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -144,7 +144,7 @@ def _json_safe(obj):
 
 
 @app.post("/api/projects", status_code=201)
-async def create_project(file: UploadFile = File(...)):
+async def create_project(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     fname = _sanitize_filename(file.filename or "upload")
     ext = Path(fname).suffix.lower()
     if ext not in config.ALLOWED_EXTENSIONS:
@@ -236,6 +236,8 @@ async def create_project(file: UploadFile = File(...)):
     except Exception:
         pass  # durability extra; disk copy remains authoritative
     store.update_project(pid, state="UPLOADED")
+    from .services.preview_jobs import prepare_after_import
+    background_tasks.add_task(prepare_after_import,pid,doc.model_copy(deep=True))
     return _document_response(pid, doc, "UPLOADED")
 
 
@@ -933,7 +935,7 @@ def set_layer_mapping(pid: str, request: LayerMappingRequest):
 
 
 @app.post('/api/projects/{pid}/refresh-import')
-def refresh_import(pid: str):
+def refresh_import(pid: str, background_tasks: BackgroundTasks):
     """Refresh saved preview geometry; preserve user mappings and original input.
 
     Existing results are retained as historical results; regenerate after refresh
@@ -955,10 +957,12 @@ def refresh_import(pid: str):
     doc.conversionLog.append('Import refreshed; regenerate the plan before checking compliance against the expanded geometry.')
     pipeline.put_runtime(pid, doc)
     store.save_json(pid, 'document', doc.model_dump())
+    from .services.preview_jobs import prepare_after_import
+    background_tasks.add_task(prepare_after_import,pid,doc.model_copy(deep=True))
     return {'regenerateRequired': True, 'entityCount': len(doc.entities), 'layerCount': len(doc.layers)}
 
 class RenderSettings(BaseModel):
-    detail: Literal["presentation", "cad"] = "presentation"
+    detail: Literal["presentation", "cad"] = "cad"
     view: Literal["aerial", "pedestrian"] = "aerial"
     width: int = Field(default=1280, ge=320, le=3840)
     height: int = Field(default=720, ge=240, le=2160)
