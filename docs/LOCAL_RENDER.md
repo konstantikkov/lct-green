@@ -1,16 +1,34 @@
 # Local rendering and CAD fidelity update
 
-The default 3D editor displays Blender-exported environment geometry and detailed
-vegetation in a real-time browser viewport. Crown circles select and move each
-plant immediately, with live distance checks and saved coordinates. The previous
-stylized massing view is hidden. **CAD** switches back to source linework; **F**
-frames the site. **CAD-подложка** overlays source geometry in the 3D editor.
+The 3D editor combines Blender-exported source geometry with locally generated,
+full-canopy vegetation. Leaf cards keep crown coverage at every distance instead
+of removing disconnected leaves through mesh decimation. Plant coordinates and
+crown footprints still come from the selected iteration. Picking and dragging
+update the model, crown circle and saved plan together.
 
-The API builds and caches the environment locally with Blender (configured through
-`BLENDER_EXECUTABLE`). Moving plants reuses that environment and does not run
-Blender again. The browser uses WebGL with simplified plant meshes at a distance;
-it does not run the Cycles path tracer per frame. Final images render separately
-with Blender/Cycles on CPU. No external image service or paid API is required.
+The viewport uses a bundled CC0 outdoor HDR environment, physical materials,
+soft sunlight shadows, textured stone paving and masonry. No external image or
+rendering API is used. The reflection HDR is bundled under CC0; see
+`apps/web/public/maps/README.txt`. **Общий вид** frames the garden; **В саду** gives a lower
+perspective. **Круги** hides editing outlines. **Снимок** downloads the current
+WebGL view as PNG with the outlines hidden, without a server render job.
+
+**Окружение** toggles an explicitly illustrative architectural setting. In a CAD
+fragment without closed building footprints, it adds surrounding facades,
+balconies, a promenade, furniture, fences, a timber shelter and perennial borders.
+Presentation paths route around planted stems, shrub crowns and imported fences.
+These additions are visual context, not a validated design: they do not enter
+the project document, planting counts, normative checks, or CAD exports. A notice
+in the viewport identifies this distinction. Where source building footprints
+exist, surrounding residential blocks are not invented. **CAD** and
+**CAD-подложка** retain access to imported linework.
+
+The source environment is cached locally by the API's Blender worker
+(`BLENDER_EXECUTABLE`). Dragging does not run Blender. The browser viewport uses
+WebGL, not the Cycles path tracer. **Экспорт PNG** remains a separate CPU Cycles
+render of source CAD geometry and the selected plantings; it does not include
+the browser-only courtyard setting. Its camera now defaults to an elevated,
+wider architectural composition rather than a close view inside the foliage.
 
 ## Render a selected plan
 
@@ -170,3 +188,14 @@ RAISED_PLANTER, PLAYGROUND and PERSON assets for composition without modifying C
 The portable package also includes `courtyard-demo.json` so the reference-inspired
 courtyard can be rendered offline without installing the API or GIS libraries.
 It is clearly labeled as a demonstration, separate from `scene.json` and `plan.dxf`.
+
+## Reviewed viewport examples
+
+The example images show an illustrative courtyard around the small pilot CAD
+fragment, with the selected plan's plantings and editing circles hidden:
+
+- `apps/web/public/example/landscape-editor-aerial.png`
+- `apps/web/public/example/landscape-editor-garden.png`
+
+They demonstrate the browser renderer, not a survey of the surrounding buildings
+or an independent verification of the conceptual paving and furniture.

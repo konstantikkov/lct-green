@@ -5,6 +5,7 @@ import type {
 } from "../api/types";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
 import { buildEditablePreview, type EditablePreview } from "./blenderPreview";
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   buildAllowedGroup, buildChunkGridGroup, buildLawnGroup, buildPlacementsGroup,
@@ -52,12 +53,14 @@ interface PlacementDragState {
 
 // 3D clear color matches the sky-dome horizon so extreme zoom-outs stay seamless.
 const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
-  light: { "2d": 0xf6f7f5, "3d": 0xf6f2ea },
-  dark: { "2d": 0x0b0f14, "3d": 0x151c27 },
+  light: { "2d": 0xf6f7f5, "3d": 0xdce3df },
+  dark: { "2d": 0x0b0f14, "3d": 0xdce3df },
 };
 
 /** Owns the three.js scene; imperative API driven by React effects. */
 export class SceneManager {
+  private presentationContext=true;
+  private plantingCircles=true;
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.OrthographicCamera;
@@ -163,9 +166,18 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = true; // only 3D materials/lights use it
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate=false;this.renderer.shadowMap.needsUpdate=true;
     const pmrem=new THREE.PMREMGenerator(this.renderer);
     const room=new RoomEnvironment();this.environmentMap=pmrem.fromScene(room,.04);
     room.dispose();pmrem.dispose();
+    void new RGBELoader().loadAsync("/maps/garden-environment.hdr").then(texture=>{
+      if(this.disposed){texture.dispose();return;}
+      const generator=new THREE.PMREMGenerator(this.renderer);
+      const outdoor=generator.fromEquirectangular(texture);generator.dispose();texture.dispose();
+      this.environmentMap.dispose();this.environmentMap=outdoor;
+      if(this.mode==="3d"){this.scene.environment=outdoor.texture;this.scene.background=outdoor.texture;}
+      this.scene.environmentRotation.set(Math.PI/2,0,.25);this.scene.backgroundRotation.copy(this.scene.environmentRotation);this.scene.backgroundBlurriness=.15;this.scene.backgroundIntensity=.75;this.invalidate();
+    }).catch(()=>{});
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
     this.camera.position.set(0, 0, 100);
@@ -310,6 +322,41 @@ export class SceneManager {
     this.invalidate();
   }
 
+  downloadPresentationImage() {
+    if(this.mode!=="3d")return;
+    const selected=this.selectionRing.visible;
+    try {
+      this.selectionRing.visible=false;
+      this.editablePreview?.circleMeshes.forEach(m=>(m.material as THREE.MeshBasicMaterial).opacity=0);
+      this.renderer.render(this.scene,this.camera3d);
+      const link=document.createElement("a");
+      link.download=`${this.doc?.projectId??"landscape"}_${this.presentationContext?"concept":"plan"}.png`;
+      link.href=this.canvas.toDataURL("image/png");link.click();
+    } finally {
+      this.selectionRing.visible=selected;this.setPlantingCircles(this.plantingCircles);
+    }
+  }
+
+  setPresentationCamera(preset:"aerial"|"garden") {
+    if(preset==="aerial"){this.fit3d();return;}
+    if(!this.extents)return;
+    const [x0,y0]=this.extents.min,[x1,y1]=this.extents.max;
+    const w=Math.max(x1-x0,10),h=Math.max(y1-y0,10);
+    this.orbit.tx=(x0+x1)/2;this.orbit.ty=(y0+y1)/2;
+    const dx=w*.22,dy=-h*.92,z=Math.max(3.5,Math.min(7,w*.10));
+    this.orbit.dist=Math.hypot(dx,dy,z);this.orbit.az=Math.atan2(dy,dx);this.orbit.polar=Math.acos(z/this.orbit.dist);this.orbit.initialized=true;
+    this.update3dCamera();
+  }
+
+  setPresentationContext(show:boolean) {
+    this.presentationContext=show;if(this.editablePreview)this.editablePreview.contextGroup.visible=show;this.invalidate();
+  }
+  setPlantingCircles(show:boolean) {
+    this.plantingCircles=show;
+    this.editablePreview?.circleMeshes.forEach(m=>{(m.material as THREE.MeshBasicMaterial).opacity=show?.65:0;});
+    this.invalidate();
+  }
+
   setSelectedPlacement(p: Placement | null) {
     this.selectedPlacement = p;
     this.updateSelectionRing();
@@ -344,7 +391,9 @@ export class SceneManager {
     this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.scene.fog = mode === "3d" ? this.fog3d : null;
     this.scene.environment = mode === "3d" ? this.environmentMap.texture : null;
-    this.renderer.toneMappingExposure = mode === "3d" ? 1.12 : 1;
+    this.scene.background = mode === "3d" ? this.environmentMap.texture : null;
+    this.renderer.toneMappingExposure = mode === "3d" ? .88 : 1;
+    this.scene.environmentIntensity=mode === "3d" ? .35 : 1;
     if (mode === "3d") {
       if (this.massingDirty) this.rebuild3d();
       if (!this.orbit.initialized) this.fit3d();
@@ -399,8 +448,9 @@ export class SceneManager {
 
   // ---------- internals ----------
 
-  private invalidate() {
+  private invalidate(updateShadows=false) {
     this.dirty = true;
+    if(updateShadows)this.renderer.shadowMap.needsUpdate=true;
   }
 
   private activeCamera(): THREE.Camera {
@@ -452,10 +502,10 @@ export class SceneManager {
     const h = Math.max(maxY - minY, 10);
     this.orbit.tx = (minX + maxX) / 2;
     this.orbit.ty = (minY + maxY) / 2;
-    const radius = Math.hypot(w, h) * 0.55;
+    const radius = Math.max(Math.hypot(w, h) * 0.46 / Math.min(this.camera3d.aspect,1.25), Math.max(w,h)*.40);
     this.orbit.dist = radius / Math.tan((this.camera3d.fov * Math.PI) / 360);
     this.orbit.az = -Math.PI / 4;
-    this.orbit.polar = 0.95;
+    this.orbit.polar = .90;
     this.orbit.initialized = true;
     this.update3dCamera();
   }
@@ -471,7 +521,7 @@ export class SceneManager {
     this.camera3d.near = Math.max(dist / 500, 0.1);
     this.camera3d.far = dist * 100;
     this.camera3d.updateProjectionMatrix();
-    this.camera3d.lookAt(tx, ty, 0);
+    this.camera3d.lookAt(tx, ty, Math.min(3,this.orbit.dist*.045));
     this.invalidate();
   }
 
@@ -481,16 +531,16 @@ export class SceneManager {
     this.pickMeshes3d=[];this.trunks3d=null;this.fog3d=null;this.detailGroup3d=null;
     if(this.doc){
       const build=buildEditablePreview(this.doc,this.iteration?.placements??[],this.theme,
-        ()=>this.invalidate(),text=>{
+        ()=>this.invalidate(true),text=>{
           if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
           this.cb.onPreviewStatus(text);
         });
-      this.editablePreview=build;this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
+      this.editablePreview=build;build.contextGroup.visible=this.presentationContext;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
     }
     if(this.mode==="3d")this.scene.fog=this.fog3d;
-    this.massingDirty=false;this.applyVisibility();this.invalidate();
+    this.massingDirty=false;this.applyVisibility();this.invalidate(true);
   }
 
   private updateSelectionRing() {
@@ -563,7 +613,7 @@ export class SceneManager {
       this.selectionRing.position.x = x;
       this.selectionRing.position.y = y;
     }
-    this.invalidate();
+    this.invalidate(true);
   }
 
   private applyDragTint(d: PlacementDragState, invalid: boolean) {

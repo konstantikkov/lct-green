@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Placement, ProjectDocument } from "../api/types";
 import { buildCadGroups, disposeObject } from "./cadGeometry";
+import { plantingModel, random } from "./landscapeVegetation";
+import { buildPresentationContext } from "./presentationContext";
 import type { Theme } from "../theme";
 
 const loader = new GLTFLoader();
@@ -53,6 +55,8 @@ export interface EditablePreview {
   plantGroups:Map<string,THREE.Group>;
   fog:THREE.Fog;
   detailGroup:THREE.Group;
+  contextGroup:THREE.Group;
+  circleMeshes:THREE.InstancedMesh[];
   dispose:()=>void;
 }
 /** Blender-built environment + independently editable, instanced crown circles. */
@@ -60,31 +64,38 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   invalidate:()=>void,status:(s:string)=>void):EditablePreview {
   const group=new THREE.Group();group.name="blender-editor";
   const controller=new AbortController();let disposed=false;
+  const circleMeshes:THREE.InstancedMesh[]=[];
   const plantGroups=new Map<string,THREE.Group>();
   const span=Math.max(doc.extents.max[0]-doc.extents.min[0],doc.extents.max[1]-doc.extents.min[1],10);
   const cx=(doc.extents.min[0]+doc.extents.max[0])/2,cy=(doc.extents.min[1]+doc.extents.max[1])/2;
-  const fog=new THREE.Fog(theme==="dark"?0x202934:0xe8edf0,span*4,span*12);
-  const grid=new THREE.GridHelper(span*1.7,40,0x7b8991,theme==="dark"?0x37444b:0xbcc6cb);
-  grid.rotation.x=Math.PI/2;grid.position.set(cx,cy,-.1);group.add(grid);
-  const fill=new THREE.HemisphereLight(0xf4f7fa,0x899176,2.2);fill.position.set(0,0,1);group.add(fill);
-  const sun=new THREE.DirectionalLight(0xfff1dc,3.0);sun.position.set(cx+span*.4,cy-span*.6,span*.8);
+  const fog=new THREE.Fog(0xdce3df,span*3,span*9);
+  const fill=new THREE.HemisphereLight(0xcbdde8,0x555d3c,.8);fill.position.set(0,0,1);group.add(fill);
+  const sun=new THREE.DirectionalLight(0xffecd2,3.3);sun.position.set(cx-span*.55,cy-span*.5,span*.52);
   sun.target.position.set(cx,cy,0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
-  const reach=Math.min(span*.8,400);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
-  sun.shadow.bias=-.0002;sun.shadow.normalBias=.12;group.add(sun,sun.target);
+  const reach=Math.min(span*.85,450);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
+  sun.shadow.bias=-.00015;sun.shadow.normalBias=.035;sun.shadow.radius=3;group.add(sun,sun.target);
+  const groundCanvas=document.createElement("canvas");groundCanvas.width=groundCanvas.height=512;
+  const ctx=groundCanvas.getContext("2d")!,rng=random(12);ctx.fillStyle="#66764b";ctx.fillRect(0,0,512,512);
+  for(let i=0;i<42000;i++){const shade=55+rng()*45;ctx.strokeStyle=`hsla(${75+rng()*20},25%,${shade}%,.24)`;const x=rng()*512,y=rng()*512;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+(rng()-.5)*2,y-1-rng()*3);ctx.stroke();}
+  const turf=new THREE.CanvasTexture(groundCanvas);turf.colorSpace=THREE.SRGBColorSpace;turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(Math.max(2,(doc.extents.max[0]-doc.extents.min[0])/5),Math.max(2,(doc.extents.max[1]-doc.extents.min[1])/5));turf.anisotropy=8;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+16,doc.extents.max[1]-doc.extents.min[1]+16),new THREE.MeshStandardMaterial({map:turf,roughness:1}));
+  floor.position.set(cx,cy,-.06);floor.receiveShadow=true;group.add(floor);
+  const contextGroup=buildPresentationContext(doc,placements);group.add(contextGroup);
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
-  detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;group.add(detailGroup);
+  detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const pickMeshes:EditablePreview["pickMeshes"]=[];
   for(const kind of ["TREE","SHRUB"] as const) {
     const list=placements.filter(p=>p.kind===kind);const slot=new THREE.Group();slot.name=kind==="TREE"?"trees3d":"shrubs3d";group.add(slot);
-    const circles=new THREE.InstancedMesh(new THREE.RingGeometry(.95,1,64),
-      new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:.95,depthTest:false,depthWrite:false}),list.length);
-    circles.name="editable-planting-circles";circles.renderOrder=100;circles.frustumCulled=false;
+    const circles=new THREE.InstancedMesh(new THREE.RingGeometry(.983,1,64),
+      new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:.65,depthTest:false,depthWrite:false}),list.length);
+    circles.name="editable-planting-circles";circles.renderOrder=100;circleMeshes.push(circles);circles.frustumCulled=false;
     const matrix=new THREE.Matrix4();
     for(let i=0;i<list.length;i++) {
       const p=list[i],r=Math.max(p.crownRadiusM,.15);
       matrix.makeScale(r,r,1);matrix.setPosition(p.position[0],p.position[1],.22);circles.setMatrixAt(i,matrix);
       circles.setColorAt(i,new THREE.Color(kind==="TREE"?0x16b8a6:0x7c83e9));
       const plant=new THREE.Group();plant.name=`plant:${p.id}`;plant.position.set(p.position[0],p.position[1],.07);plantGroups.set(p.id,plant);slot.add(plant);
+      plant.add(plantingModel(p.id,r,p.kind==="SHRUB"));
     }
     circles.instanceMatrix.needsUpdate=true;slot.add(circles);pickMeshes.push({mesh:circles,placements:list});
     const hitMaterial=new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide,transparent:true,opacity:0,depthWrite:false});
@@ -103,20 +114,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   void environment(doc,controller.signal,status).then(async job=>{
     if(disposed)return;const source=await model(job.modelUrl);if(disposed)return;
     const wrapper=new THREE.Group();wrapper.name="blender-environment3d";wrapper.rotation.x=Math.PI/2;wrapper.position.set(job.origin[0],job.origin[1],0);
-    const copy=shared(source.clone(true));wrapper.add(copy);group.add(wrapper);status("3D-редактор · сцена Blender");invalidate();
+    const copy=shared(source.clone(true));copy.traverse(o=>{if(/Landscape.ground/i.test(o.name))o.visible=false;});wrapper.add(copy);group.add(wrapper);status("3D-редактор · сцена Blender");invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
-  void model("/models/editor-plants.glb?v=2").then(source=>{
-    if(disposed)return;
-    for(let i=0;i<placements.length;i++) {
-      const p=placements[i],plant=plantGroups.get(p.id)!;const lod=new THREE.LOD();
-      for(const [level,distance] of [["high",0],["medium",30],["low",90]] as const) {
-        const asset=source.getObjectByName(`plant_${i%4}_${level}`);if(!asset)continue;
-        const mesh=shared(asset.clone(true));const wrapper=new THREE.Group();wrapper.rotation.x=Math.PI/2;wrapper.add(mesh);lod.addLevel(wrapper,distance);
-      }
-      const scale=p.crownRadiusM/1.45;
-      lod.scale.set(scale,scale,p.kind==="TREE"?scale:scale*.32);plant.add(lod);
-    }
-    invalidate();
-  }).catch(()=>{if(!disposed)status("Модели растений недоступны; круги остаются редактируемыми.");});
-  return {group,pickMeshes,plantGroups,fog,detailGroup,dispose:()=>{disposed=true;controller.abort();}};
+  return {group,pickMeshes,plantGroups,fog,detailGroup,contextGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
 }

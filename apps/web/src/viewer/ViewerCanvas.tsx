@@ -97,17 +97,22 @@ function MoveToast() {
   );
 }
 
-function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
+function ViewerToggles({ mode, detail, context, circles, setContext, setCircles, camera, snapshot }: { mode: ViewMode; detail: boolean; context:boolean; circles:boolean; setContext:(v:boolean)=>void; setCircles:(v:boolean)=>void; camera:(view:"aerial"|"garden")=>void; snapshot:()=>void }) {
   return (
-    <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-      <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+    <div className="absolute right-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5">
+      <div className="flex flex-wrap justify-end overflow-hidden rounded-sm border border-ink-600 shadow-sm">
         <Seg active={mode === "2d"} label="CAD" title="Исходный план и посадки"
           onClick={() => setViewMode("2d")} />
         <Seg active={mode === "3d"} label="3D-редактор" title="Сцена Blender с редактируемыми посадками"
           onClick={() => setViewMode("3d")} />
       </div>
       {mode === "3d" && (
-        <div className="flex overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+        <div className="flex flex-wrap justify-end overflow-hidden rounded-sm border border-ink-600 shadow-sm">
+          <Seg active={false} label="Снимок" title="Скачать текущий вид без редактируемых кругов" onClick={snapshot} />
+          <Seg active={false} label="Общий вид" title="Архитектурный вид сверху" onClick={()=>camera("aerial")} />
+          <Seg active={false} label="В саду" title="Перспектива с уровня сада" onClick={()=>camera("garden")} />
+          <Seg active={context} label="Окружение" title="Иллюстративная архитектура и благоустройство; не входят в CAD и расчёт норм" onClick={()=>setContext(!context)} />
+          <Seg active={circles} label="Круги" title="Показать или скрыть контуры крон" onClick={()=>setCircles(!circles)} />
           <Seg active={detail} label="CAD-подложка" title="Показать или скрыть исходные линии под сценой"
             onClick={() => setMassingDetail(!detail)} />
         </div>
@@ -118,6 +123,8 @@ function ViewerToggles({ mode, detail }: { mode: ViewMode; detail: boolean }) {
 
 /** React wrapper around the imperative SceneManager. */
 export function ViewerCanvas() {
+  const [context,setContext]=useState(true);
+  const [circles,setCircles]=useState(true);
   const [previewStatus,setPreviewStatus]=useState("Подготовка 3D-сцены…");
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -216,6 +223,9 @@ export function ViewerCanvas() {
     };
   }, []);
 
+  useEffect(()=>{mgrRef.current?.setPresentationContext(context);},[context]);
+  useEffect(()=>{mgrRef.current?.setPlantingCircles(circles);},[circles]);
+
   // Rebuild CAD geometry only when the entity set changes (new upload) —
   // classification overrides replace the document object but keep `entities`.
   useEffect(() => { mgrRef.current?.setDocument(doc); }, [doc?.entities]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -235,8 +245,8 @@ export function ViewerCanvas() {
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
-      <ViewerToggles mode={viewMode} detail={massingDetail} />
-      {viewMode === "3d" && <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[55%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div></div>}
+      <ViewerToggles mode={viewMode} detail={massingDetail} context={context} circles={circles} setContext={setContext} setCircles={setCircles} camera={preset=>mgrRef.current?.setPresentationCamera(preset)} snapshot={()=>mgrRef.current?.downloadPresentationImage()} />
+      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div>{context && <div className="mt-1 text-2xs text-ink-400">Окружение — иллюстративный эскиз, вне CAD и расчёта норм</div>}</div>}
       <div
         ref={tooltipRef}
         style={{ display: "none" }}

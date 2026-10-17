@@ -7,9 +7,9 @@ export function RenderDialog({ projectId }: { projectId: string }) {
   const [job, setJob] = useState<{ statusUrl: string; imageUrl: string } | null>(null);
   const [status, setStatus] = useState("");
   const [image, setImage] = useState<string | null>(null);
-  const [elevation, setElevation] = useState(23);
-  const [azimuth, setAzimuth] = useState(225);
-  const [distance, setDistance] = useState(.8);
+  const [elevation, setElevation] = useState(48);
+  const [azimuth, setAzimuth] = useState(315);
+  const [distance, setDistance] = useState(1.25);
   const [detail, setDetail] = useState("presentation");
   const [view, setView] = useState("aerial");
   const [quality, setQuality] = useState("preview");

@@ -8,7 +8,7 @@ def prepare_materials(asset_root):
         if not material.use_nodes:continue
         old=material.node_tree.nodes.get('Principled BSDF')
         if not old:continue
-        color=tuple(old.inputs['Base Color'].default_value)
+        color=tuple(material.diffuse_color)
         rough=float(old.inputs['Roughness'].default_value)
         metal=float(old.inputs['Metallic'].default_value)
         brick=next((n for n in material.node_tree.nodes if n.type=='TEX_BRICK'),None)
