@@ -1,0 +1,7 @@
+Botanical tree meshes are generated outputs from GreenPlan's bundled Blender
+Sapling library. Sapling / Blender Foundation: https://www.blender.org/
+Browser exporter: apps/api/scripts/export_botanical_trees.py.
+Connected branch surfaces are preserved; leaf faces are sampled separately.
+Tree forms/heights are illustrative, not surveyed botanical specimens.
+The runtime normalizes actual mesh vertices to each plan crown radius.
+Larch uses a separate local procedural whorled-branch/needle model.

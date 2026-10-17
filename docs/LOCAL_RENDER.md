@@ -1,10 +1,21 @@
 # Local rendering and CAD fidelity update
 
-The 3D editor combines Blender-exported source geometry with locally generated,
-full-canopy vegetation. Leaf cards keep crown coverage at every distance instead
-of removing disconnected leaves through mesh decimation. Plant coordinates and
-crown footprints still come from the selected iteration. Picking and dragging
-update the model, crown circle and saved plan together.
+The 3D editor defaults to source CAD geometry with source linework visible.
+Illustrative surroundings are off by default. The cached Blender environment is
+built with `--detail cad`: it does not invent windows, balconies, curbs or garden
+furniture. Known 2D building footprints can still have illustrative extrusion
+heights; the source drawing remains authoritative and **CAD оригинал** opens the
+original DXF modelspace through ezdxf's drawing frontend.
+
+Trees use locally bundled Sapling branch-and-leaf meshes. The browser assets
+preserve connected branch surfaces, with leaf sampling performed separately;
+`apps/api/scripts/export_botanical_trees.py` rebuilds them. Larch uses a separate
+whorled conifer form rather than a broadleaf crown. Trunks have bark texture and
+bump detail. Forms and heights are illustrative, not surveyed botanical models.
+The client measures mesh vertices and normalizes each crown to the selected
+planting radius, keeping its stem at the plan coordinates. Picking and dragging
+update the model, crown circle and saved plan together. Shrubs and loading
+fallbacks use locally generated foliage.
 
 The viewport uses a bundled CC0 outdoor HDR environment, physical materials,
 soft sunlight shadows, textured stone paving and masonry. No external image or
@@ -13,7 +24,7 @@ rendering API is used. The reflection HDR is bundled under CC0; see
 perspective. **Круги** hides editing outlines. **Снимок** downloads the current
 WebGL view as PNG with the outlines hidden, without a server render job.
 
-**Окружение** toggles an explicitly illustrative architectural setting. In a CAD
+**Окружение** optionally enables an explicitly illustrative architectural setting. In a CAD
 fragment without closed building footprints, it adds surrounding facades,
 balconies, a promenade, furniture, fences, a timber shelter and perennial borders.
 Presentation paths route around planted stems, shrub crowns and imported fences.
@@ -199,3 +210,12 @@ fragment, with the selected plan's plantings and editing circles hidden:
 
 They demonstrate the browser renderer, not a survey of the surrounding buildings
 or an independent verification of the conceptual paving and furniture.
+
+## Render filters
+
+**Фильтры** provides neutral, natural, warm-evening and cool presets, plus
+exposure, contrast, saturation, warmth, vignette and clarity controls. **Сбросить**
+restores neutral values. A Three.js post-processing pipeline applies the same
+settings to the live 3D viewport and **Снимок** PNG. This is not a CSS filter;
+the downloaded pixels include the grade. Original 2D CAD colors and DXF exports
+bypass it. The separate server Cycles export uses its own rendering settings.

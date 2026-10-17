@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Placement, ProjectDocument } from "../api/types";
 import { buildCadGroups, disposeObject } from "./cadGeometry";
+import {botanicalTree,loadBotanicalAssets} from "./botanicalAssets";
 import { plantingModel, random } from "./landscapeVegetation";
 import { buildPresentationContext } from "./presentationContext";
 import type { Theme } from "../theme";
@@ -79,8 +80,9 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   for(let i=0;i<42000;i++){const shade=55+rng()*45;ctx.strokeStyle=`hsla(${75+rng()*20},25%,${shade}%,.24)`;const x=rng()*512,y=rng()*512;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+(rng()-.5)*2,y-1-rng()*3);ctx.stroke();}
   const turf=new THREE.CanvasTexture(groundCanvas);turf.colorSpace=THREE.SRGBColorSpace;turf.wrapS=turf.wrapT=THREE.RepeatWrapping;turf.repeat.set(Math.max(2,(doc.extents.max[0]-doc.extents.min[0])/5),Math.max(2,(doc.extents.max[1]-doc.extents.min[1])/5));turf.anisotropy=8;
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+16,doc.extents.max[1]-doc.extents.min[1]+16),new THREE.MeshStandardMaterial({map:turf,roughness:1}));
-  floor.position.set(cx,cy,-.06);floor.receiveShadow=true;group.add(floor);
-  const contextGroup=buildPresentationContext(doc,placements);group.add(contextGroup);
+  floor.position.set(cx,cy,-.06);floor.receiveShadow=true;
+  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
+  const contextGroup=buildPresentationContext(doc,placements);contextGroup.add(floor);contextGroup.visible=false;group.add(contextGroup);
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const pickMeshes:EditablePreview["pickMeshes"]=[];
@@ -109,6 +111,15 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
     }
     slot.add(disks,crowns);pickMeshes.push({mesh:disks,placements:list},{mesh:crowns,placements:list});
   }
+  // Attach authored branches and individual leaf meshes to the existing
+  // editable roots. A move during loading is preserved because roots stay put.
+  void loadBotanicalAssets().then(()=>{
+    if(disposed)return;
+    for(const p of placements)if(p.kind==="TREE"){
+      const plant=plantGroups.get(p.id)!;plant.clear();plant.add(botanicalTree(p.id,p.speciesId,p.crownRadiusM));
+    }
+    invalidate();
+  }).catch(()=>{if(!disposed)status("Детальные деревья недоступны; показаны резервные модели.");});
   // Camera-independent geometry, reused after moves; the environment is never
   // regenerated when a proposed planting changes coordinates.
   void environment(doc,controller.signal,status).then(async job=>{

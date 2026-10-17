@@ -94,7 +94,7 @@ def enrich(data, ox, oy, presentation=True):
     for si,surface in enumerate(data.get('surfaces',[])):
         cat=surface['category'];triangles=surface['triangles'];index=indexes[id(surface)]
         edges=boundary_edges(triangles)
-        if cat=='BUILDING':
+        if presentation and cat=='BUILDING':
             height=float(surface.get('height',12));floors=max(1,min(15,round(height/3)))
             for ea,eb in edges:
                 ax,ay=local(ea);bx,by=local(eb);dx,dy=bx-ax,by-ay;length=math.hypot(dx,dy)
@@ -145,7 +145,7 @@ def enrich(data, ox, oy, presentation=True):
                     d.clump((q.x,q.y,.05),rng.uniform(.25,.42),rng.uniform(.30,.65),green[j%4])
                     if j%2==0:
                         for k in range(4):d.clump((q.x+rng.uniform(-.15,.15),q.y+rng.uniform(-.15,.15),rng.uniform(.35,.65)),.055,.12,flower[j%4])
-        if cat in ('SIDEWALK','GREEN_AREA'):
+        if presentation and cat in ('SIDEWALK','GREEN_AREA'):
             for ea,eb in edges:
                 a,b=Vector((*local(ea),.07)),Vector((*local(eb),.07))
                 length=(b-a).length

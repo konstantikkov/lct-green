@@ -6,6 +6,7 @@ import type {
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
 import { buildEditablePreview, type EditablePreview } from "./blenderPreview";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import {RenderFilterPipeline,DEFAULT_FILTERS,type RenderFilters} from "./renderFilters";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   buildAllowedGroup, buildChunkGridGroup, buildLawnGroup, buildPlacementsGroup,
@@ -59,9 +60,11 @@ const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
 
 /** Owns the three.js scene; imperative API driven by React effects. */
 export class SceneManager {
-  private presentationContext=true;
+  private presentationContext=false;
   private plantingCircles=true;
   private renderer: THREE.WebGLRenderer;
+  private filterPipeline:RenderFilterPipeline;
+  private renderFilters:RenderFilters={...DEFAULT_FILTERS};
   private scene = new THREE.Scene();
   private camera: THREE.OrthographicCamera;
   private camera3d: THREE.PerspectiveCamera;
@@ -175,7 +178,7 @@ export class SceneManager {
       const generator=new THREE.PMREMGenerator(this.renderer);
       const outdoor=generator.fromEquirectangular(texture);generator.dispose();texture.dispose();
       this.environmentMap.dispose();this.environmentMap=outdoor;
-      if(this.mode==="3d"){this.scene.environment=outdoor.texture;this.scene.background=outdoor.texture;}
+      if(this.mode==="3d"){this.scene.environment=outdoor.texture;this.scene.background=this.presentationContext?outdoor.texture:null;}
       this.scene.environmentRotation.set(Math.PI/2,0,.25);this.scene.backgroundRotation.copy(this.scene.environmentRotation);this.scene.backgroundBlurriness=.15;this.scene.backgroundIntensity=.75;this.invalidate();
     }).catch(()=>{});
 
@@ -185,6 +188,7 @@ export class SceneManager {
 
     this.camera3d = new THREE.PerspectiveCamera(50, 1, 0.5, 100000);
     this.camera3d.up.set(0, 0, 1);
+    this.filterPipeline=new RenderFilterPipeline(this.renderer,this.scene,this.camera3d);
 
     // Pointer events handle panning/pinching themselves — never the browser.
     canvas.style.touchAction = "none";
@@ -322,13 +326,19 @@ export class SceneManager {
     this.invalidate();
   }
 
+  setRenderFilters(filters:RenderFilters) {
+    this.renderFilters={...filters};this.filterPipeline.configure(filters);
+    if(this.mode==="3d")this.renderer.toneMappingExposure=.88*Math.pow(2,filters.exposure);
+    this.invalidate();
+  }
+
   downloadPresentationImage() {
     if(this.mode!=="3d")return;
     const selected=this.selectionRing.visible;
     try {
       this.selectionRing.visible=false;
       this.editablePreview?.circleMeshes.forEach(m=>(m.material as THREE.MeshBasicMaterial).opacity=0);
-      this.renderer.render(this.scene,this.camera3d);
+      this.filterPipeline.render();
       const link=document.createElement("a");
       link.download=`${this.doc?.projectId??"landscape"}_${this.presentationContext?"concept":"plan"}.png`;
       link.href=this.canvas.toDataURL("image/png");link.click();
@@ -349,7 +359,7 @@ export class SceneManager {
   }
 
   setPresentationContext(show:boolean) {
-    this.presentationContext=show;if(this.editablePreview)this.editablePreview.contextGroup.visible=show;this.invalidate();
+    this.presentationContext=show;if(this.mode==="3d")this.scene.background=show?this.environmentMap.texture:null;if(this.editablePreview)this.editablePreview.contextGroup.visible=show;this.invalidate();
   }
   setPlantingCircles(show:boolean) {
     this.plantingCircles=show;
@@ -391,8 +401,8 @@ export class SceneManager {
     this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.scene.fog = mode === "3d" ? this.fog3d : null;
     this.scene.environment = mode === "3d" ? this.environmentMap.texture : null;
-    this.scene.background = mode === "3d" ? this.environmentMap.texture : null;
-    this.renderer.toneMappingExposure = mode === "3d" ? .88 : 1;
+    this.scene.background = mode === "3d" && this.presentationContext ? this.environmentMap.texture : null;
+    this.renderer.toneMappingExposure = mode === "3d" ? .88*Math.pow(2,this.renderFilters.exposure) : 1;
     this.scene.environmentIntensity=mode === "3d" ? .35 : 1;
     if (mode === "3d") {
       if (this.massingDirty) this.rebuild3d();
@@ -443,6 +453,7 @@ export class SceneManager {
     (this.selectionRing.material as THREE.Material).dispose();
     this.editablePreview?.dispose();
     this.environmentMap.dispose();
+    this.filterPipeline.dispose();
     this.renderer.dispose();
   }
 
@@ -465,7 +476,7 @@ export class SceneManager {
     }
     if (this.dirty) {
       this.dirty = false;
-      this.renderer.render(this.scene, this.activeCamera());
+      if(this.mode==="3d")this.filterPipeline.render();else this.renderer.render(this.scene, this.camera);
     }
     this.rafId = requestAnimationFrame(this.loop);
   };
@@ -478,6 +489,7 @@ export class SceneManager {
     this.width = w;
     this.height = h;
     this.renderer.setSize(w, h, false);
+    this.filterPipeline.resize(w,h,this.renderer.getPixelRatio());
     this.camera3d.aspect = w / h;
     this.camera3d.updateProjectionMatrix();
     this.updateCamera();
@@ -706,6 +718,10 @@ export class SceneManager {
       const isVeg = this.vegLayers.has(name);
       const overlayOn = o == null ? true : isVeg ? o.existingVegetation : o.originalCad;
       group.visible = layerOn && overlayOn;
+    }
+    if(this.detailGroup3d)for(const child of this.detailGroup3d.children){
+      const name=child.name.replace(/^layer:/,"");
+      child.visible=this.layerVisibility[name]!==false && (this.vegLayers.has(name)?o?.existingVegetation!==false:o?.originalCad!==false);
     }
     if (this.zonesObj) this.zonesObj.visible = o?.exclusionZones !== false;
     if (this.allowedObj) this.allowedObj.visible = o?.allowedArea !== false;

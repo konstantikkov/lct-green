@@ -198,3 +198,24 @@ def test_editor_preview_cache_uses_source_geometry_not_planting_moves(tmp_path, 
         assert changed['previewId']!=first['previewId'] and len(calls)==2
     finally:
         preview_jobs._active.clear()
+
+
+def test_editor_preview_builds_cad_mode_not_presentation(tmp_path, monkeypatch):
+    from app import config
+    from app.services import preview_jobs
+    from types import SimpleNamespace
+    monkeypatch.setattr(config,'OUTPUT_DIR',tmp_path)
+    key='a'*32
+    folder=preview_jobs.root('source-review',key)
+    folder.mkdir(parents=True)
+    calls=[]
+    def run(args,**kwargs):
+        calls.append(args)
+        (folder/'working.glb').write_bytes(b'glTF')
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(preview_jobs.subprocess,'run',run)
+    preview_jobs._build('/stub/blender','source-review',key)
+    command=calls[0]
+    assert command[command.index('--detail')+1]=='cad'
+    assert '--preview-only' in command
+    assert preview_jobs.status('source-review',key)['state']=='COMPLETED'

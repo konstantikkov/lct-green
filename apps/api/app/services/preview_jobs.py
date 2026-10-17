@@ -25,7 +25,7 @@ def request(pid,doc):
     if not blender:raise FileNotFoundError('Blender is unavailable on the API host.')
     data=scene_data(doc,{'placements':[]})
     payload=json.dumps(data,sort_keys=True,ensure_ascii=False)
-    fingerprint=hashlib.sha256(payload.encode())
+    fingerprint=hashlib.sha256(payload.encode()+b'cad-only-v2')
     for name in ['blender_scene.py','blender_landscape.py','render_geometry.py','preview_materials.py']:
         fingerprint.update(Path(__file__).with_name(name).read_bytes())
     key=fingerprint.hexdigest()[:32];folder=root(pid,key)
@@ -55,7 +55,7 @@ def _build(blender,pid,key):
         _write(folder,{'state':'BUILDING'})
         args=[blender,'-b','-t','2','--python',str(Path(__file__).with_name('blender_scene.py')),'--',
               '--scene',str(folder/'scene.json'),'--gltf',str(folder/'working.glb'),'--preview-only',
-              '--output',str(folder/'unused.png'),'--detail','presentation']
+              '--output',str(folder/'unused.png'),'--detail','cad']
         with (folder/'build.log').open('w') as log:
             p=subprocess.run(args,stdout=log,stderr=subprocess.STDOUT,timeout=600)
         if p.returncode or not (folder/'working.glb').is_file():raise RuntimeError('Blender could not build the editor scene.')

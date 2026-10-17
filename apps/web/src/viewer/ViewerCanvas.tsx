@@ -4,6 +4,8 @@ import { DragChecker, dragAnnotationHtml } from "./dragCheck";
 import { hud } from "./hud";
 import { useApp, getState, type ViewMode } from "../state/store";
 import { clearMoveToast, movePlacement, select, setMassingDetail, setViewMode } from "../state/actions";
+import {RenderFilterPanel} from "./RenderFilterPanel";
+import {DEFAULT_FILTERS,type RenderFilters} from "./renderFilters";
 import { getTheme, useTheme } from "../theme";
 
 function esc(s: string): string {
@@ -123,7 +125,8 @@ function ViewerToggles({ mode, detail, context, circles, setContext, setCircles,
 
 /** React wrapper around the imperative SceneManager. */
 export function ViewerCanvas() {
-  const [context,setContext]=useState(true);
+  const [context,setContext]=useState(false);
+  const [filters,setFilters]=useState<RenderFilters>({...DEFAULT_FILTERS});
   const [circles,setCircles]=useState(true);
   const [previewStatus,setPreviewStatus]=useState("Подготовка 3D-сцены…");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -223,6 +226,7 @@ export function ViewerCanvas() {
     };
   }, []);
 
+  useEffect(()=>{mgrRef.current?.setRenderFilters(filters);},[filters]);
   useEffect(()=>{mgrRef.current?.setPresentationContext(context);},[context]);
   useEffect(()=>{mgrRef.current?.setPlantingCircles(circles);},[circles]);
 
@@ -246,7 +250,8 @@ export function ViewerCanvas() {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <ViewerToggles mode={viewMode} detail={massingDetail} context={context} circles={circles} setContext={setContext} setCircles={setCircles} camera={preset=>mgrRef.current?.setPresentationCamera(preset)} snapshot={()=>mgrRef.current?.downloadPresentationImage()} />
-      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div>{context && <div className="mt-1 text-2xs text-ink-400">Окружение — иллюстративный эскиз, вне CAD и расчёта норм</div>}</div>}
+      {viewMode === "3d" && <RenderFilterPanel value={filters} onChange={setFilters} />}
+      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div>{context ? <div className="mt-1 text-2xs text-ink-400">Окружение — иллюстративный эскиз, вне CAD и расчёта норм</div> : <div className="mt-1 text-2xs text-ink-400">По исходному CAD · высоты из 2D условные · точный вид: «CAD оригинал»</div>}</div>}
       <div
         ref={tooltipRef}
         style={{ display: "none" }}

@@ -36,13 +36,13 @@ export interface GenOptions {
 }
 
 /** Persisted like the theme; "simple" hides the 3D detail layer. */
-export const MASSING_DETAIL_STORAGE_KEY = "greenplan.editorCadUnderlay";
+export const MASSING_DETAIL_STORAGE_KEY = "greenplan.editorCadUnderlay.v2";
 
 function readInitialMassingDetail(): boolean {
   try {
-    return localStorage.getItem(MASSING_DETAIL_STORAGE_KEY) === "detailed";
+    return localStorage.getItem(MASSING_DETAIL_STORAGE_KEY) !== "simple";
   } catch {
-    return false;
+    return true;
   }
 }
 
