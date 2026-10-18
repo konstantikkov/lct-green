@@ -75,3 +75,27 @@ Accepted edits enqueue a new diffusion job from the **original color/depth/seman
 - `POST /api/projects/{pid}/photos/{jid}/refine`: `{ "message": "Сделай свет теплее" }`; returns an explanation, conversation and optional new job.
 
 The LLM never emits arbitrary code or direct geometry edits. Numeric placement compliance remains a property of the CAD pipeline, not generated pixels.
+
+## CAD reconstruction and artifact control
+
+The right sidebar's **Геометрия из CAD** section rebuilds the environment before a
+new photo capture. Closed footprints become watertight walls and roofs, including
+courtyard voids. CAD thickness and height labels take precedence; recognized storey
+labels use an explicitly assumed 3 m per storey. Missing heights use the adjustable
+9 m fallback. Open and dashed outlines are not silently closed into new buildings.
+
+Fences are **off by default**: classified CAD strokes can be symbols or temporary
+boundaries, and are not enough evidence for a realistic railing design. The opt-in
+checkbox reconstructs those source lines at an illustrative 1.3 m height. New photo
+captures record a fence count; without fences the negative prompt also excludes
+railings, wire mesh and barriers. Diffusion remains illustrative, not exact CAD.
+
+Raised source sidewalks and road surfaces have boundary edges. Native CAD 3DFACE
+vertices retain their metric Z coordinates, normalized to a shared elevation datum;
+terrain remains flat when no 3D evidence exists. Plants follow the source ground in
+the editor, including after moves. Refresh older imports to extract newly supported
+Z/thickness metadata. CAD coordinates and regulatory calculations remain 2D and
+unchanged. Existing photographs must be regenerated from the updated scene.
+
+The default photo background is now the source scene. Added distant park scenery
+is an explicit option rather than an automatic interpretation of the surroundings.

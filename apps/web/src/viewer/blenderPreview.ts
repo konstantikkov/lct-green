@@ -6,7 +6,8 @@ import type { Theme } from "../theme";
 
 const loader = new GLTFLoader();
 const models = new Map<string, Promise<THREE.Group>>();
-const requests = new WeakMap<ProjectDocument, Promise<{modelUrl:string;origin:number[];sourceBuildings:number}>>();
+export type ReconstructionSettings={buildingHeightM:number;showFences:boolean};
+const requests = new WeakMap<ProjectDocument, Map<string,Promise<{modelUrl:string;origin:number[];sourceBuildings:number;sourceFences:number}>>>();
 function model(url:string) {
   let p=models.get(url);
   if(p){models.delete(url);models.set(url,p);}
@@ -17,22 +18,23 @@ function model(url:string) {
   }
   return p;
 }
-async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:string)=>void) {
-  let request=requests.get(doc);
+async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false}) {
+  const key=JSON.stringify(settings);let cache=requests.get(doc);if(!cache){cache=new Map();requests.set(doc,cache);}
+  let request=cache.get(key);
   if (!request) {
     request=(async()=>{
-      const r=await fetch(`/api/projects/${doc.projectId}/editor-preview`,{method:"POST"});
+      const r=await fetch(`/api/projects/${doc.projectId}/editor-preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(settings)});
       if(!r.ok)throw new Error((await r.json()).detail?.message || "Не удалось подготовить сцену");
       const job=await r.json();
       for(let i=0;i<300;i++) {
         const response=await fetch(job.statusUrl); if(!response.ok)throw new Error("Ошибка загрузки сцены");
         const state=await response.json();
-        if(state.state==="COMPLETED")return {modelUrl:job.modelUrl as string,origin:job.origin as number[],sourceBuildings:Number(job.sourceBuildings??0)};
+        if(state.state==="COMPLETED")return {modelUrl:job.modelUrl as string,origin:job.origin as number[],sourceBuildings:Number(job.sourceBuildings??0),sourceFences:Number(job.sourceFences??0)};
         if(state.state==="FAILED")throw new Error(state.error);
         await new Promise(resolve=>setTimeout(resolve,1500));
       }
       throw new Error("Подготовка сцены занимает слишком много времени. Откройте проект повторно.");
-    })(); requests.set(doc,request); request.catch(()=>requests.delete(doc));
+    })(); cache.set(key,request); request.catch(()=>cache!.delete(key));
   }
   status("Подготовка 3D-сцены Blender… Круги уже доступны для редактирования.");
   const result=await request;
@@ -59,11 +61,12 @@ export interface EditablePreview {
   fog:THREE.Fog;
   detailGroup:THREE.Group;
   circleMeshes:THREE.InstancedMesh[];
+  groundHeight:(x:number,y:number)=>number;
   dispose:()=>void;
 }
 /** Blender-built environment + independently editable, instanced crown circles. */
 export function buildEditablePreview(doc:ProjectDocument, placements:Placement[], theme:Theme,
-  invalidate:()=>void,status:(s:string)=>void):EditablePreview {
+  invalidate:()=>void,status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false}):EditablePreview {
   const group=new THREE.Group();group.name="blender-editor";
   const controller=new AbortController();let disposed=false;
   const circleMeshes:THREE.InstancedMesh[]=[];
@@ -79,6 +82,9 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
+  const groundMeshes:THREE.Mesh[]=[];
+  const groundRay=new THREE.Raycaster();
+  const groundHeight=(x:number,y:number)=>{groundRay.set(new THREE.Vector3(x,y,10000),new THREE.Vector3(0,0,-1));return groundRay.intersectObjects(groundMeshes,false)[0]?.point.z??(base.position.z+.07);};
   const pickMeshes:EditablePreview["pickMeshes"]=[];
   for(const kind of ["TREE","SHRUB"] as const) {
     const list=placements.filter(p=>p.kind===kind);const slot=new THREE.Group();slot.name=kind==="TREE"?"trees3d":"shrubs3d";group.add(slot);
@@ -118,7 +124,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   }
   // Camera-independent geometry, reused after moves; the environment is never
   // regenerated when a proposed planting changes coordinates.
-  void environment(doc,controller.signal,status).then(async job=>{
+  void environment(doc,controller.signal,status,settings).then(async job=>{
     if(disposed)return;const source=await model(job.modelUrl);if(disposed)return;
     const wrapper=new THREE.Group();wrapper.name="blender-environment3d";wrapper.rotation.x=Math.PI/2;wrapper.position.set(job.origin[0],job.origin[1],0);
     const copy=shared(source.clone(true));copy.traverse(o=>{
@@ -127,8 +133,12 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       const name=m.name.toLowerCase();if(/cad.fence/.test(name))o.userData.photoClass="FENCE";let category=o.userData.cadCategory;
       for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
       const color=category==="BUILDING"?0xcac3b7:category==="GREEN_AREA"||/grass|green/i.test(name)?0xb0bc94:category==="ROAD"||category==="PARKING"||/road|asphalt/i.test(name)?0x8c9394:0xc5c5bc;
-      m.geometry=m.geometry.clone();m.material=new THREE.MeshStandardMaterial({color,roughness:1});o.userData.sharedPreviewResource=false;
-    });wrapper.add(copy);group.add(wrapper);group.userData.sourceBuildings=job.sourceBuildings;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите ракурс`);invalidate();
+      m.geometry=m.geometry.clone();m.material=new THREE.MeshStandardMaterial({color,roughness:1,side:THREE.DoubleSide});if(category)o.userData.cadCategory=category;o.userData.sharedPreviewResource=false;
+    });wrapper.add(copy);group.add(wrapper);group.updateMatrixWorld(true);
+    copy.traverse(o=>{const m=o as THREE.Mesh;if(m.isMesh&&m.visible&&(["GREEN_AREA","ROAD","SIDEWALK","PARKING"].includes(m.userData.cadCategory)||m.userData.sourceTerrain))groundMeshes.push(m);});
+    if(groundMeshes.some(m=>m.userData.sourceTerrain)){const bounds=new THREE.Box3();for(const mesh of groundMeshes)if(mesh.userData.sourceTerrain)bounds.expandByObject(mesh);if(!bounds.isEmpty())base.position.z=bounds.min.z-.07;}
+    for(const p of placements){const z=groundHeight(p.position[0],p.position[1]);const plant=plantGroups.get(p.id);if(plant)plant.position.z=z+.07;for(const slot of pickMeshes){const i=slot.placements.findIndex(v=>v.id===p.id);if(i>=0){const m=new THREE.Matrix4();slot.mesh.getMatrixAt(i,m);m.elements[14]+=z;slot.mesh.setMatrixAt(i,m);slot.mesh.instanceMatrix.needsUpdate=true;}}}
+    group.userData.sourceBuildings=job.sourceBuildings;group.userData.sourceFences=job.sourceFences;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите ракурс`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
-  return {group,pickMeshes,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
+  return {group,pickMeshes,groundHeight,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
 }

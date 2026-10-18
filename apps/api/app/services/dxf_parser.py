@@ -15,6 +15,7 @@ import ezdxf
 from ezdxf import colors as ezcolors
 from ezdxf import path as ezpath
 
+from .source_reconstruction import source_attributes
 from .. import config
 from ..models.ir import CadDocument, Extents, IREntity, LayerInfo
 
@@ -358,11 +359,12 @@ def parse_dxf_cached(path: Path, document_id: str, file_name: str, source_format
     import sys
     from . import cache
     from ..models import ir
+    from . import source_reconstruction
     prior = list(conversion_log or [])
     key = None
     if cache.enabled():
         key = cache.make_key("parse", cache.file_sha256(path),
-                             cache.code_fingerprint(sys.modules[__name__], ir))
+                             cache.code_fingerprint(sys.modules[__name__], ir,source_reconstruction))
         hit = cache.get(key)
         if hit is not None:
             data = json.loads((hit / "document.json").read_text(encoding="utf-8"))
@@ -515,7 +517,8 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
             kind="polygon" if (kind == "polyline" and geom.get("closed")) else kind,
             geometry=geom,
             blockName=clean_text(block_name),
-            attributes={"color": _entity_color(ve if mode == "virtual" else e, doc, layer)},
+            attributes={"color": _entity_color(ve if mode == "virtual" else e, doc, layer),
+                        **source_attributes(ve if mode == "virtual" else e,scale)},
         ))
         layer_counts[layer] = layer_counts.get(layer, 0) + 1
 

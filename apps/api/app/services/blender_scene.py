@@ -162,11 +162,21 @@ def main():
     for surface_index,surface in enumerate(data['surfaces']):
         cat = surface['category']
         verts, faces = [], []
-        z = 0 if cat=='BUILDING' else .015 if cat != 'GREEN_AREA' else .002
+        z = float(surface.get('baseZ',0)) + (float(surface.get('height',.02)) if cat!='BUILDING' else float(surface['height']))
         for tri in surface['triangles']:
             start = len(verts)
             verts.extend((x-ox,y-oy,z) for x,y in tri)
             faces.append((start,start+1,start+2))
+        # Boundary walls preserve concave footprints and courtyard holes; do
+        # not extrude each triangle or fabricate windows from floor guesses.
+        base=float(surface.get('baseZ',0))
+        if cat=='BUILDING':
+            for tri in surface['triangles']:
+                start=len(verts);verts.extend((x-ox,y-oy,base) for x,y in tri);faces.append((start+2,start+1,start))
+        for ring in surface.get('outlines',[]):
+            for a0,b0 in zip(ring,ring[1:]):
+                start=len(verts);verts.extend([(a0[0]-ox,a0[1]-oy,base),(b0[0]-ox,b0[1]-oy,base),(b0[0]-ox,b0[1]-oy,z),(a0[0]-ox,a0[1]-oy,z)])
+                faces.append((start,start+1,start+2,start+3))
         obj = mesh(surface['layer'], verts, faces, rubber if surface.get('style')=='play' else wall if cat=='BUILDING' else
                    asphalt if cat in ('ROAD','PARKING') else grass if cat=='GREEN_AREA' else paving)
         obj['cadLayer']=surface['layer'];obj['cadCategory']=cat
@@ -180,14 +190,23 @@ def main():
             import bmesh
             bm=bmesh.new();bm.from_mesh(obj.data);bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=.00001);bm.to_mesh(obj.data);bm.free()
             roof=material('Source roof',(.38,.39,.37),45);obj.data.materials.append(roof)
+            for face in obj.data.polygons:
+                if face.normal.z>.5:face.material_index=1
             obj['cadLayer']=surface['layer'];obj['cadCategory']=cat
-            mod = obj.modifiers.new('Survey footprint / illustrative height','SOLIDIFY')
-            mod.material_offset=1;mod.material_offset_rim=0
-            mod.thickness = float(surface['height'])
-            mod.offset = 1
+            obj['heightSource']=surface.get('heightSource','unknown')
             bevel = obj.modifiers.new('Facade edges', 'BEVEL')
-            bevel.width = .035
+            bevel.width = .015
             bevel.segments = 3
+
+    native={}
+    for terrain in data.get('terrainFaces',[]):
+        cat=terrain.get('category','UNKNOWN');key=(terrain['layer'],cat)
+        verts,faces=native.setdefault(key,([],[]));start=len(verts)
+        verts.extend((x-ox,y-oy,z+.001) for x,y,z in terrain['vertices']);faces.append(tuple(range(start,len(verts))))
+    for (layer,cat),(verts,faces) in native.items():
+        mat=wall if cat=='BUILDING' else asphalt if cat in ('ROAD','PARKING') else paving if cat=='SIDEWALK' else grass if cat=='GREEN_AREA' else material('CAD neutral terrain',(.38,.34,.25),2)
+        obj=mesh('CAD source face '+layer,verts,faces,mat)
+        obj['cadCategory']=cat if cat in ('BUILDING','ROAD','PARKING','SIDEWALK','GREEN_AREA') else 'UNKNOWN';obj['cadLayer']=layer;obj['sourceTerrain']=cat!='BUILDING'
 
     # Four linked, deterministic botanical meshes: visible branches and thousands
     # of separate leaf blades, rather than opaque spheres representing crowns.

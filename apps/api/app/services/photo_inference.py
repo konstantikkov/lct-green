@@ -124,6 +124,7 @@ def main():
     negative = ('cartoon, illustration, videogame, unity, low poly, plastic, CGI, oversaturated, fake HDR, '
                 'new buildings, extra buildings, skyscrapers, additional paths, extra objects, furniture, '
                 'people, rocks, boulders, topiary, clipped spherical trees, green balls, sculpture, text, watermark, distorted architecture, blurry, fantasy')
+    if not settings.get('fenceCount',0):negative += ', fence, fences, railing, railings, wire mesh, barriers, balustrade'
     negative += ', isolated display model, floating diorama, miniature model, blank studio background'
     if settings.get('background','park')=='park':negative += ', empty horizon'
     if settings['lighting']=='sunny':negative += ', overcast, storm clouds, grey sky, gloomy, desaturated, winter, dull lighting, harsh HDR'
@@ -190,7 +191,7 @@ def main():
         'appearance':{k:settings.get(k) for k in ('palette','temperature','finish','surfaceStyle')}, 'parentJobId':settings.get('parentJobId'),
         'lighting': settings['lighting'], 'background': settings.get('background','park'),
         'backgroundIllustrative': settings.get('background','park')=='park', 'siteBounds': settings.get('siteBounds'),
-        'camera': settings.get('camera'), 'sourceBuildingCount': settings.get('buildingCount', 0), 'prompt': prompt, 'negativePrompt': negative,
+        'camera': settings.get('camera'), 'sourceFenceCount':settings.get('fenceCount',0),'sourceBuildingCount': settings.get('buildingCount', 0), 'prompt': prompt, 'negativePrompt': negative,
         'strength': settings.get('strength', .85), 'controlScale': 1.1,
         'modelRevision': json.loads((Path(args.model)/'provenance.json').read_text()) if (Path(args.model)/'provenance.json').is_file() else None,
         'controlRevision': json.loads((Path(args.control)/'provenance.json').read_text()) if (Path(args.control)/'provenance.json').is_file() else None,

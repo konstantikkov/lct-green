@@ -87,7 +87,7 @@ def enrich(data, ox, oy, presentation=False):
     def local(pt):return (pt[0]-ox,pt[1]-oy)
     # Fences and lighting explicitly present in the CAD classification.
     for feature in data.get('linearFeatures',[]):
-        if feature['category']!='FENCE': continue
+        if feature['category']!='FENCE' or not data.get('reconstruction',{}).get('showFences',False): continue
         pts=feature['points']
         for pa,pb in zip(pts,pts[1:]):
             a,b=Vector((*local(pa),0)),Vector((*local(pb),0));delta=b-a

@@ -20,10 +20,10 @@ def root(pid,key):
     return config.OUTPUT_DIR/'editor_previews'/pid/key
 
 
-def request(pid,doc):
+def request(pid,doc,options=None):
     blender=shutil.which(os.environ.get('BLENDER_EXECUTABLE','blender'))
     if not blender:raise FileNotFoundError('Blender is unavailable on the API host.')
-    data=scene_data(doc,{'placements':[]})
+    data=scene_data(doc,{'placements':[]},options)
     payload=json.dumps(data,sort_keys=True,ensure_ascii=False)
     fingerprint=hashlib.sha256(payload.encode()+b'source-only-pbr-v3')
     for name in ['blender_scene.py','blender_landscape.py','render_geometry.py','preview_materials.py','source_materials.py']:
@@ -43,9 +43,10 @@ def request(pid,doc):
                 if asset.suffix in ('.jpg','.hdr'):shutil.copyfile(asset,folder/asset.name)
             (folder/'status.json').write_text(json.dumps({'state':'QUEUED'}))
             _active.add((pid,key));_pool.submit(_build,blender,pid,key)
-    return {'previewId':key,'sourceBuildings':sum(s['category']=='BUILDING' for s in data['surfaces']),'origin':[(doc.extents.min[i]+doc.extents.max[i])/2 for i in (0,1)],
+    return {'previewId':key,'sourceBuildings':sum(s['category']=='BUILDING' for s in data['surfaces'])+sum(s['category']=='BUILDING' for s in data.get('terrainFaces',[])),'origin':[(doc.extents.min[i]+doc.extents.max[i])/2 for i in (0,1)],
             'statusUrl':f'/api/projects/{pid}/editor-preview/{key}',
-            'modelUrl':f'/api/projects/{pid}/editor-preview/{key}/model'}
+            'modelUrl':f'/api/projects/{pid}/editor-preview/{key}/model',
+            'sourceFences':len(data['linearFeatures']) if (options or {}).get('showFences') else 0,'assumptions':data['assumptions']}
 
 
 def _write(folder,data):

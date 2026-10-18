@@ -984,6 +984,7 @@ class PhotoSettings(BaseModel):
     siteBounds: PhotoBounds | None = None
     iterationId: str | None = Field(default=None,max_length=128)
     buildingCount: int = Field(default=0, ge=0, le=100000)
+    fenceCount: int = Field(default=0,ge=0,le=100000)
     lighting: Literal["sunny", "daylight", "evening", "overcast"] = "sunny"
     background: Literal["park", "source"] = "park"
     strength: float = Field(default=.85, ge=.55, le=.95, allow_inf_nan=False)
@@ -1132,11 +1133,16 @@ def get_render_image(pid: str, jid: str):
     return FileResponse(image, media_type='image/png', filename=f'{pid}_render.png')
 
 
+class ReconstructionSettings(BaseModel):
+    buildingHeightM:float=Field(default=9,ge=2,le=200,allow_inf_nan=False)
+    showFences:bool=False
+
+
 @app.post('/api/projects/{pid}/editor-preview',status_code=202)
-def create_editor_preview(pid: str):
+def create_editor_preview(pid: str, settings:ReconstructionSettings|None=None):
     from .services import preview_jobs
     rt=_get_rt(pid)
-    try:return preview_jobs.request(pid,rt.doc)
+    try:return preview_jobs.request(pid,rt.doc,(settings or ReconstructionSettings()).model_dump())
     except FileNotFoundError as exc:_err(503,'BLENDER_UNAVAILABLE',str(exc))
     except RuntimeError as exc:_err(429,'PREVIEW_QUEUE_FULL',str(exc))
 

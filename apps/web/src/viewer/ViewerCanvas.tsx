@@ -90,10 +90,12 @@ export function ViewerCanvas() {
   const checkerRef = useRef<DragChecker | null>(null);
   if (!checkerRef.current) checkerRef.current = new DragChecker();
 
+  const [reconstruction,setReconstruction]=useState({buildingHeightM:9,showFences:false});
   const [renderAspect,setRenderAspect]=useState<number|null>(16/9);
   const [frameSize,setFrameSize]=useState({width:0,height:0});
   useEffect(()=>{const el=containerRef.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setFrameSize({width:entry.contentRect.width,height:entry.contentRect.height}));observer.observe(el);return()=>observer.disconnect();},[]);
   const doc = useApp((s) => s.document);
+  useEffect(()=>{const initial={buildingHeightM:9,showFences:false};setReconstruction(initial);mgrRef.current?.setReconstruction(initial);},[doc?.projectId]);
   const constraints = useApp((s) => s.constraints);
   const iteration = useApp((s) => s.activeIteration);
   const chunks = useApp((s) => s.chunks);
@@ -229,7 +231,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} reconstructionSettings={reconstruction} onReconstructionChange={settings=>{setReconstruction(settings);setPreviewStatus("Подготовка геометрии CAD…");mgrRef.current?.setReconstruction(settings);}} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
     </div>
   );
 }

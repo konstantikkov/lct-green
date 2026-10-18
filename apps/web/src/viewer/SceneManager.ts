@@ -382,7 +382,7 @@ export class SceneManager {
         materials.set(mesh,mesh.material);mesh.material=palette[key];
       });
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const semantic=read();
-      return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
+      return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),fenceCount:Number(this.editablePreview.group.userData.sourceFences??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
     } finally {
       this.renderer.setRenderTarget(previous.target);this.scene.background=previous.background;this.scene.fog=previous.fog;this.scene.overrideMaterial=previous.override;this.renderer.setClearColor(previous.clear,previous.alpha);this.renderer.toneMapping=previous.tone;
       materials.forEach((material,mesh)=>mesh.material=material);Object.values(palette).forEach(m=>m.dispose());
@@ -601,6 +601,10 @@ export class SceneManager {
     this.invalidate();
   }
 
+  private reconstruction={buildingHeightM:9,showFences:false};
+
+  setReconstruction(settings:{buildingHeightM:number;showFences:boolean}) {this.reconstruction=settings;this.massingDirty=true;if(this.mode==="3d")this.rebuild3d();}
+
   private rebuild3d() {
     this.editablePreview?.dispose();this.editablePreview=null;
     if(this.massing){this.root3d.remove(this.massing);disposeObject(this.massing);this.massing=null;}
@@ -610,7 +614,7 @@ export class SceneManager {
         ()=>{if(!this.dragging&&!this.placementDrag)this.fit3d();this.invalidate(true);},text=>{
           if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
           this.cb.onPreviewStatus(text);
-        });
+        },this.reconstruction);
       this.editablePreview=build;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
@@ -678,11 +682,14 @@ export class SceneManager {
     };
     const hit2d = this.instanceOf(this.pickMeshes, id);
     if (hit2d) shift(hit2d.mesh, hit2d.index);
+    const oldPlant=this.editablePreview?.plantGroups.get(id);
+    const groundZ=this.editablePreview?.groundHeight(x,y)??0;
+    const deltaZ=groundZ-((oldPlant?.position.z??.07)-.07);
     for(const {mesh,placements} of this.pickMeshes3d){
-      const i=placements.findIndex(p=>p.id===id);if(i>=0)shift(mesh,i);
+      const i=placements.findIndex(p=>p.id===id);if(i>=0){shift(mesh,i);mesh.getMatrixAt(i,m);m.elements[14]+=deltaZ;mesh.setMatrixAt(i,m);mesh.instanceMatrix.needsUpdate=true;}
     }
     const plant=this.editablePreview?.plantGroups.get(id);
-    if(plant){plant.position.x=x;plant.position.y=y;}
+    if(plant){plant.position.set(x,y,groundZ+.07);}
     const trunkIdx = this.trunks3d?.indexById.get(id);
     if (this.trunks3d && trunkIdx != null) shift(this.trunks3d.mesh, trunkIdx);
     if (this.selectedPlacement?.id === id) {

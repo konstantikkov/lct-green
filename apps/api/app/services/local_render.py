@@ -5,7 +5,8 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 
-def scene_data(doc, iteration):
+def scene_data(doc, iteration, options=None):
+    options=options or {}
     # Only explicit/reviewed semantic assignments affect 3D reconstruction.
     layers = doc.layer_map()
     surfaces = []
@@ -18,9 +19,10 @@ def scene_data(doc, iteration):
             pts=e.geometry.get('points',[])
             if e.kind=='polygon' and pts: pts=pts+[pts[0]]
             linear_features.append({'category':cat,'points':pts})
-        if cat == 'LIGHTING':
+        if cat == 'LIGHTING' and (li.classification.source=='user' or not li.classification.requiresReview):
             pt=e.geometry.get('center') or (e.geometry.get('position') if e.kind=='point' else None)
             if pt: point_features.append({'category':cat,'position':pt})
+        if e.attributes.get('vertices3D'):continue
         if cat not in {"BUILDING", "ROAD", "SIDEWALK", "PARKING", "GREEN_AREA"}:
             continue
         if e.kind != "polygon" and not (e.kind=="polyline" and e.geometry.get("closed")):
@@ -45,7 +47,8 @@ def scene_data(doc, iteration):
                 part = part.buffer(0)
             poly = poly.symmetric_difference(part)
         faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
-        surfaces.append({"category": cat, "layer": e.layer, "triangles": faces,
+        if not faces:continue
+        surfaces.append({"category": cat, "layer": e.layer, "entityId":e.id,"triangles": faces,
                          "height": e.attributes.get("heightM", 12)})
     # CAD boundaries often consist of separate LINE objects, not closed polylines.
     # Reconstruct only closed cycles; do not invent footprints for open lines.
@@ -56,10 +59,12 @@ def scene_data(doc, iteration):
                 continue
             faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
             surfaces.append({'category':category, 'layer':layer, 'triangles':faces,'height':12})
-    return {"sourceOnly":True,"extents": doc.extents.model_dump(), "surfaces": surfaces,
+    from .source_reconstruction import enrich_surfaces
+    evidence=enrich_surfaces(doc,surfaces,options)
+    return {**evidence,"reconstruction":options,"sourceOnly":True,"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
             "linearFeatures":linear_features,"pointFeatures":point_features,
-            "assumptions": ["Building footprints use illustrative 12 m heights and material defaults; heights are not surveyed.",
+            "assumptions": ["Building heights use CAD thickness/labels where present, otherwise an explicit adjustable fallback; materials are illustrative.",
                             "Vegetation depicts indicative mature form, not a survey of existing trees.",
                             "Only source CAD geometry and selected plantings are rendered; no surrounding buildings, paths or furniture are invented.",
                             "Unknown layers remain in the accompanying CAD drawing; they are not invented as 3D objects."]}
