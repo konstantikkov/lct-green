@@ -78,6 +78,7 @@ function installDocument(doc: ProjectDocument) {
   for (const l of doc.layers) layerVisibility[l.name] = true;
   setState({
     document: doc,
+    viewMode: "2d",
     layerVisibility,
     pipelineState: doc.state,
     uploading: false,
@@ -184,6 +185,7 @@ export async function openProject(projectId: string) {
 export function newProject() {
   setState({
     document: null,
+    viewMode: "2d",
     nav: "plan",
     uploadError: null,
     pipelineState: null,

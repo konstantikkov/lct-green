@@ -207,7 +207,7 @@ const initialState: AppState = {
   summaries: null,
   summariesError: null,
   routeError: null,
-  viewMode: "3d",
+  viewMode: "2d",
   massingDetail: readInitialMassingDetail(),
   layerVisibility: {},
   overlays: initialOverlays,

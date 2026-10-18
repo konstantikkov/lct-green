@@ -179,7 +179,7 @@ export function ViewerCanvas() {
     };
   }, []);
 
-  useEffect(()=>{setViewMode("3d");setMassingDetail(false);},[]);
+  useEffect(()=>{setMassingDetail(false);},[]);
 
   // Rebuild CAD geometry only when the entity set changes (new upload) —
   // classification overrides replace the document object but keep `entities`.
@@ -201,6 +201,11 @@ export function ViewerCanvas() {
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
     <div ref={containerRef} className="relative min-h-[220px] flex-1 overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
+      <div role="group" aria-label="Вид проекта" className="absolute right-3 top-3 z-20 flex rounded border border-ink-600 bg-ink-900/95 p-1 shadow-sm">
+        {([ ["2d", "CAD"], ["3d", "3D-редактор"] ] as const).map(([mode, label]) => (
+          <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`rounded px-3 py-1.5 text-xs transition-colors ${viewMode === mode ? "bg-ink-600 text-ink-100" : "text-ink-400 hover:bg-ink-800 hover:text-ink-100"}`}>{label}</button>
+        ))}
+      </div>
       {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div><div className="mt-1 text-2xs text-ink-400">Выберите угол камеры, затем сгенерируйте рендер ниже</div></div>}
       <div
         ref={tooltipRef}
@@ -220,7 +225,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} sceneReady={previewStatus.startsWith("Макет CAD")} capture={()=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput();}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} sceneReady={previewStatus.startsWith("Макет CAD")} capture={()=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput();}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
     </div>
   );
 }
