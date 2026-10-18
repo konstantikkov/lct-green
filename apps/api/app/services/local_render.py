@@ -59,12 +59,19 @@ def scene_data(doc, iteration, options=None):
                 continue
             faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
             surfaces.append({'category':category, 'layer':layer, 'triangles':faces,'height':12})
-    from .source_reconstruction import enrich_surfaces
+    from .lawn import lawn_geometry
+    lawn=lawn_geometry(iteration.get('lawn'))
+    if lawn is not None:
+        faces=[list(t.exterior.coords)[:3] for t in triangulate(lawn) if lawn.covers(t)]
+        if faces:surfaces.append({'category':'GREEN_AREA','layer':'AI_GREENING_LAWN','triangles':faces,'proposed':True})
+    from .source_reconstruction import enrich_surfaces,excavation_buildings
+    interpreted=excavation_buildings(doc,surfaces,options)
+    surfaces.extend(interpreted)
     evidence=enrich_surfaces(doc,surfaces,options)
     return {**evidence,"reconstruction":options,"sourceOnly":True,"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
             "linearFeatures":linear_features,"pointFeatures":point_features,
-            "assumptions": ["Building heights use CAD thickness/labels where present, otherwise an explicit adjustable fallback; materials are illustrative.",
+            "assumptions": (["Excavation outlines interpreted as buildings by user setting; short CAD dash gaps are closed for visualization only."] if interpreted else []) + ["Building heights use CAD thickness/labels where present, otherwise an explicit adjustable fallback; materials are illustrative.",
                             "Vegetation depicts indicative mature form, not a survey of existing trees.",
                             "Only source CAD geometry and selected plantings are rendered; no surrounding buildings, paths or furniture are invented.",
                             "Unknown layers remain in the accompanying CAD drawing; they are not invented as 3D objects."]}

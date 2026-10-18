@@ -97,5 +97,21 @@ the editor, including after moves. Refresh older imports to extract newly suppor
 Z/thickness metadata. CAD coordinates and regulatory calculations remain 2D and
 unchanged. Existing photographs must be regenerated from the updated scene.
 
-The default photo background is now the source scene. Added distant park scenery
-is an explicit option rather than an automatic interpretation of the surroundings.
+The source-scene background remains available. The current default is illustrative
+green context, as requested, rather than empty distant terrain.
+
+### Excavation-as-building and surface presentation
+
+At the user's request, labelled excavation outlines now represent buildings in
+visualizations. Mutual-nearest gaps up to 0.65 m are joined, and only closed cycles
+containing the excavation label are accepted. No convex hull or bounding box is
+substituted. The interpretation is recorded in scene assumptions and can be disabled
+with `excavationsAsBuildings: false` in the preview API. CAD and regulatory geometry
+remain unchanged.
+
+The editor retains imported PBR grass/asphalt/paving/facade maps. Recommended lawn
+polygons, including holes, are displayed as textured proposed grass; older iterations
+obtain the same lawn recommendation on read and during selected-plan export. The
+photo background defaults to a dense, illustrative green tree belt and lawn, with
+negative prompts against desert and agricultural fields. Background guide changes
+remain restricted to sky and unclassified ground outside the CAD bounds.

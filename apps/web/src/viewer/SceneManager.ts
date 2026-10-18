@@ -366,7 +366,7 @@ export class SceneManager {
     };
     try {
       this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
-      if(ground)ground.scale.set(100,100,1); // neutral ground continues to the horizon; no source objects are added
+      if(ground)ground.scale.set(12,12,1); // neutral ground continues to the horizon; no source objects are added
       this.scene.fog=null;this.scene.background=new THREE.Color(0xbecfda);
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const image=read();
       this.scene.background=new THREE.Color(0);this.scene.overrideMaterial=depth;
@@ -614,7 +614,7 @@ export class SceneManager {
         ()=>{if(!this.dragging&&!this.placementDrag)this.fit3d();this.invalidate(true);},text=>{
           if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
           this.cb.onPreviewStatus(text);
-        },this.reconstruction);
+        },this.reconstruction,this.iteration?.lawn);
       this.editablePreview=build;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);

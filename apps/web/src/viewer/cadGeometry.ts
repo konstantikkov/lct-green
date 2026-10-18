@@ -211,8 +211,7 @@ export function ringOutlinePositions(rings: number[][], z: number): number[] {
 
 export function disposeObject(obj: THREE.Object3D) {
   const disposeMat = (m: THREE.Material) => {
-    const map = (m as THREE.MeshBasicMaterial).map;
-    if (map) map.dispose();
+    for(const texture of new Set(Object.values(m).filter(v=>v instanceof THREE.Texture) as THREE.Texture[]))texture.dispose();
     m.dispose();
   };
   obj.traverse((child) => {

@@ -556,8 +556,13 @@ def _find_iteration(pid: str, iteration_id: str) -> dict:
 
 @app.get("/api/projects/{pid}/iterations/{iteration_id}")
 def get_iteration(pid: str, iteration_id: str):
-    _get_rt(pid)
-    return _find_iteration(pid, iteration_id)
+    rt=_get_rt(pid)
+    record=_find_iteration(pid,iteration_id)
+    if not record.get('lawn'):
+        from .services.lawn import recommend_lawn
+        _,lawn=recommend_lawn(pipeline.ensure_constraints(rt),pipeline.ensure_geometry(rt),[Placement(id=p['id'],kind=p['kind'],speciesId=p['speciesId'],x=p['position'][0],y=p['position'][1],crownRadiusM=p['crownRadiusM']) for p in record['placements']])
+        record={**record,'lawn':lawn}
+    return record
 
 
 @app.get("/api/projects/{pid}/placements/check")
@@ -733,7 +738,7 @@ def _selected_iteration(pid: str) -> dict:
     if not recs:
         _err(409, "NO_RESULT", "No generation results yet.")
     sel = next((r for r in recs if r.get("selected")), recs[-1])
-    return sel
+    return get_iteration(pid,sel["iterationId"])
 
 
 @app.get("/api/projects/{pid}/export/dxf")
@@ -1134,8 +1139,16 @@ def get_render_image(pid: str, jid: str):
 
 
 class ReconstructionSettings(BaseModel):
+    excavationsAsBuildings:bool=True
     buildingHeightM:float=Field(default=9,ge=2,le=200,allow_inf_nan=False)
     showFences:bool=False
+
+
+@app.get('/api/render-materials/{name}')
+def render_material(name:str):
+    if name not in {f'{surface}_{kind}.jpg' for surface in ('ground','asphalt','paving','facade') for kind in ('diff','normal','rough')}:
+        _err(404,'MATERIAL_NOT_FOUND','Unknown material.')
+    return FileResponse(Path(__file__).parent/'assets'/name,media_type='image/jpeg',headers={'Cache-Control':'public, max-age=86400'})
 
 
 @app.post('/api/projects/{pid}/editor-preview',status_code=202)

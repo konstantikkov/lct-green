@@ -43,9 +43,11 @@ def prepare_backdrop(image, semantic, depth, settings):
                         world=eye+distance[...,None]*rays
                     lo,hi=bounds['min'],bounds['max']
                     offsite=(distance>0)&((world[...,0]<lo[0]-2)|(world[...,0]>hi[0]+2)|(world[...,1]<lo[1]-2)|(world[...,1]>hi[1]+2))
-        far = earth & (z<28) & offsite
+        far = earth & offsite
         labels[far] = [4,250,7]
-        rgb[far] = [125,155,82]
+        yy,xx=np.mgrid[0:h,0:w]
+        variation=(7*np.sin(xx*.043)+5*np.cos(yy*.061)).astype(int)
+        for channel,base in enumerate([93,139,62]):rgb[...,channel][far]=np.clip(base+variation[far],0,255)
         mask |= far
         # Derive the ground horizon from sky/earth transitions; existing
         # canopies interrupt it but must never become context themselves.
@@ -56,7 +58,7 @@ def prepare_backdrop(image, semantic, depth, settings):
         if transitions:
             horizon=int(np.median(transitions))
             for x in range(w):
-                height=int(h*(.045+.019*math.sin(x*.051)+.012*math.sin(x*.119+1.3)))
+                height=int(h*(.13+.045*math.sin(x*.025)+.025*math.sin(x*.057+1.3)))
                 top=max(0,horizon-height)
                 rows=np.arange(top,min(h,horizon+2))
                 rows=rows[sky[rows,x]]
@@ -70,7 +72,7 @@ def prepare_backdrop(image, semantic, depth, settings):
             t=y/max(h-1,1)
             rgb[y,selected]=[int(105+65*t),int(175+40*t),int(230+15*t)]
         mask |= sky
-    allowed = sky | (earth & (z<28) & offsite) if settings.get('background','park')=='park' else sky
+    allowed = sky | (earth & offsite) if settings.get('background','park')=='park' else sky
     assert not np.any(mask & ~allowed)
     return Image.fromarray(rgb), Image.fromarray(labels), Image.fromarray((mask*255).astype('uint8'))
 
@@ -118,13 +120,14 @@ def main():
     prompt = ('RAW architectural landscape photograph, professionally photographed real urban landscaping, '
               'deciduous trees with visible woody trunks and irregular leafy crowns, dense natural leaf detail, low leafy shrubs, realistic grass, physical paving materials, '
               'same camera perspective and object positions as input, ' + architecture + light +
-              ('; distant leafy park vegetation at the horizon, naturally connected landscape continuing beyond the site, background greenery without buildings' if settings.get('background','park')=='park' else ''))
+              ('; a nearby dense belt of mature leafy park trees enclosing the background, lush green lawn and layered tree canopies, no open agricultural fields, no distant barren horizon, background greenery without additional buildings' if settings.get('background','park')=='park' else ''))
     from photo_styles import appearance_prompt
     prompt += appearance_prompt(settings)
     negative = ('cartoon, illustration, videogame, unity, low poly, plastic, CGI, oversaturated, fake HDR, '
                 'new buildings, extra buildings, skyscrapers, additional paths, extra objects, furniture, '
                 'people, rocks, boulders, topiary, clipped spherical trees, green balls, sculpture, text, watermark, distorted architecture, blurry, fantasy')
     if not settings.get('fenceCount',0):negative += ', fence, fences, railing, railings, wire mesh, barriers, balustrade'
+    negative += ', desert, arid land, sand dunes, barren landscape, farmland, wheat field, endless empty field, dry yellow grass, prairie'
     negative += ', isolated display model, floating diorama, miniature model, blank studio background'
     if settings.get('background','park')=='park':negative += ', empty horizon'
     if settings['lighting']=='sunny':negative += ', overcast, storm clouds, grey sky, gloomy, desaturated, winter, dull lighting, harsh HDR'

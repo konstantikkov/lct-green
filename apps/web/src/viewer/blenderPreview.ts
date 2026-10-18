@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Placement, ProjectDocument } from "../api/types";
+import type { Placement, ProjectDocument, LawnInfo } from "../api/types";
 import { buildCadGroups, disposeObject } from "./cadGeometry";
 import type { Theme } from "../theme";
 
@@ -66,7 +66,7 @@ export interface EditablePreview {
 }
 /** Blender-built environment + independently editable, instanced crown circles. */
 export function buildEditablePreview(doc:ProjectDocument, placements:Placement[], theme:Theme,
-  invalidate:()=>void,status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false}):EditablePreview {
+  invalidate:()=>void,status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false},lawn?:LawnInfo):EditablePreview {
   const group=new THREE.Group();group.name="blender-editor";
   const controller=new AbortController();let disposed=false;
   const circleMeshes:THREE.InstancedMesh[]=[];
@@ -79,7 +79,18 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   sun.target.position.set(cx,cy,0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
   const reach=Math.min(span*.85,450);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
   sun.shadow.bias=-.00015;sun.shadow.normalBias=.035;sun.shadow.radius=3;group.add(sun,sun.target);
-  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
+  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0x9db779,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
+  // Actual recommended lawn polygons, including holes, are separate proposed geometry.
+  const lawnMaterial=new THREE.MeshStandardMaterial({color:0x91b66b,roughness:1,side:THREE.DoubleSide});
+  const groundTexture=new THREE.TextureLoader().load('/api/render-materials/ground_diff.jpg',()=>{if(!disposed)invalidate();});
+  groundTexture.colorSpace=THREE.SRGBColorSpace;groundTexture.wrapS=groundTexture.wrapT=THREE.RepeatWrapping;groundTexture.anisotropy=8;lawnMaterial.map=groundTexture;
+  const lawnMeshes:THREE.Mesh[]=[];
+  for(const polygon of lawn?.polygons??[]){
+    const shape=new THREE.Shape();for(let i=0;i<polygon.shell.length;i+=2){if(i===0)shape.moveTo(polygon.shell[i],polygon.shell[i+1]);else shape.lineTo(polygon.shell[i],polygon.shell[i+1]);}shape.closePath();
+    for(const hole of polygon.holes??[]){const path=new THREE.Path();for(let i=0;i<hole.length;i+=2){if(i===0)path.moveTo(hole[i],hole[i+1]);else path.lineTo(hole[i],hole[i+1]);}path.closePath();shape.holes.push(path);}
+    const geo=new THREE.ShapeGeometry(shape);const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)/2,uv.getY(i)/2);
+    const mesh=new THREE.Mesh(geo,lawnMaterial);mesh.position.z=.025;mesh.name='Proposed lawn';mesh.userData.cadCategory='GREEN_AREA';mesh.receiveShadow=true;group.add(mesh);lawnMeshes.push(mesh);
+  }
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const groundMeshes:THREE.Mesh[]=[];
@@ -132,11 +143,11 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       const m=o as THREE.Mesh;if(!m.isMesh)return;
       const name=m.name.toLowerCase();if(/cad.fence/.test(name))o.userData.photoClass="FENCE";let category=o.userData.cadCategory;
       for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
-      const color=category==="BUILDING"?0xcac3b7:category==="GREEN_AREA"||/grass|green/i.test(name)?0xb0bc94:category==="ROAD"||category==="PARKING"||/road|asphalt/i.test(name)?0x8c9394:0xc5c5bc;
-      m.geometry=m.geometry.clone();m.material=new THREE.MeshStandardMaterial({color,roughness:1,side:THREE.DoubleSide});if(category)o.userData.cadCategory=category;o.userData.sharedPreviewResource=false;
+      m.geometry=m.geometry.clone();const cloneMaterial=(original:THREE.Material)=>{const mat=original.clone() as THREE.MeshStandardMaterial;mat.side=THREE.DoubleSide;for(const key of ['map','normalMap','roughnessMap','metalnessMap','aoMap'] as const){if(mat[key])mat[key]=mat[key]!.clone();}return mat;};m.material=Array.isArray(m.material)?m.material.map(cloneMaterial):cloneMaterial(m.material);if(category)o.userData.cadCategory=category;o.userData.sharedPreviewResource=false;
     });wrapper.add(copy);group.add(wrapper);group.updateMatrixWorld(true);
     copy.traverse(o=>{const m=o as THREE.Mesh;if(m.isMesh&&m.visible&&(["GREEN_AREA","ROAD","SIDEWALK","PARKING"].includes(m.userData.cadCategory)||m.userData.sourceTerrain))groundMeshes.push(m);});
     if(groundMeshes.some(m=>m.userData.sourceTerrain)){const bounds=new THREE.Box3();for(const mesh of groundMeshes)if(mesh.userData.sourceTerrain)bounds.expandByObject(mesh);if(!bounds.isEmpty())base.position.z=bounds.min.z-.07;}
+    if(groundMeshes.some(m=>m.userData.sourceTerrain))for(const mesh of lawnMeshes){const pos=mesh.geometry.getAttribute('position');for(let i=0;i<pos.count;i++)pos.setZ(i,groundHeight(pos.getX(i),pos.getY(i)));pos.needsUpdate=true;mesh.geometry.computeVertexNormals();}
     for(const p of placements){const z=groundHeight(p.position[0],p.position[1]);const plant=plantGroups.get(p.id);if(plant)plant.position.z=z+.07;for(const slot of pickMeshes){const i=slot.placements.findIndex(v=>v.id===p.id);if(i>=0){const m=new THREE.Matrix4();slot.mesh.getMatrixAt(i,m);m.elements[14]+=z;slot.mesh.setMatrixAt(i,m);slot.mesh.instanceMatrix.needsUpdate=true;}}}
     group.userData.sourceBuildings=job.sourceBuildings;group.userData.sourceFences=job.sourceFences;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите ракурс`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
