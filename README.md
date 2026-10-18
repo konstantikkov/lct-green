@@ -283,4 +283,4 @@ See [local rendering and CAD import update](docs/LOCAL_RENDER.md) for offline
 Blender rendering, arbitrary layer mappings, source CAD preview, and refreshing
 previously imported projects.
 
-For the composition editor → local generative photograph workflow, see [local AI photos](docs/LOCAL_PHOTO.md). Select the camera in the minimal CAD scene, then use **AI-фото**. Generation runs locally with Realistic Vision + ControlNet Segmentation; the original frame stays beside the generated photo for comparison.
+For the composition editor → local generative photograph workflow, see [local AI photos](docs/LOCAL_PHOTO.md). Select the camera in the minimal CAD scene, then use **Сгенерировать 3D-рендер** below the viewer. Generation runs locally with Realistic Vision + ControlNet Segmentation; the completed result can be refined through local LLM chat, with a real progress bar and estimated generation time.

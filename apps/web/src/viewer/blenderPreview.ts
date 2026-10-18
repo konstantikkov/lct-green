@@ -128,7 +128,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
       const color=category==="BUILDING"?0xcac3b7:category==="GREEN_AREA"||/grass|green/i.test(name)?0xb0bc94:category==="ROAD"||category==="PARKING"||/road|asphalt/i.test(name)?0x8c9394:0xc5c5bc;
       m.geometry=m.geometry.clone();m.material=new THREE.MeshStandardMaterial({color,roughness:1});o.userData.sharedPreviewResource=false;
-    });wrapper.add(copy);group.add(wrapper);group.userData.sourceBuildings=job.sourceBuildings;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите камеру для AI-фото`);invalidate();
+    });wrapper.add(copy);group.add(wrapper);group.userData.sourceBuildings=job.sourceBuildings;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите ракурс`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
   return {group,pickMeshes,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
 }

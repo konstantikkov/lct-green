@@ -59,7 +59,7 @@ def test_job_submission_and_restart_detection(tmp_path,monkeypatch):
         photo_jobs._active.discard(jid)
         assert photo_jobs.status('test',jid)['state']=='FAILED'
     finally:
-        photo_jobs._active.discard(jid);photo_jobs._slots.release()
+        photo_jobs._active.discard(jid);photo_jobs._locations.pop(jid,None);photo_jobs._slots.release()
 
 
 @pytest.mark.parametrize("field",["depth","semantic"])

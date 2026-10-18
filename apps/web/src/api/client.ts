@@ -130,10 +130,10 @@ export const api = {
   },
 
   /** Iteration 6: persists a manual move and revalidates the whole iteration. */
-  movePlacement: (projectId: string, placementId: string, position: [number, number]) =>
+  movePlacement: (projectId: string, placementId: string, position: [number, number],iterationId?:string) =>
     request<MovePlacementResponse>(
       `/api/projects/${projectId}/placements/${placementId}/move`,
-      json({ position }),
+      json({ position,iterationId }),
     ),
 
   /** layers="result": only the AI_GREENING_* layers, to attach as an xref */

@@ -85,6 +85,7 @@ function installDocument(doc: ProjectDocument) {
     constraintsError: null,
     iterations: [],
     activeIteration: null,
+    placementMovesPending: 0,
     selection: null,
     explanation: null,
     chunks: null,
@@ -190,6 +191,7 @@ export function newProject() {
     constraintsError: null,
     iterations: [],
     activeIteration: null,
+    placementMovesPending: 0,
     selection: null,
     explanation: null,
     chunks: null,
@@ -435,8 +437,9 @@ export async function movePlacement(placement: Placement, position: [number, num
   const doc = s.document;
   const it = s.activeIteration;
   if (!doc || !it) return;
+  setState({placementMovesPending:getState().placementMovesPending+1});
   try {
-    const res = await api.movePlacement(doc.projectId, placement.id, position);
+    const res = await api.movePlacement(doc.projectId, placement.id, position,it.iterationId);
     const cur = getState();
     const curIt = cur.activeIteration;
     // Stale guard: the project or iteration changed while the POST was in flight.
@@ -482,6 +485,8 @@ export async function movePlacement(placement: Placement, position: [number, num
       activeIteration: cur.activeIteration ? { ...cur.activeIteration } : null,
       moveToast: { text: `Не удалось переместить: ${errMsg(e)}`, tone: "error" },
     });
+  } finally {
+    if(getState().document?.projectId===doc.projectId)setState({placementMovesPending:Math.max(0,getState().placementMovesPending-1)});
   }
 }
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import shutil
@@ -981,6 +982,7 @@ class PhotoSettings(BaseModel):
     semantic: str = Field(max_length=7_000_000)
     camera: PhotoCamera
     siteBounds: PhotoBounds | None = None
+    iterationId: str | None = Field(default=None,max_length=128)
     buildingCount: int = Field(default=0, ge=0, le=100000)
     lighting: Literal["sunny", "daylight", "evening", "overcast"] = "sunny"
     background: Literal["park", "source"] = "park"
@@ -1007,17 +1009,20 @@ def create_photo(pid: str, settings: PhotoSettings):
     from .services import photo_jobs
     _get_rt(pid)
     try:
-        jid = photo_jobs.submit(pid, settings.model_dump())
+        payload=settings.model_dump()
+        if settings.iterationId:
+            rec=next((r for r in store.list_iterations(pid) if r['iterationId']==settings.iterationId),None)
+            if rec is None:_err(404,'PLAN_NOT_FOUND','No such plan in this project.')
+            payload['planSnapshot']={'iterationId':rec['iterationId'],'placements':rec['placements']}
+            payload['planDigest']=hashlib.sha256(json.dumps(rec['placements'],sort_keys=True).encode()).hexdigest()
+        jid = photo_jobs.submit(pid, payload)
     except FileNotFoundError as exc:
         _err(503, 'PHOTO_MODEL_UNAVAILABLE', str(exc))
     except ValueError as exc:
         _err(422, 'INVALID_PHOTO_CAPTURE', str(exc))
     except RuntimeError as exc:
         _err(429, 'PHOTO_QUEUE_FULL', str(exc))
-    return {'jobId': jid, 'statusUrl': f'/api/projects/{pid}/photos/{jid}',
-            'imageUrl': f'/api/projects/{pid}/photos/{jid}/image',
-            'sourceUrl': f'/api/projects/{pid}/photos/{jid}/source',
-            'manifestUrl': f'/api/projects/{pid}/photos/{jid}/manifest'}
+    return photo_jobs.urls(pid,jid)
 
 
 @app.get('/api/projects/{pid}/photos/{jid}')
@@ -1028,6 +1033,30 @@ def get_photo_status(pid: str, jid: str):
         return photo_jobs.status(pid, jid)
     except (ValueError, FileNotFoundError):
         _err(404, 'PHOTO_NOT_FOUND', 'No such photo.')
+
+
+class PhotoChatMessage(BaseModel):
+    message:str=Field(min_length=1,max_length=1000)
+
+
+@app.get('/api/projects/{pid}/photos/{jid}/chat')
+def photo_chat_history(pid:str,jid:str):
+    from .services import photo_chat
+    _get_rt(pid)
+    try:return photo_chat.history(pid,jid)
+    except (ValueError,FileNotFoundError):_err(404,'PHOTO_NOT_FOUND','No such photo.')
+
+
+@app.post('/api/projects/{pid}/photos/{jid}/refine')
+async def refine_photo(pid:str,jid:str,body:PhotoChatMessage):
+    from .services import photo_chat
+    _get_rt(pid)
+    if not body.message.strip():_err(422,'EMPTY_MESSAGE','Введите пожелание к рендеру.')
+    try:return await photo_chat.refine(pid,jid,body.message.strip())
+    except FileNotFoundError:_err(404,'PHOTO_NOT_FOUND','No such photo.')
+    except ValueError as exc:_err(409,'PHOTO_NOT_READY',str(exc))
+    except RuntimeError as exc:_err(429,'PHOTO_QUEUE_FULL',str(exc))
+    except Exception:_err(503,'PHOTO_LLM_UNAVAILABLE','Локальная LLM не ответила. Попробуйте позже.')
 
 
 @app.get('/api/projects/{pid}/photos/{jid}/{asset}')

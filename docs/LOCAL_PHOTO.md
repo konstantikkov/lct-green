@@ -2,7 +2,9 @@
 
 The 3D editor is a composition tool: simple building masses and tree crowns, CAD coordinates, draggable planting circles, orbit/pan and garden/aerial cameras. It deliberately does not imitate a finished photograph. Only recognized source building footprints appear; no surrounding buildings are generated in the editor.
 
-Choose a camera, press **AI-фото**, review the captured frame, choose light and generate. The result uses **Realistic Vision 5.1** (Stable Diffusion 1.5 family) with **ControlNet segmentation** and image-to-image conditioning. Color, depth, ADE20K semantic labels and camera come from the same frame. The photo pass conditions on semantic labels, because depth-only guidance misread simplified shrubs as stones in the first real canary. Depth is retained as an audit/extension artifact. CAD lines, selection and editing circles are excluded. A comparison of the input and generated photo is displayed. Neither generation nor changing seed modifies CAD or placements.
+Choose the planting plan in the panel below the viewer, position the camera by orbit/pan or the viewpoint selector, then press **Сгенерировать 3D-рендер**. The old floating toolbar and the photo modal have been removed. The selected iteration ID, placement snapshot/digest and camera are saved with the job. The generated image and refinement chat appear inline below the scene.
+
+The result uses **Realistic Vision 5.1** with **ControlNet segmentation** and image-to-image conditioning. Color, depth, ADE20K semantic labels and camera come from the same frame. CAD annotations and editing circles are excluded. Original captures remain available through the API. Generating a photo does not change the plan.
 
 Semantic labels guide perspective, massing, tree and shrub positions; it does **not** guarantee exact pixel or object-count fidelity. The generative model can change or add details, particularly with high strength. The output is labeled as an AI visualization, and the source frame remains available for comparison. It is not a substitute for the DXF. No fabricated benchmark result or sample photograph is shown as the generated output.
 
@@ -57,3 +59,17 @@ The default `sunny` preset asks for clear blue sky, warm summer sunlight, fresh 
 `background: park` adds an **illustrative**, distant green backdrop to the conditioning guide. Existing sky pixels can receive distant treeline silhouettes. Neutral ground changes to distant lawn only where the captured depth is far away **and** a ground-plane camera-ray test places it outside the source drawing bounds, with a 2 m margin. Known object labels (building, tree, shrub, road, sidewalk, etc.) are protected. With no bounds supplied, neutral ground remains unchanged. `background: source` disables the added backdrop.
 
 The source CAD scene and original captures remain unchanged. `conditioning_source.png`, `conditioning_semantic.png` and `context_mask.png` record precisely which guide pixels were changed; lighting/background choices and drawing bounds are saved in the manifest. These guide protections do not make diffusion pixel-perfect. Added green surroundings are not claimed to be a surveyed description of the neighborhood, and no surrounding buildings are added to the guide.
+
+
+## Progress and local LLM refinements
+
+A real progress bar follows worker diffusion steps, stays below 100% during final decoding, and completes only after the output file is ready. ETA uses recent measured runtimes, current step timing and queue position; it is approximate. Queue/run timestamps and estimates are stored in `job.json`. Polling and job recovery continue after reloading the page.
+
+After a result completes, chat sends the request to the existing local LLM. The model translates it into constrained appearance controls: lighting, palette, color temperature, presentation finish, existing paving materials and optional illustrative background. A small-model prompt uses explicit `keep` values for unchanged settings and a worked example; explicit instructions to preserve sunshine override a contradictory lighting suggestion. Replies describe the controls actually applied. If the LLM is unavailable, the UI reports that rather than pretending to answer.
+
+Accepted edits enqueue a new diffusion job from the **original color/depth/semantic captures**. They never use the previous AI image as a new geometric source. Camera, plan ID/digest/snapshot and planting positions are preserved; `parentJobId` and the conversation link versions. Geometry-change requests direct the user back to editing the plan. Unknown/uninterpretable appearance requests do not launch an unnecessary image generation.
+
+- `GET /api/projects/{pid}/photos/{jid}/chat`: persisted messages.
+- `POST /api/projects/{pid}/photos/{jid}/refine`: `{ "message": "Сделай свет теплее" }`; returns an explanation, conversation and optional new job.
+
+The LLM never emits arbitrary code or direct geometry edits. Numeric placement compliance remains a property of the CAD pipeline, not generated pixels.

@@ -118,6 +118,8 @@ def main():
               'deciduous trees with visible woody trunks and irregular leafy crowns, dense natural leaf detail, low leafy shrubs, realistic grass, physical paving materials, '
               'same camera perspective and object positions as input, ' + architecture + light +
               ('; distant leafy park vegetation at the horizon, naturally connected landscape continuing beyond the site, background greenery without buildings' if settings.get('background','park')=='park' else ''))
+    from photo_styles import appearance_prompt
+    prompt += appearance_prompt(settings)
     negative = ('cartoon, illustration, videogame, unity, low poly, plastic, CGI, oversaturated, fake HDR, '
                 'new buildings, extra buildings, skyscrapers, additional paths, extra objects, furniture, '
                 'people, rocks, boulders, topiary, clipped spherical trees, green balls, sculpture, text, watermark, distorted architecture, blurry, fantasy')
@@ -126,9 +128,10 @@ def main():
     if settings['lighting']=='sunny':negative += ', overcast, storm clouds, grey sky, gloomy, desaturated, winter, dull lighting, harsh HDR'
     if not settings.get('buildingCount', 0):negative += ', buildings, houses, urban skyline'
     started = time.monotonic()
+    generation_started_at=time.time()
     def progress(pipeline, step, timestep, values):
         tmp = folder/'status.tmp'
-        tmp.write_text(json.dumps({'state': 'GENERATING', 'step': step+1, 'totalSteps': pipeline.num_timesteps,
+        tmp.write_text(json.dumps({'state': 'GENERATING', 'step': step+1, 'totalSteps': pipeline.num_timesteps, 'generationStartedAt':generation_started_at,
                                   'message': 'Локальная генерация фотографии…'}))
         tmp.replace(folder/'status.json')
         return values
@@ -148,6 +151,8 @@ def main():
     (folder/'manifest.json').write_text(json.dumps({
         'engine': 'Realistic Vision 5.1 + ControlNet segmentation', 'execution': 'local', 'device': device,
         'seed': seed, 'width': result.width, 'height': result.height, 'elapsedSeconds': round(time.monotonic()-started, 1),
+        'iterationId':settings.get('iterationId'),'planDigest':settings.get('planDigest'),
+        'appearance':{k:settings.get(k) for k in ('palette','temperature','finish','surfaceStyle')}, 'parentJobId':settings.get('parentJobId'),
         'lighting': settings['lighting'], 'background': settings.get('background','park'),
         'backgroundIllustrative': settings.get('background','park')=='park', 'siteBounds': settings.get('siteBounds'),
         'camera': settings.get('camera'), 'sourceBuildingCount': settings.get('buildingCount', 0), 'prompt': prompt, 'negativePrompt': negative,
