@@ -337,6 +337,59 @@ export class SceneManager {
     catch(e){if(!this.disposed)this.cb.onPreviewStatus(`Ошибка выгрузки 3D CAD: ${String(e)}`);}
   }
 
+  capturePhotoInput() {
+    if(this.mode!=="3d")throw new Error("Откройте 3D-макет и выберите камеру");
+    if(!this.editablePreview?.group.getObjectByName("blender-environment3d"))throw new Error("Дождитесь загрузки поверхностей CAD");
+    const camera=this.camera3d;
+    const width=768,height=Math.max(64,Math.round(width/camera.aspect));
+    if(height>1600)throw new Error("Слишком узкий вид: разверните окно для фотографии");
+    const ground=this.editablePreview.group.getObjectByName("composition-ground");
+    const groundScale=ground?.scale.clone();
+    const target=new THREE.WebGLRenderTarget(width,height);
+    target.texture.colorSpace=THREE.SRGBColorSpace;
+    const depthTarget=new THREE.WebGLRenderTarget(width,height);
+    const hidden: {object:THREE.Object3D;visible:boolean}[]=[];
+    const previous={target:this.renderer.getRenderTarget(),background:this.scene.background,fog:this.scene.fog,override:this.scene.overrideMaterial,clear:this.renderer.getClearColor(new THREE.Color()).clone(),alpha:this.renderer.getClearAlpha(),tone:this.renderer.toneMapping};
+    const depth=new THREE.ShaderMaterial({uniforms:{distanceLimit:{value:Math.max(this.orbit.dist*3,10)}},
+      vertexShader:`varying float viewDepth;void main(){vec4 p=modelViewMatrix*vec4(position,1.);viewDepth=-p.z;gl_Position=projectionMatrix*p;}`,
+      fragmentShader:`uniform float distanceLimit;varying float viewDepth;void main(){float d=clamp(1.-viewDepth/distanceLimit,0.,1.);gl_FragColor=vec4(vec3(d),1.);}`});
+    const materials=new Map<THREE.Mesh,THREE.Material|THREE.Material[]>();
+    const palette:Record<string,THREE.MeshBasicMaterial>={};
+    const colors:Record<string,number>={tree:0x04c803,plant:0xccff04,BUILDING:0xb47878,ROAD:0x8c8c8c,PARKING:0x8c8c8c,GREEN_AREA:0x04fa07,SIDEWALK:0xebff07,FENCE:0xffb806,earth:0x787846};
+    const read=(renderTarget=target)=>{
+      const bytes=new Uint8Array(width*height*4);this.renderer.readRenderTargetPixels(renderTarget,0,0,width,height,bytes);
+      const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;const ctx=canvas.getContext("2d")!;
+      const pixels=ctx.createImageData(width,height);
+      for(let row=0;row<height;row++)pixels.data.set(bytes.subarray((height-1-row)*width*4,(height-row)*width*4),row*width*4);
+      ctx.putImageData(pixels,0,0);return canvas.toDataURL("image/png");
+    };
+    try {
+      this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
+      if(ground)ground.scale.set(100,100,1); // neutral ground continues to the horizon; no source objects are added
+      this.scene.fog=null;this.scene.background=new THREE.Color(0xbecfda);
+      this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const image=read();
+      this.scene.background=new THREE.Color(0);this.scene.overrideMaterial=depth;
+      this.renderer.setRenderTarget(depthTarget);this.renderer.render(this.scene,camera);const depthImage=read(depthTarget);
+      this.scene.overrideMaterial=null;this.scene.background=new THREE.Color(0x06e6e6);this.renderer.toneMapping=THREE.NoToneMapping;
+      this.scene.traverseVisible(o=>{
+        const mesh=o as THREE.Mesh;if(!mesh.isMesh)return;
+        const original=Array.isArray(mesh.material)?mesh.material:[mesh.material];if(original.every(m=>!m.visible))return;
+        let key=o.userData.photoClass||o.userData.cadCategory;
+        for(let parent=o.parent;!key&&parent;parent=parent.parent)key=parent.userData.photoClass||parent.userData.cadCategory;
+        key=key in colors?key:"earth";
+        if(!palette[key])palette[key]=new THREE.MeshBasicMaterial({color:colors[key],side:THREE.DoubleSide});
+        materials.set(mesh,mesh.material);mesh.material=palette[key];
+      });
+      this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const semantic=read();
+      return {image,depth:depthImage,semantic,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
+    } finally {
+      this.renderer.setRenderTarget(previous.target);this.scene.background=previous.background;this.scene.fog=previous.fog;this.scene.overrideMaterial=previous.override;this.renderer.setClearColor(previous.clear,previous.alpha);this.renderer.toneMapping=previous.tone;
+      materials.forEach((material,mesh)=>mesh.material=material);Object.values(palette).forEach(m=>m.dispose());
+      if(ground&&groundScale)ground.scale.copy(groundScale);
+      hidden.forEach(({object,visible})=>object.visible=visible);depth.dispose();target.dispose();depthTarget.dispose();this.invalidate();
+    }
+  }
+
   downloadPresentationImage() {
     if(this.mode!=="3d")return;
     const selected=this.selectionRing.visible;

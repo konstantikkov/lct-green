@@ -282,3 +282,5 @@ See [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). Highlights:
 See [local rendering and CAD import update](docs/LOCAL_RENDER.md) for offline
 Blender rendering, arbitrary layer mappings, source CAD preview, and refreshing
 previously imported projects.
+
+For the composition editor → local generative photograph workflow, see [local AI photos](docs/LOCAL_PHOTO.md). Select the camera in the minimal CAD scene, then use **AI-фото**. Generation runs locally with Realistic Vision + ControlNet Segmentation; the original frame stays beside the generated photo for comparison.

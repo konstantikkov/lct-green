@@ -1,0 +1,33 @@
+{
+  "engine": "Realistic Vision 5.1 + ControlNet segmentation",
+  "execution": "local",
+  "device": "cpu",
+  "seed": 42,
+  "width": 512,
+  "height": 352,
+  "elapsedSeconds": 446.4,
+  "camera": {
+    "position": [
+      -2104.469899225126,
+      1614.4286078670705,
+      6.483438989100937
+    ],
+    "target": [
+      -2114.9934650011483,
+      1650.4087462774064,
+      1.7
+    ],
+    "fov": 50,
+    "aspect": 1.4473684210526316
+  },
+  "sourceBuildingCount": 0,
+  "prompt": "RAW architectural landscape photograph, professionally photographed real urban landscaping, deciduous trees with visible woody trunks and irregular leafy crowns, dense natural leaf detail, low leafy shrubs, realistic grass, physical paving materials, same camera perspective and object positions as input, open landscape with no buildings, no urban skyline, soft natural daylight, pale blue sky with soft clouds, balanced photographic exposure",
+  "negativePrompt": "cartoon, illustration, videogame, unity, low poly, plastic, CGI, oversaturated, fake HDR, new buildings, extra buildings, skyscrapers, additional paths, extra objects, furniture, people, rocks, boulders, topiary, clipped spherical trees, green balls, sculpture, text, watermark, distorted architecture, blurry, fantasy, buildings, houses, urban skyline",
+  "strength": 0.85,
+  "controlScale": 1.1,
+  "modelRevision": {
+    "repository": "SG161222/Realistic_Vision_V5.1_noVAE",
+    "revision": "1e9f017a7b1eaefb63a1900ea6c5953d2739fd21"
+  },
+  "notice": "Generated visualization. Semantic masks guide composition; CAD and planting coordinates are unchanged, but pixels are not CAD-certified."
+}

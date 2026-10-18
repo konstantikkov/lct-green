@@ -961,6 +961,85 @@ def refresh_import(pid: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(prepare_after_import,pid,doc.model_copy(deep=True))
     return {'regenerateRequired': True, 'entityCount': len(doc.entities), 'layerCount': len(doc.layers)}
 
+class PhotoCamera(BaseModel):
+    position: tuple[float, float, float]
+    target: tuple[float, float, float]
+    fov: float = Field(ge=1, le=150)
+    aspect: float = Field(gt=0, le=10)
+    model_config = {"allow_inf_nan": False}
+
+
+class PhotoSettings(BaseModel):
+    image: str = Field(max_length=7_000_000)
+    depth: str = Field(max_length=7_000_000)
+    semantic: str = Field(max_length=7_000_000)
+    camera: PhotoCamera
+    buildingCount: int = Field(default=0, ge=0, le=100000)
+    lighting: Literal["daylight", "evening", "overcast"] = "daylight"
+    strength: float = Field(default=.85, ge=.55, le=.95, allow_inf_nan=False)
+    seed: int = Field(default=42, ge=0, le=2**31-1)
+    resolution: Literal[512, 768] = 512
+
+
+@app.get('/api/photo-capabilities')
+def photo_capabilities():
+    from .services.photo_jobs import capabilities
+    return capabilities()
+
+
+@app.get('/api/projects/{pid}/photos')
+def list_photos(pid: str):
+    from .services import photo_jobs
+    _get_rt(pid)
+    return photo_jobs.list_jobs(pid)
+
+
+@app.post('/api/projects/{pid}/photos', status_code=202)
+def create_photo(pid: str, settings: PhotoSettings):
+    from .services import photo_jobs
+    _get_rt(pid)
+    try:
+        jid = photo_jobs.submit(pid, settings.model_dump())
+    except FileNotFoundError as exc:
+        _err(503, 'PHOTO_MODEL_UNAVAILABLE', str(exc))
+    except ValueError as exc:
+        _err(422, 'INVALID_PHOTO_CAPTURE', str(exc))
+    except RuntimeError as exc:
+        _err(429, 'PHOTO_QUEUE_FULL', str(exc))
+    return {'jobId': jid, 'statusUrl': f'/api/projects/{pid}/photos/{jid}',
+            'imageUrl': f'/api/projects/{pid}/photos/{jid}/image',
+            'sourceUrl': f'/api/projects/{pid}/photos/{jid}/source',
+            'manifestUrl': f'/api/projects/{pid}/photos/{jid}/manifest'}
+
+
+@app.get('/api/projects/{pid}/photos/{jid}')
+def get_photo_status(pid: str, jid: str):
+    from .services import photo_jobs
+    _get_rt(pid)
+    try:
+        return photo_jobs.status(pid, jid)
+    except (ValueError, FileNotFoundError):
+        _err(404, 'PHOTO_NOT_FOUND', 'No such photo.')
+
+
+@app.get('/api/projects/{pid}/photos/{jid}/{asset}')
+def get_photo_asset(pid: str, jid: str, asset: Literal['image', 'source', 'depth', 'semantic', 'manifest']):
+    from .services import photo_jobs
+    _get_rt(pid)
+    names = {'image': 'photo.png', 'source': 'source.png', 'depth': 'depth.png', 'semantic': 'semantic.png', 'manifest': 'manifest.json'}
+    try:
+        folder = photo_jobs.root(pid, jid)
+        if asset in ('image', 'manifest') and photo_jobs.status(pid, jid)['state'] != 'COMPLETED':
+            _err(409, 'PHOTO_NOT_READY', 'The photo is not complete.')
+        path = folder/names[asset]
+        if not path.is_file():
+            raise FileNotFoundError()
+    except (ValueError, FileNotFoundError):
+        _err(404, 'PHOTO_NOT_FOUND', 'No such photo.')
+    return FileResponse(path, media_type='application/json' if asset == 'manifest' else 'image/png',
+                        filename=f'{pid}_{names[asset]}')
+
+
 class RenderSettings(BaseModel):
     detail: Literal["presentation", "cad"] = "cad"
     view: Literal["aerial", "pedestrian"] = "aerial"

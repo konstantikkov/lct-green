@@ -247,3 +247,25 @@ def test_closed_cad_outline_is_rendered_without_extra_buildings(tmp_path):
     assert sum(Polygon(t).area for t in surface['triangles'])==24
     assert 'presentationObjects' not in scene
     assert doc.model_dump()==before
+
+
+def test_line_boundaries_reconstruct_only_closed_source_surfaces(tmp_path):
+    from app.services.local_render import scene_data
+    cad=ezdxf.new();cad.units=6
+    for layer in ['arbitrary-road','arbitrary-green','open-building']:
+        cad.layers.new(layer)
+    for layer,x in [('arbitrary-road',0),('arbitrary-green',20)]:
+        points=[(x,0),(x+10,0),(x+10,5),(x,5),(x,0)]
+        for a,b in zip(points,points[1:]):cad.modelspace().add_line(a,b,dxfattribs={'layer':layer})
+    cad.modelspace().add_line((0,20),(10,20),dxfattribs={'layer':'open-building'})
+    src=tmp_path/'linework.dxf';cad.saveas(src);doc=parse_dxf(src,'test',src.name)
+    categories={'arbitrary-road':'ROAD','arbitrary-green':'GREEN_AREA','open-building':'BUILDING'}
+    for layer in doc.layers:
+        if layer.name in categories:layer.classification.category=categories[layer.name]
+    before=doc.model_dump()
+    surfaces=scene_data(doc,{'placements':[]})['surfaces']
+    assert len(surfaces)==2
+    assert {s['category'] for s in surfaces}=={'ROAD','GREEN_AREA'}
+    from shapely.geometry import Polygon
+    assert all(abs(sum(Polygon(t).area for t in s['triangles'])-50)<1e-9 for s in surfaces)
+    assert doc.model_dump()==before

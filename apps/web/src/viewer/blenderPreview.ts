@@ -2,8 +2,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Placement, ProjectDocument } from "../api/types";
 import { buildCadGroups, disposeObject } from "./cadGeometry";
-import {botanicalTree,loadBotanicalAssets} from "./botanicalAssets";
-import { plantingModel } from "./landscapeVegetation";
 import type { Theme } from "../theme";
 
 const loader = new GLTFLoader();
@@ -78,7 +76,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   sun.target.position.set(cx,cy,0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
   const reach=Math.min(span*.85,450);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
   sun.shadow.bias=-.00015;sun.shadow.normalBias=.035;sun.shadow.radius=3;group.add(sun,sun.target);
-  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
+  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc7ccc9,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const pickMeshes:EditablePreview["pickMeshes"]=[];
@@ -92,8 +90,19 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       const p=list[i],r=Math.max(p.crownRadiusM,.15);
       matrix.makeScale(r,r,1);matrix.setPosition(p.position[0],p.position[1],.22);circles.setMatrixAt(i,matrix);
       circles.setColorAt(i,new THREE.Color(kind==="TREE"?0x16b8a6:0x7c83e9));
-      const plant=new THREE.Group();plant.name=`plant:${p.id}`;plant.position.set(p.position[0],p.position[1],.07);plantGroups.set(p.id,plant);slot.add(plant);
-      plant.add(plantingModel(p.id,r,p.kind==="SHRUB"));
+      const plant=new THREE.Group();plant.name=`plant:${p.id}`;plant.position.set(p.position[0],p.position[1],.07);plant.userData.photoClass=p.kind==="TREE"?"tree":"plant";plantGroups.set(p.id,plant);slot.add(plant);
+      const lobes=p.kind==="TREE"?7:4;
+      for(let lobe=0;lobe<lobes;lobe++){
+        const angle=lobe*Math.PI*2/lobes;
+        const crown=new THREE.Mesh(new THREE.SphereGeometry(r*.68,12,8),new THREE.MeshStandardMaterial({color:p.kind==="TREE"?0x608a44:0x759e51,roughness:1}));
+        crown.scale.z=p.kind==="TREE"?1.15:.65;
+        crown.position.set(Math.cos(angle)*r*.3,Math.sin(angle)*r*.3,(p.kind==="TREE"?2+r:r*.55)+Math.sin(lobe*2.4)*r*.17);
+        crown.castShadow=crown.receiveShadow=true;plant.add(crown);
+      }
+      if(p.kind==="TREE"){
+        const stem=new THREE.Mesh(new THREE.CylinderGeometry(.09,.13,2+r,8),new THREE.MeshStandardMaterial({color:0x8b7f6c,roughness:1}));
+        stem.rotation.x=Math.PI/2;stem.position.z=(2+r)/2;stem.castShadow=true;plant.add(stem);
+      }
     }
     circles.instanceMatrix.needsUpdate=true;slot.add(circles);pickMeshes.push({mesh:circles,placements:list});
     const hitMaterial=new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide,transparent:true,opacity:0,depthWrite:false});
@@ -107,21 +116,19 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
     }
     slot.add(disks,crowns);pickMeshes.push({mesh:disks,placements:list},{mesh:crowns,placements:list});
   }
-  // Attach authored branches and individual leaf meshes to the existing
-  // editable roots. A move during loading is preserved because roots stay put.
-  void loadBotanicalAssets().then(()=>{
-    if(disposed)return;
-    for(const p of placements)if(p.kind==="TREE"){
-      const plant=plantGroups.get(p.id)!;plant.clear();plant.add(botanicalTree(p.id,p.speciesId,p.crownRadiusM));
-    }
-    invalidate();
-  }).catch(()=>{if(!disposed)status("Детальные деревья недоступны; показаны резервные модели.");});
   // Camera-independent geometry, reused after moves; the environment is never
   // regenerated when a proposed planting changes coordinates.
   void environment(doc,controller.signal,status).then(async job=>{
     if(disposed)return;const source=await model(job.modelUrl);if(disposed)return;
     const wrapper=new THREE.Group();wrapper.name="blender-environment3d";wrapper.rotation.x=Math.PI/2;wrapper.position.set(job.origin[0],job.origin[1],0);
-    const copy=shared(source.clone(true));copy.traverse(o=>{if(/Landscape.ground|Studio.background/i.test(o.name))o.visible=false;});wrapper.add(copy);group.add(wrapper);status(`3D-редактор · сцена Blender · здания CAD: ${job.sourceBuildings} · PBR-материалы`);invalidate();
+    const copy=shared(source.clone(true));copy.traverse(o=>{
+      if(/Landscape.ground|Studio.background/i.test(o.name))o.visible=false;
+      const m=o as THREE.Mesh;if(!m.isMesh)return;
+      const name=m.name.toLowerCase();if(/cad.fence/.test(name))o.userData.photoClass="FENCE";let category=o.userData.cadCategory;
+      for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
+      const color=category==="BUILDING"?0xcac3b7:category==="GREEN_AREA"||/grass|green/i.test(name)?0xb0bc94:category==="ROAD"||category==="PARKING"||/road|asphalt/i.test(name)?0x8c9394:0xc5c5bc;
+      m.geometry=m.geometry.clone();m.material=new THREE.MeshStandardMaterial({color,roughness:1});o.userData.sharedPreviewResource=false;
+    });wrapper.add(copy);group.add(wrapper);group.userData.sourceBuildings=job.sourceBuildings;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите камеру для AI-фото`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
   return {group,pickMeshes,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
 }

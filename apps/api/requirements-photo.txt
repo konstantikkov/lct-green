@@ -1,0 +1,7 @@
+# Install PyTorch separately for the target CPU/CUDA platform.
+diffusers>=0.35,<0.38
+transformers>=4.46,<5
+accelerate>=1.0,<2
+safetensors>=0.4
+Pillow>=10
+huggingface_hub>=0.30,<1

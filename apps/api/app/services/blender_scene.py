@@ -169,6 +169,7 @@ def main():
             faces.append((start,start+1,start+2))
         obj = mesh(surface['layer'], verts, faces, rubber if surface.get('style')=='play' else wall if cat=='BUILDING' else
                    asphalt if cat in ('ROAD','PARKING') else grass if cat=='GREEN_AREA' else paving)
+        obj['cadLayer']=surface['layer'];obj['cadCategory']=cat
         if cat == 'BUILDING':
             facade=wall.copy()
             palette=[((.48,.42,.32,1),(.65,.59,.47,1)),((.30,.095,.055,1),(.47,.19,.10,1)),((.25,.29,.28,1),(.41,.43,.39,1))]

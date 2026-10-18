@@ -9,7 +9,7 @@ def scene_data(doc, iteration):
     # Only explicit/reviewed semantic assignments affect 3D reconstruction.
     layers = doc.layer_map()
     surfaces = []
-    building_lines = {}
+    surface_lines = {}
     linear_features, point_features = [], []
     for e in doc.entities:
         li = layers.get(e.layer)
@@ -24,11 +24,11 @@ def scene_data(doc, iteration):
         if cat not in {"BUILDING", "ROAD", "SIDEWALK", "PARKING", "GREEN_AREA"}:
             continue
         if e.kind != "polygon" and not (e.kind=="polyline" and e.geometry.get("closed")):
-            if cat == 'BUILDING' and e.kind == 'polyline':
+            if e.kind == 'polyline':
                 from shapely.geometry import LineString
                 pts = e.geometry.get('points', [])
                 if len(pts) >= 2:
-                    building_lines.setdefault(e.layer, []).append(LineString(pts))
+                    surface_lines.setdefault((e.layer, cat), []).append(LineString(pts))
             continue
         from shapely.geometry import Polygon, GeometryCollection
         from shapely.ops import triangulate
@@ -47,15 +47,15 @@ def scene_data(doc, iteration):
         faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
         surfaces.append({"category": cat, "layer": e.layer, "triangles": faces,
                          "height": e.attributes.get("heightM", 12)})
-    # Many CAD facades are separate LINE objects, not closed polylines.
+    # CAD boundaries often consist of separate LINE objects, not closed polylines.
     # Reconstruct only closed cycles; do not invent footprints for open lines.
     from shapely.ops import polygonize, unary_union, triangulate
-    for layer, lines in building_lines.items():
+    for (layer, category), lines in surface_lines.items():
         for poly in polygonize(unary_union(lines)):
             if poly.area < .5:
                 continue
             faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
-            surfaces.append({'category':'BUILDING', 'layer':layer, 'triangles':faces,'height':12})
+            surfaces.append({'category':category, 'layer':layer, 'triangles':faces,'height':12})
     return {"sourceOnly":True,"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
             "linearFeatures":linear_features,"pointFeatures":point_features,

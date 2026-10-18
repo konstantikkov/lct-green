@@ -1,3 +1,5 @@
+> Для нового сценария «минимальный макет → локальная AI-фотография» см. [LOCAL_PHOTO.md](LOCAL_PHOTO.md). Этот документ описывает технический Blender/Cycles-рендер и экспорт геометрии.
+
 # Source-only CAD rendering
 
 The editor, local scene bundle and Cycles export render source CAD objects and

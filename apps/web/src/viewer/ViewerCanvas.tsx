@@ -1,3 +1,4 @@
+import {PhotoDialog} from "../components/PhotoDialog";
 import { useEffect, useRef, useState } from "react";
 import { SceneManager, type HoverHit } from "./SceneManager";
 import { DragChecker, dragAnnotationHtml } from "./dragCheck";
@@ -105,7 +106,7 @@ function ViewerToggles({ mode, detail, circles, setCircles, camera, snapshot, so
       <div className="flex flex-wrap justify-end overflow-hidden rounded-sm border border-ink-600 shadow-sm">
         <Seg active={mode === "2d"} label="CAD" title="Исходный план и посадки"
           onClick={() => setViewMode("2d")} />
-        <Seg active={mode === "3d"} label="3D-редактор" title="Сцена Blender с редактируемыми посадками"
+        <Seg active={mode === "3d"} label="3D-редактор" title="Минимальный CAD-макет для выбора камеры и AI-фото"
           onClick={() => setViewMode("3d")} />
       </div>
       {mode === "3d" && (
@@ -248,8 +249,9 @@ export function ViewerCanvas() {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <ViewerToggles mode={viewMode} detail={massingDetail} circles={circles} setCircles={setCircles} camera={preset=>mgrRef.current?.setPresentationCamera(preset)} snapshot={()=>mgrRef.current?.downloadPresentationImage()} sourceDownload={()=>void mgrRef.current?.downloadSourceScene()} />
+      {viewMode === "3d" && doc && <div className="absolute right-2 top-48 z-10 md:top-28"><PhotoDialog key={doc.projectId} projectId={doc.projectId} capture={()=>{if(!mgrRef.current)throw new Error("Сцена недоступна");return mgrRef.current.capturePhotoInput();}} /></div>}
       {viewMode === "3d" && <RenderFilterPanel value={filters} onChange={setFilters} />}
-      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div><div className="mt-1 text-2xs text-ink-400">Только объекты CAD и выбранные посадки · высоты из 2D условные</div></div>}
+      {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div><div className="mt-1 text-2xs text-ink-400">Макет для композиции · AI-фото — отдельный шаг · высоты из 2D условные</div></div>}
       <div
         ref={tooltipRef}
         style={{ display: "none" }}
