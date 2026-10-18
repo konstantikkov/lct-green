@@ -1,3 +1,4 @@
+import {usePanelResize} from "./PanelResize";
 import { openAudit, setNav, setWorkspaceTab, togglePanelCollapsed } from "../state/actions";
 import { openWizard } from "../state/wizard";
 import { useApp, type WorkspaceTab } from "../state/store";
@@ -234,13 +235,15 @@ export function WorkspaceTabs() {
 
 /** Desktop-only compact left panel showing the active workspace tab. */
 export function WorkspacePanel() {
+  const resize=usePanelResize("greenplan-workspace-width",300,"right");
   const doc = useApp((s) => s.document);
   const tab = useApp((s) => s.workspaceTab);
   const collapsed = useApp((s) => s.panelCollapsed);
   if (!doc || collapsed) return null;
 
   return (
-    <aside className="hidden w-[300px] shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900 md:flex">
+    <aside style={{width:resize.width}} className="relative hidden shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900 md:flex">
+      {resize.handle}
       <WorkspaceTabContent tab={tab} />
     </aside>
   );

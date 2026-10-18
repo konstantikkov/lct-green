@@ -90,6 +90,9 @@ export function ViewerCanvas() {
   const checkerRef = useRef<DragChecker | null>(null);
   if (!checkerRef.current) checkerRef.current = new DragChecker();
 
+  const [renderAspect,setRenderAspect]=useState<number|null>(16/9);
+  const [frameSize,setFrameSize]=useState({width:0,height:0});
+  useEffect(()=>{const el=containerRef.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setFrameSize({width:entry.contentRect.width,height:entry.contentRect.height}));observer.observe(el);return()=>observer.disconnect();},[]);
   const doc = useApp((s) => s.document);
   const constraints = useApp((s) => s.constraints);
   const iteration = useApp((s) => s.activeIteration);
@@ -198,8 +201,9 @@ export function ViewerCanvas() {
   }, [selection]);
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-    <div ref={containerRef} className="relative min-h-[220px] flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden md:flex-row">
+    <div ref={containerRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+      {viewMode==="3d"&&renderAspect&&frameSize.width>0&&<div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 border border-white/70" style={{width:Math.min(frameSize.width,frameSize.height*renderAspect),height:Math.min(frameSize.height,frameSize.width/renderAspect),boxShadow:"0 0 0 3000px rgba(0,0,0,.32)"}}><span className="absolute bottom-2 left-2 text-xs text-white">Границы рендера</span></div>}
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <div role="group" aria-label="Вид проекта" className="absolute right-3 top-3 z-20 flex rounded border border-ink-600 bg-ink-900/95 p-1 shadow-sm">
         {([ ["2d", "CAD"], ["3d", "3D-редактор"] ] as const).map(([mode, label]) => (
@@ -225,7 +229,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} sceneReady={previewStatus.startsWith("Макет CAD")} capture={()=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput();}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
     </div>
   );
 }

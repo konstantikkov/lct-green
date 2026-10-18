@@ -1,3 +1,4 @@
+import {usePanelResize} from "./PanelResize";
 import {useEffect,useRef,useState} from "react";
 import {Btn} from "./ui";
 import {useApp} from "../state/store";
@@ -7,7 +8,12 @@ type Job={jobId?:string;statusUrl:string;imageUrl:string;sourceUrl:string;manife
 type Message={role:string;content:string};
 type Progress={state:string;progressPercent?:number;remainingSeconds?:number;queuePosition?:number;message?:string};
 function minutes(seconds:number){return seconds<60?"меньше минуты":`около ${Math.ceil(seconds/60)} мин`;}
-export function RenderWorkflow({projectId,capture,camera,sceneReady}:{projectId:string;sceneReady:boolean;capture:()=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
+export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChange}:{projectId:string;sceneReady:boolean;onAspectChange:(aspect:number|null)=>void;capture:(aspect?:number)=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
+  const resize=usePanelResize("greenplan-render-width",340,"left");
+  const [ratio,setRatio]=useState("16:9"),[resolution,setResolution]=useState(512);
+  const [lighting,setLighting]=useState("sunny"),[strength,setStrength]=useState(.85),[preset,setPreset]=useState("advertising");
+  const aspect=ratio==="viewport"?undefined:Number(ratio.split(":")[0])/Number(ratio.split(":")[1]);
+  useEffect(()=>onAspectChange(aspect??null),[aspect,onAspectChange]);
   const panel=useRef<HTMLElement>(null);
   const moving=useApp(s=>s.placementMovesPending);
   const plans=useApp(s=>s.iterations),plan=useApp(s=>s.activeIteration),loading=useApp(s=>s.iterationLoadingId);
@@ -35,23 +41,34 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady}:{projectId:
   },[job,key]);
   useEffect(()=>{if(!result)return;let stopped=false;void fetch(result.statusUrl+'/chat').then(r=>r.ok?r.json():[]).then(d=>{if(!stopped)setMessages(d);}).catch(()=>{});return()=>{stopped=true;};},[result]);
   async function generate(){if(!plan)return;setBusy(true);setStatus("Фиксируем план и камеру…");setProgress({state:'QUEUED',progressPercent:1});setDeadline(Date.now()+420000);
-    try{const input=capture();const r=await fetch(`/api/projects/${projectId}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,iterationId:plan.iterationId,lighting:'sunny',background:'park',strength:.85,seed:42,resolution:512})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить рендер");setJob(d);}
+    try{const input=capture(aspect);const r=await fetch(`/api/projects/${projectId}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,iterationId:plan.iterationId,lighting,background:'park',strength,seed:42,resolution})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить рендер");setJob(d);}
     catch(e){setBusy(false);setProgress(null);setStatus(e instanceof Error?e.message:String(e));}
   }
   async function refine(){if(!result||!samePlan||!text.trim())return;setSending(true);setStatus("LLM уточняет изменения…");
     try{const r=await fetch(result.statusUrl+'/refine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text.trim()})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось отправить сообщение");setMessages(d.conversation);setText("");setStatus(d.reply);if(d.job){setJob(d.job);setBusy(true);setProgress({state:'QUEUED',progressPercent:1});setDeadline(Date.now()+420000);}}
     catch(e){setStatus(e instanceof Error?e.message:String(e));}finally{setSending(false);}
   }
-  return <section ref={panel} className="shrink-0 max-h-[55%] overflow-y-auto border-t border-ink-600 bg-ink-900 px-3 pt-3 pb-20 text-ink-100 md:pb-3" aria-label="Генерация 3D-рендера">
-    <div className="flex flex-wrap items-end gap-3 text-xs">
-      <label>План<select aria-label="План для рендера" disabled={busy||sending||!!loading||!!moving} value={plan?.iterationId||""} onChange={e=>void loadIteration(e.target.value)} className="mt-1 block max-w-64 rounded border border-ink-600 bg-ink-800 p-2">{!plans.length&&<option value="">Сначала создайте план посадок</option>}{plans.map((p,i)=><option value={p.iterationId} key={p.iterationId}>План {i+1} · {p.metrics.treeCount} дер. · {p.metrics.shrubCount} куст.</option>)}</select></label>
+  return <section ref={panel} style={{"--render-panel-width":`${resize.width}px`} as import("react").CSSProperties} className="relative shrink-0 max-h-[48%] overflow-y-auto border-t border-ink-600 bg-ink-900 px-4 pt-4 pb-20 text-ink-100 md:max-h-full md:w-[var(--render-panel-width)] md:border-l md:border-t-0 md:pb-4" aria-label="Генерация 3D-рендера">
+    {resize.handle}
+    <h2 className="mb-1 text-sm font-semibold">Настройки рендера</h2>
+    <p className="mb-4 text-xs text-ink-400">Выберите композицию в сцене. Светлая рамка показывает будущий кадр.</p>
+    <fieldset disabled={busy||sending} className="mb-4 grid grid-cols-2 gap-3 text-xs disabled:opacity-60">
+      <label className="col-span-2">Пресет<select aria-label="Пресет рендера" value={preset} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2" onChange={e=>{const v=e.target.value;setPreset(v);if(v==='advertising'){setLighting('sunny');setStrength(.85);}if(v==='natural'){setLighting('daylight');setStrength(.7);}if(v==='evening'){setLighting('evening');setStrength(.8);}}}><option value="advertising">Солнечный · рекламный</option><option value="natural">Естественный · ближе к CAD</option><option value="evening">Вечерний свет</option><option value="custom">Свой вариант</option></select></label>
+      <label>Соотношение сторон<select aria-label="Соотношение сторон" value={ratio} onChange={e=>setRatio(e.target.value)} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2">{['16:9','4:3','1:1','3:4','9:16','viewport'].map(r=><option key={r} value={r}>{r==='viewport'?'Как в редакторе':r}</option>)}</select></label>
+      <label>Разрешение<select aria-label="Разрешение рендера" value={resolution} onChange={e=>setResolution(Number(e.target.value))} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2"><option value={512}>512 px · быстрее</option><option value={768}>768 px · детальнее</option></select></label>
+      <p className="col-span-2 text-2xs text-ink-400">Размер по длинной стороне. 768 px требует больше времени; итоговые размеры кратны 8.</p>
+      <label>Освещение<select aria-label="Освещение" value={lighting} onChange={e=>{setLighting(e.target.value);setPreset('custom');}} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2"><option value="sunny">Солнечное</option><option value="daylight">Дневное</option><option value="evening">Вечернее</option><option value="overcast">Облачное</option></select></label>
+      <label>Детализация · {strength.toFixed(2)}<input aria-label="Детализация" type="range" min="0.55" max="0.95" step="0.05" value={strength} onChange={e=>{setStrength(Number(e.target.value));setPreset('custom');}} className="mt-3 w-full accent-emerald-500"/></label>
+    </fieldset>
+    <div className="flex flex-col items-stretch gap-3 text-xs">
+      <label>План<select aria-label="План для рендера" disabled={busy||sending||!!loading||!!moving} value={plan?.iterationId||""} onChange={e=>void loadIteration(e.target.value)} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2">{!plans.length&&<option value="">Сначала создайте план посадок</option>}{plans.map((p,i)=><option value={p.iterationId} key={p.iterationId}>План {i+1} · {p.metrics.treeCount} дер. · {p.metrics.shrubCount} куст.</option>)}</select></label>
       <label>Ракурс<select aria-label="Ракурс" defaultValue="current" disabled={busy||sending} className="mt-1 block rounded border border-ink-600 bg-ink-800 p-2" onChange={e=>{if(e.target.value!=='current')camera(e.target.value as 'aerial'|'garden');e.currentTarget.value='current';}}><option value="current">Текущая камера</option><option value="aerial">Сверху</option><option value="garden">С уровня человека</option></select></label>
       <Btn onClick={()=>void generate()} disabled={busy||sending||!plan||!!loading||!!moving||!ready||!sceneReady}>{busy?"Генерация…":"Сгенерировать 3D-рендер"}</Btn>
       <span className="pb-2 text-ink-400">{moving?"Сохраняем перемещение…":"Поверните сцену мышью и выберите нужный угол."}</span>
     </div>
     {busy&&<div className="mt-3" aria-live="polite"><div className="mb-1 flex justify-between gap-2 text-xs"><span>{status}</span><span>{progress?.progressPercent||1}% · {minutes(Math.max(0,(deadline-now)/1000))} осталось</span></div><progress aria-label="Прогресс генерации" className="h-2 w-full accent-emerald-500" max="100" value={progress?.progressPercent||1}/><div className="mt-1 text-2xs text-ink-400">Оценка времени уточняется по мере генерации. План и камера уже зафиксированы.</div></div>}
     {!busy&&status&&<p className="mt-2 text-xs" role="status">{status}</p>}
-    {result&&<div className="mt-3 grid gap-3 lg:grid-cols-2"><div><img src={result.imageUrl} alt="Готовый 3D-рендер выбранного плана" className="max-h-80 w-full rounded bg-ink-800 object-contain"/><div className="mt-1 flex justify-between text-xs text-ink-400"><span>{plans.some(p=>p.iterationId===result.iterationId)?`План ${plans.findIndex(p=>p.iterationId===result.iterationId)+1}`:"Сохранённый план"}</span><a href={result.imageUrl} download className="underline">Скачать рендер</a></div></div>
+    {result&&<div className="mt-4 grid gap-4"><div><img src={result.imageUrl} alt="Готовый 3D-рендер выбранного плана" className="max-h-80 w-full rounded bg-ink-800 object-contain"/><div className="mt-1 flex justify-between text-xs text-ink-400"><span>{plans.some(p=>p.iterationId===result.iterationId)?`План ${plans.findIndex(p=>p.iterationId===result.iterationId)+1}`:"Сохранённый план"}</span><a href={result.imageUrl} download className="underline">Скачать рендер</a></div></div>
       <div className="flex min-h-40 flex-col"><div className="mb-2 text-sm font-semibold">Улучшить рендер с LLM</div><div className="mb-2 max-h-36 space-y-2 overflow-y-auto text-xs" aria-live="polite">{!messages.length&&<p className="text-ink-400">Например: «Сделай свет теплее, а зелень насыщеннее».</p>}{messages.map((m,i)=><p key={i} className={m.role==='user'?"rounded bg-ink-800 p-2":"p-2"}><strong>{m.role==='user'?"Вы":"LLM"}: </strong>{m.content}</p>)}</div>
         <form className="mt-auto flex gap-2" onSubmit={e=>{e.preventDefault();void refine();}}><input aria-label="Пожелание к рендеру" maxLength={1000} value={text} onChange={e=>setText(e.target.value)} disabled={busy||sending||!samePlan} placeholder={samePlan?"Как улучшить результат?":"Сначала создайте рендер выбранного плана"} className="min-w-0 flex-1 rounded border border-ink-600 bg-ink-800 px-3 py-2 text-xs"/><Btn disabled={busy||sending||!samePlan||!text.trim()}>{sending?"LLM…":"Отправить"}</Btn></form>
         <p className="mt-1 text-2xs text-ink-400">{samePlan?"Редактируем результат по сохранённым плану и камере.":"Выбран другой план — сначала создайте для него рендер."}</p>

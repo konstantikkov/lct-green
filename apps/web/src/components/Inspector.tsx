@@ -1,3 +1,4 @@
+import {usePanelResize} from "./PanelResize";
 import { useState } from "react";
 import { normalizeCheckResult } from "../api/types";
 import type { ExclusionZone, Explanation, Placement } from "../api/types";
@@ -278,11 +279,13 @@ export function InspectorContent() {
 }
 
 export function Inspector() {
+  const resize=usePanelResize("greenplan-inspector-width",320,"left");
   const selection = useApp((s) => s.selection);
   if (!selection) return null;
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
+    <aside style={{width:resize.width}} className="relative hidden shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
+      {resize.handle}
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-600 px-2">
         <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Инспектор</span>
         <button
