@@ -81,7 +81,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   sun.target.position.set(cx,cy,0);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
   const reach=Math.min(span*.85,450);Object.assign(sun.shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:.5,far:span*4});
   sun.shadow.bias=-.00015;sun.shadow.normalBias=.035;sun.shadow.radius=3;group.add(sun,sun.target);
-  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0x9db779,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
+  const base=new THREE.Mesh(new THREE.PlaneGeometry(doc.extents.max[0]-doc.extents.min[0]+4,doc.extents.max[1]-doc.extents.min[1]+4),new THREE.MeshStandardMaterial({color:0xc3c9bb,roughness:1}));base.name="composition-ground";base.position.set(cx,cy,-.07);base.receiveShadow=true;group.add(base);
   // Actual recommended lawn polygons, including holes, are separate proposed geometry.
   const lawnMaterial=new THREE.MeshStandardMaterial({color:0x91b66b,roughness:1,side:THREE.DoubleSide});
   const groundTexture=new THREE.TextureLoader().load('/api/render-materials/ground_diff.jpg',()=>{if(!disposed)invalidate();});
@@ -91,8 +91,9 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
     const shape=new THREE.Shape();for(let i=0;i<polygon.shell.length;i+=2){if(i===0)shape.moveTo(polygon.shell[i],polygon.shell[i+1]);else shape.lineTo(polygon.shell[i],polygon.shell[i+1]);}shape.closePath();
     for(const hole of polygon.holes??[]){const path=new THREE.Path();for(let i=0;i<hole.length;i+=2){if(i===0)path.moveTo(hole[i],hole[i+1]);else path.lineTo(hole[i],hole[i+1]);}path.closePath();shape.holes.push(path);}
     const geo=new THREE.ShapeGeometry(shape);const uv=geo.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)/2,uv.getY(i)/2);
-    const mesh=new THREE.Mesh(geo,lawnMaterial);mesh.position.z=.025;mesh.name='Proposed lawn';mesh.userData.cadCategory='GREEN_AREA';mesh.receiveShadow=true;group.add(mesh);lawnMeshes.push(mesh);
+    const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x91ad86,roughness:1,side:THREE.DoubleSide}));photoMaterials.set(mesh,lawnMaterial);mesh.position.z=.025;mesh.name='Proposed lawn';mesh.userData.cadCategory='GREEN_AREA';mesh.receiveShadow=true;group.add(mesh);lawnMeshes.push(mesh);
   }
+  if(!lawnMeshes.length){groundTexture.dispose();lawnMaterial.dispose();}
   const detailGroup=buildCadGroups(doc.entities,doc.layers,theme).root;
   detailGroup.name="cad-underlay3d";detailGroup.position.z=.025;detailGroup.visible=false;group.add(detailGroup);
   const groundMeshes:THREE.Mesh[]=[];
@@ -146,10 +147,12 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       const name=m.name.toLowerCase();if(/cad.fence/.test(name))o.userData.photoClass="FENCE";let category=o.userData.cadCategory;
       for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
       m.geometry=m.geometry.clone();const cloneMaterial=(original:THREE.Material)=>{const mat=original.clone() as THREE.MeshStandardMaterial;mat.side=THREE.DoubleSide;for(const key of ['map','normalMap','roughnessMap','metalnessMap','aoMap'] as const){if(mat[key])mat[key]=mat[key]!.clone();}return mat;};m.material=Array.isArray(m.material)?m.material.map(cloneMaterial):cloneMaterial(m.material);if(category)o.userData.cadCategory=category;o.userData.sharedPreviewResource=false;
-      if(category==="BUILDING"){
-        // Keep photographic materials off the interactive model, but retain them for capture.
+      const surfaceColors:Record<string,number>={BUILDING:0xeeeae5,GREEN_AREA:0x91ad86,ROAD:0x899296,SIDEWALK:0xd5cdbf,PARKING:0xa5adb0};
+      const editorColor=surfaceColors[category]??(o.userData.sourceTerrain?0xc3c9bb:undefined);
+      if(editorColor!==undefined){
+        // Calm, readable editor colors; photographic textures are used only during capture.
         photoMaterials.set(m,m.material);
-        m.material=new THREE.MeshStandardMaterial({color:0xeeeae5,roughness:.95,side:THREE.DoubleSide});
+        m.material=new THREE.MeshStandardMaterial({color:editorColor,roughness:.95,side:THREE.DoubleSide});
       }
     });wrapper.add(copy);group.add(wrapper);group.updateMatrixWorld(true);
     copy.traverse(o=>{const m=o as THREE.Mesh;if(m.isMesh&&m.visible&&(["GREEN_AREA","ROAD","SIDEWALK","PARKING"].includes(m.userData.cadCategory)||m.userData.sourceTerrain))groundMeshes.push(m);});
