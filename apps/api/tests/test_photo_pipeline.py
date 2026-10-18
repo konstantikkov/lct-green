@@ -118,3 +118,57 @@ def test_photo_history_survives_api_restart(photo_api):
     rows=photo_api.get('/api/projects/test/photos').json()
     assert len(rows)==1 and rows[0]['jobId']==jid and rows[0]['state']=='COMPLETED'
     assert rows[0]['sourceUrl'].endswith('/source')
+
+
+def test_backdrop_preserves_source_objects_and_inside_plan():
+    import numpy as np
+    from app.services.photo_inference import prepare_backdrop
+    rgb=np.full((96,128,3),160,dtype=np.uint8)
+    labels=np.full_like(rgb,[120,120,70]);labels[:30]=[6,230,230]
+    labels[30:65,10:30]=[4,200,3];labels[55:85,60:90]=[180,120,120]
+    labels[65:90,95:120]=[140,140,140]
+    depth=Image.new('L',(128,96),0)
+    settings=dict(background='park',lighting='sunny',camera=dict(position=[0,-10,10],target=[0,0,0],fov=50,aspect=128/96),siteBounds=dict(min=[-10000,-10000],max=[10000,10000]))
+    image,semantic,mask=prepare_backdrop(Image.fromarray(rgb),Image.fromarray(labels),depth,settings)
+    protected=np.any(labels!=[6,230,230],axis=2)
+    assert np.array_equal(np.array(image)[protected],rgb[protected])
+    assert np.array_equal(np.array(semantic)[protected],labels[protected])
+    assert not np.array(mask)[protected].any()
+    assert np.array(mask)[:30].any()
+    assert np.any(np.all(np.array(semantic)==[4,200,3],axis=2)[:30])
+
+
+def test_backdrop_only_changes_offsite_unclassified_floor():
+    import numpy as np
+    from app.services.photo_inference import prepare_backdrop
+    rgb=np.full((96,128,3),160,dtype=np.uint8)
+    labels=np.full_like(rgb,[120,120,70]);labels[:30]=[6,230,230];labels[65:90,95:120]=[140,140,140]
+    settings=dict(background='park',lighting='daylight',camera=dict(position=[0,-10,10],target=[0,0,0],fov=50,aspect=128/96),siteBounds=dict(min=[-1,-1],max=[1,1]))
+    image,semantic,mask=prepare_backdrop(Image.fromarray(rgb),Image.fromarray(labels),Image.new('L',(128,96),0),settings)
+    road=np.all(labels==[140,140,140],axis=2)
+    assert np.array_equal(np.array(semantic)[road],labels[road])
+    assert not np.array(mask)[road].any()
+    assert np.any(np.all(np.array(semantic)==[4,250,7],axis=2))
+
+
+def test_source_background_mode_can_be_unchanged():
+    import numpy as np
+    from app.services.photo_inference import prepare_backdrop
+    rgb=np.full((96,128,3),160,dtype=np.uint8)
+    labels=np.full_like(rgb,[120,120,70]);labels[:30]=[6,230,230]
+    image,semantic,mask=prepare_backdrop(Image.fromarray(rgb),Image.fromarray(labels),Image.new('L',(128,96),0),dict(background='source',lighting='daylight'))
+    assert np.array_equal(np.array(image),rgb)
+    assert np.array_equal(np.array(semantic),labels)
+    assert not np.array(mask).any()
+
+
+def test_sunny_presentation_preserves_camera_and_bounds_in_job(photo_api,monkeypatch):
+    captured=[]
+    def submit(pid,settings):
+        captured.append(settings);return 'e'*32
+    monkeypatch.setattr(photo_jobs,'submit',submit)
+    data={**payload(),'lighting':'sunny','background':'park','siteBounds':{'min':[-20,-30],'max':[40,50]}}
+    assert photo_api.post('/api/projects/test/photos',json=data).status_code==202
+    assert json.loads(json.dumps(captured[0]['camera']))==data['camera']
+    assert captured[0]['siteBounds']['min']==(-20.,-30.)
+    assert captured[0]['background']=='park'

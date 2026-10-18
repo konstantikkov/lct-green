@@ -1,0 +1,17 @@
+{
+  "siteBounds": {
+    "min": [
+      -2138.910659946653,
+      1630.854323228311
+    ],
+    "max": [
+      -2091.076270055644,
+      1669.963169326502
+    ]
+  },
+  "matches": {
+    "conditioning_source.png": true,
+    "conditioning_semantic.png": true,
+    "context_mask.png": true
+  }
+}

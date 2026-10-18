@@ -1,7 +1,7 @@
 import {createPortal} from "react-dom";
 import {useEffect,useState} from "react";
 import {Btn} from "./ui";
-export type PhotoCapture={image:string;depth:string;semantic:string;buildingCount:number;camera:{position:number[];target:number[];fov:number;aspect:number}};
+export type PhotoCapture={image:string;depth:string;semantic:string;siteBounds:{min:[number,number];max:[number,number]};buildingCount:number;camera:{position:number[];target:number[];fov:number;aspect:number}};
 type Job={statusUrl:string;imageUrl:string;sourceUrl:string;manifestUrl:string};
 /** Generate from an immutable color/depth capture of the user's current camera. */
 export function PhotoDialog({projectId,capture}:{projectId:string;capture:()=>PhotoCapture}) {
@@ -10,7 +10,7 @@ export function PhotoDialog({projectId,capture}:{projectId:string;capture:()=>Ph
   const [open,setOpen]=useState(false),[input,setInput]=useState<PhotoCapture|null>(null);
   const [job,setJob]=useState<Job|null>(saved&&!saved.completed?saved.job:null),[result,setResult]=useState<Job|null>(saved?.completed?saved.job:null);
   const [status,setStatus]=useState(""),[busy,setBusy]=useState(!!saved&&!saved.completed);
-  const [lighting,setLighting]=useState("daylight"),[strength,setStrength]=useState(.85),[seed,setSeed]=useState(42);
+  const [lighting,setLighting]=useState("sunny"),[background,setBackground]=useState("park"),[strength,setStrength]=useState(.85),[seed,setSeed]=useState(42);
   const [previousPhoto,setPreviousPhoto]=useState<Job|null>(null);
   const [available,setAvailable]=useState(false),[modelStatus,setModelStatus]=useState("Проверка локальной модели…");
   useEffect(()=>{try{const current=job||result;if(current)sessionStorage.setItem(storageKey,JSON.stringify({job:current,completed:!!result}));else sessionStorage.removeItem(storageKey);}catch{/* storage may be disabled */}},[job,result,storageKey]);
@@ -34,7 +34,7 @@ export function PhotoDialog({projectId,capture}:{projectId:string;capture:()=>Ph
   },[job]);
   async function generate(){
     if(!input)return;setBusy(true);setResult(null);setStatus("Передача выбранного кадра и глубины локальной модели…");
-    try{const r=await fetch(`/api/projects/${projectId}/photos`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...input,lighting,strength,seed,resolution:512})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить генерацию");setJob(d);}
+    try{const r=await fetch(`/api/projects/${projectId}/photos`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...input,lighting,background,strength,seed,resolution:512})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить генерацию");setJob(d);}
     catch(e){setStatus(String(e));setBusy(false);}
   }
   return <>
@@ -48,7 +48,8 @@ export function PhotoDialog({projectId,capture}:{projectId:string;capture:()=>Ph
           <div><div className="mb-1 text-xs text-ink-400">Локальная генерация · Realistic Vision + ControlNet Segmentation</div>{result?<img src={result.imageUrl} alt="Сгенерированная фотографическая визуализация" className="w-full rounded"/>:<div className="flex min-h-48 items-center justify-center rounded border border-dashed border-ink-600 p-6 text-center text-sm text-ink-400">Выберите свет и создайте фото. CPU-генерация может занять несколько минут.</div>}</div>
         </div>
         <div className="my-3 flex flex-wrap items-end gap-4 text-sm">
-          <label>Свет<select className="block rounded bg-ink-800 p-2" value={lighting} disabled={busy} onChange={e=>setLighting(e.target.value)}><option value="daylight">Естественный дневной</option><option value="evening">Тёплый вечер</option><option value="overcast">Мягкий пасмурный</option></select></label>
+          <label>Свет<select className="block rounded bg-ink-800 p-2" value={lighting} disabled={busy} onChange={e=>setLighting(e.target.value)}><option value="sunny">Солнечная презентация</option><option value="daylight">Естественный дневной</option><option value="evening">Тёплый вечер</option><option value="overcast">Мягкий пасмурный</option></select></label>
+          <label>Фон<select className="block rounded bg-ink-800 p-2" value={background} disabled={busy} onChange={e=>setBackground(e.target.value)}><option value="park">Зелёное окружение · эскиз</option><option value="source">Только исходная сцена</option></select></label>
           <label>Детализация фото {strength.toFixed(2)}<input aria-label="Детализация фото" className="block" type="range" min=".55" max=".95" step=".05" disabled={busy} value={strength} onChange={e=>setStrength(+e.target.value)}/><span className="text-2xs text-ink-400">Меньше — ближе к макету; больше — свободнее детали</span></label>
           <label>Вариант<input aria-label="Вариант фото" className="block w-24 rounded bg-ink-800 p-2" type="number" min="0" max="2147483647" value={seed} disabled={busy} onChange={e=>setSeed(Math.max(0,Math.min(2147483647,Math.floor(+e.target.value))))}/></label>
           <Btn onClick={()=>void generate()} disabled={busy||!input||!available}>{busy?"Генерация…":"Создать фото"}</Btn>
@@ -58,7 +59,7 @@ export function PhotoDialog({projectId,capture}:{projectId:string;capture:()=>Ph
         </div>
         <p className="text-xs text-ink-400">{modelStatus} · обработка локально · CPU: до 512 px по длинной стороне</p>
         <p role="status" className="my-2 text-sm">{status}</p>
-        <p className="text-xs text-ink-400">AI-визуализация может менять мелкие детали. Проверяйте её по исходному кадру; точные границы и посадки остаются в CAD. Фотографии-примеры задают качество света и материалов, а не планировку.</p>
+        <p className="text-xs text-ink-400">AI-визуализация может менять мелкие детали. Проверяйте её по исходному кадру; точные границы и посадки остаются в CAD. Зелёное окружение за участком иллюстративное; новые здания не добавляются. Фотографии-примеры задают качество света и материалов, а не планировку.</p>
       </div>
     </div>,document.body)}
   </>;

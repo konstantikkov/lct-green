@@ -381,7 +381,7 @@ export class SceneManager {
         materials.set(mesh,mesh.material);mesh.material=palette[key];
       });
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const semantic=read();
-      return {image,depth:depthImage,semantic,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
+      return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
     } finally {
       this.renderer.setRenderTarget(previous.target);this.scene.background=previous.background;this.scene.fog=previous.fog;this.scene.overrideMaterial=previous.override;this.renderer.setClearColor(previous.clear,previous.alpha);this.renderer.toneMapping=previous.tone;
       materials.forEach((material,mesh)=>mesh.material=material);Object.values(palette).forEach(m=>m.dispose());

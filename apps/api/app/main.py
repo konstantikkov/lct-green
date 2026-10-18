@@ -969,13 +969,21 @@ class PhotoCamera(BaseModel):
     model_config = {"allow_inf_nan": False}
 
 
+class PhotoBounds(BaseModel):
+    min: tuple[float, float]
+    max: tuple[float, float]
+    model_config = {"allow_inf_nan": False}
+
+
 class PhotoSettings(BaseModel):
     image: str = Field(max_length=7_000_000)
     depth: str = Field(max_length=7_000_000)
     semantic: str = Field(max_length=7_000_000)
     camera: PhotoCamera
+    siteBounds: PhotoBounds | None = None
     buildingCount: int = Field(default=0, ge=0, le=100000)
-    lighting: Literal["daylight", "evening", "overcast"] = "daylight"
+    lighting: Literal["sunny", "daylight", "evening", "overcast"] = "sunny"
+    background: Literal["park", "source"] = "park"
     strength: float = Field(default=.85, ge=.55, le=.95, allow_inf_nan=False)
     seed: int = Field(default=42, ge=0, le=2**31-1)
     resolution: Literal[512, 768] = 512

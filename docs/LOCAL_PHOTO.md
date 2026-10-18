@@ -49,3 +49,11 @@ PHOTO_PYTHON=/opt/greenplan/photo-venv/bin/python
 Matching weights and seed make iterations reproducible on the same runtime/device; exact pixel identity across CPU/CUDA is not promised. The earlier Blender/Cycles export remains available through `/renders` and `/export/render-bundle` for deterministic geometry rendering; the primary UI uses the separate generative workflow.
 
 A real CPU canary (source frame, semantic labels, generated result and original manifest) is committed in [examples/local-photo](../examples/local-photo/). This is a diagnostic example from an actual pilot import with no closed building footprints, not a claim of matching the architectural reference quality.
+
+## Sunny presentation and distant context
+
+The default `sunny` preset asks for clear blue sky, warm summer sunlight, fresh greens and a welcoming presentation. A restrained final color/brightness adjustment applies only to this preset. Daylight, evening and overcast remain selectable.
+
+`background: park` adds an **illustrative**, distant green backdrop to the conditioning guide. Existing sky pixels can receive distant treeline silhouettes. Neutral ground changes to distant lawn only where the captured depth is far away **and** a ground-plane camera-ray test places it outside the source drawing bounds, with a 2 m margin. Known object labels (building, tree, shrub, road, sidewalk, etc.) are protected. With no bounds supplied, neutral ground remains unchanged. `background: source` disables the added backdrop.
+
+The source CAD scene and original captures remain unchanged. `conditioning_source.png`, `conditioning_semantic.png` and `context_mask.png` record precisely which guide pixels were changed; lighting/background choices and drawing bounds are saved in the manifest. These guide protections do not make diffusion pixel-perfect. Added green surroundings are not claimed to be a surveyed description of the neighborhood, and no surrounding buildings are added to the guide.
