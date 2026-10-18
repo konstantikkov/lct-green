@@ -61,6 +61,7 @@ export interface EditablePreview {
   fog:THREE.Fog;
   detailGroup:THREE.Group;
   circleMeshes:THREE.InstancedMesh[];
+  photoMaterials:Map<THREE.Mesh,THREE.Material|THREE.Material[]>;
   groundHeight:(x:number,y:number)=>number;
   dispose:()=>void;
 }
@@ -71,6 +72,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
   const controller=new AbortController();let disposed=false;
   const circleMeshes:THREE.InstancedMesh[]=[];
   const plantGroups=new Map<string,THREE.Group>();
+  const photoMaterials=new Map<THREE.Mesh,THREE.Material|THREE.Material[]>();
   const span=Math.max(doc.extents.max[0]-doc.extents.min[0],doc.extents.max[1]-doc.extents.min[1],10);
   const cx=(doc.extents.min[0]+doc.extents.max[0])/2,cy=(doc.extents.min[1]+doc.extents.max[1])/2;
   const fog=new THREE.Fog(0xdce3df,span*3,span*9);
@@ -144,6 +146,11 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
       const name=m.name.toLowerCase();if(/cad.fence/.test(name))o.userData.photoClass="FENCE";let category=o.userData.cadCategory;
       for(let parent=o.parent;!category&&parent;parent=parent.parent)category=parent.userData.cadCategory;
       m.geometry=m.geometry.clone();const cloneMaterial=(original:THREE.Material)=>{const mat=original.clone() as THREE.MeshStandardMaterial;mat.side=THREE.DoubleSide;for(const key of ['map','normalMap','roughnessMap','metalnessMap','aoMap'] as const){if(mat[key])mat[key]=mat[key]!.clone();}return mat;};m.material=Array.isArray(m.material)?m.material.map(cloneMaterial):cloneMaterial(m.material);if(category)o.userData.cadCategory=category;o.userData.sharedPreviewResource=false;
+      if(category==="BUILDING"){
+        // Keep photographic materials off the interactive model, but retain them for capture.
+        photoMaterials.set(m,m.material);
+        m.material=new THREE.MeshStandardMaterial({color:0xeeeae5,roughness:.95,side:THREE.DoubleSide});
+      }
     });wrapper.add(copy);group.add(wrapper);group.updateMatrixWorld(true);
     copy.traverse(o=>{const m=o as THREE.Mesh;if(m.isMesh&&m.visible&&(["GREEN_AREA","ROAD","SIDEWALK","PARKING"].includes(m.userData.cadCategory)||m.userData.sourceTerrain))groundMeshes.push(m);});
     if(groundMeshes.some(m=>m.userData.sourceTerrain)){const bounds=new THREE.Box3();for(const mesh of groundMeshes)if(mesh.userData.sourceTerrain)bounds.expandByObject(mesh);if(!bounds.isEmpty())base.position.z=bounds.min.z-.07;}
@@ -151,5 +158,14 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
     for(const p of placements){const z=groundHeight(p.position[0],p.position[1]);const plant=plantGroups.get(p.id);if(plant)plant.position.z=z+.07;for(const slot of pickMeshes){const i=slot.placements.findIndex(v=>v.id===p.id);if(i>=0){const m=new THREE.Matrix4();slot.mesh.getMatrixAt(i,m);m.elements[14]+=z;slot.mesh.setMatrixAt(i,m);slot.mesh.instanceMatrix.needsUpdate=true;}}}
     group.userData.sourceBuildings=job.sourceBuildings;group.userData.sourceFences=job.sourceFences;status(`Макет CAD · зданий: ${job.sourceBuildings} · выберите ракурс`);invalidate();
   }).catch(e=>{if(!disposed && e.name!=="AbortError")status(`Сцена недоступна: ${e.message}. Круги и CAD доступны; переключите вид для повторной загрузки.`);});
-  return {group,pickMeshes,groundHeight,plantGroups,fog,detailGroup,circleMeshes,dispose:()=>{disposed=true;controller.abort();}};
+  return {group,pickMeshes,groundHeight,plantGroups,fog,detailGroup,circleMeshes,photoMaterials,dispose:()=>{
+    disposed=true;controller.abort();
+    photoMaterials.forEach(material=>{
+      for(const mat of Array.isArray(material)?material:[material]){
+        for(const texture of new Set(Object.values(mat).filter(v=>v instanceof THREE.Texture) as THREE.Texture[]))texture.dispose();
+        mat.dispose();
+      }
+    });
+    photoMaterials.clear();
+  }};
 }

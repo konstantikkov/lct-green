@@ -365,6 +365,9 @@ export class SceneManager {
       ctx.putImageData(pixels,0,0);return canvas.toDataURL("image/png");
     };
     try {
+      this.editablePreview.photoMaterials.forEach((material,mesh)=>{
+        materials.set(mesh,mesh.material);mesh.material=material;
+      });
       this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
       if(ground)ground.scale.set(12,12,1); // neutral ground continues to the horizon; no source objects are added
       this.scene.fog=null;this.scene.background=new THREE.Color(0xbecfda);
@@ -379,7 +382,7 @@ export class SceneManager {
         for(let parent=o.parent;!key&&parent;parent=parent.parent)key=parent.userData.photoClass||parent.userData.cadCategory;
         key=key in colors?key:"earth";
         if(!palette[key])palette[key]=new THREE.MeshBasicMaterial({color:colors[key],side:THREE.DoubleSide});
-        materials.set(mesh,mesh.material);mesh.material=palette[key];
+        if(!materials.has(mesh))materials.set(mesh,mesh.material);mesh.material=palette[key];
       });
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const semantic=read();
       return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),fenceCount:Number(this.editablePreview.group.userData.sourceFences??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
