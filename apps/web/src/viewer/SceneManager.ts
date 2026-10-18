@@ -337,12 +337,12 @@ export class SceneManager {
     catch(e){if(!this.disposed)this.cb.onPreviewStatus(`Ошибка выгрузки 3D CAD: ${String(e)}`);}
   }
 
-  capturePhotoInput(aspect?:number) {
+  capturePhotoInput(aspect?:number,longEdge=768) {
     if(this.mode!=="3d")throw new Error("Откройте 3D-макет и выберите камеру");
     if(!this.editablePreview?.group.getObjectByName("blender-environment3d"))throw new Error("Дождитесь загрузки поверхностей CAD");
     const camera=this.camera3d.clone();
     if(aspect){if(aspect>camera.aspect)camera.fov=THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov)/2)*camera.aspect/aspect));camera.aspect=aspect;camera.updateProjectionMatrix();}
-    const width=768,height=Math.max(64,Math.round(width/camera.aspect));
+    const width=Math.max(64,Math.round(longEdge*Math.min(camera.aspect,1))),height=Math.max(64,Math.round(width/camera.aspect));
     if(height>1600)throw new Error("Слишком узкий вид: разверните окно для фотографии");
     const ground=this.editablePreview.group.getObjectByName("composition-ground");
     const groundScale=ground?.scale.clone();

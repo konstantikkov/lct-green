@@ -2,7 +2,7 @@
 
 The 3D editor is a composition tool: simple building masses and tree crowns, CAD coordinates, draggable planting circles, orbit/pan and garden/aerial cameras. It deliberately does not imitate a finished photograph. Only recognized source building footprints appear; no surrounding buildings are generated in the editor.
 
-Choose the planting plan in the panel below the viewer, position the camera by orbit/pan or the viewpoint selector, then press **Сгенерировать 3D-рендер**. The old floating toolbar and the photo modal have been removed. The selected iteration ID, placement snapshot/digest and camera are saved with the job. The generated image and refinement chat appear inline below the scene.
+Choose the planting plan in the right sidebar, position the camera by orbit/pan or the viewpoint selector, then press **Сгенерировать 3D-рендер**. CAD remains the default view; the CAD/3D tabs remain available. Settings panels are resizable by dragging their edges. The selected iteration ID, placement snapshot/digest and camera are saved with the job. The generated image and refinement chat appear in the same sidebar.
 
 The result uses **Realistic Vision 5.1** with **ControlNet segmentation** and image-to-image conditioning. Color, depth, ADE20K semantic labels and camera come from the same frame. CAD annotations and editing circles are excluded. Original captures remain available through the API. Generating a photo does not change the plan.
 
@@ -20,21 +20,23 @@ Models and licenses:
 
 - https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE — CreativeML Open RAIL-M.
 - https://huggingface.co/lllyasviel/control_v11p_sd15_seg — model card OpenRAIL terms.
+- https://github.com/xinntao/Real-ESRGAN — general-x4v3 upscaler; architecture license in [licenses/Real-ESRGAN.txt](licenses/Real-ESRGAN.txt). The installer verifies the model SHA-256.
 - These are locally runnable, open-weight models with license conditions; they are not claimed to be unrestricted OSI software.
 
-The API environment only needs its existing dependencies. Heavy inference runs in `photo-venv` as a subprocess, with `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, two CPU threads and a 60-minute timeout. A model-directory file lock serializes subprocesses across API processes and restarts. One generation runs at a time, with one waiting slot; no remote image service is called. On the current CPU host, the UI uses 512 pixels on the long side, 24 scheduled steps (effective count depends on strength). Larger output and fast iteration need a GPU. A CPU render is not advertised as high-resolution reference-quality photography.
+The API environment only needs its existing dependencies. Heavy inference runs in `photo-venv` as a subprocess, with `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, two CPU threads and a 60-minute timeout. A model-directory file lock serializes subprocesses across API processes and restarts. One generation runs at a time, with one waiting slot; no remote image service is called. Standard modes use 512/768 pixels on the long edge and 24 scheduled steps. HD modes output 1024/1536/2048 pixels: a 28-step composition pass, a low-denoise (.2) detail pass guided by the original semantic labels, and tiled Real-ESRGAN general-x4v3 neural upscaling. This is not native 2K diffusion. Nearly square compositions use a smaller internal size to control CPU cost. Target CPU time is approximately 10–20 minutes, excluding queue wait; measured stage timing updates the estimate. The server keeps a 60-minute failure timeout for stalled jobs, rather than discarding an almost complete result at 20 minutes. Generative fidelity to reference photographs is not guaranteed.
 
-For an NVIDIA workstation, install CUDA-compatible PyTorch in the photo environment instead. The same inference script detects CUDA automatically and uses float16; the current UI still uses the conservative 512-pixel default. API resolution also accepts 768. CPU uses float32.
+For an NVIDIA workstation, install CUDA-compatible PyTorch in the photo environment instead. The same inference script detects CUDA automatically and uses float16; the UI defaults to 1536 px when local upscaler weights are available and falls back to 512 px otherwise. CPU uses float32.
 
 ## API and reproducibility
 
-`GET /api/projects/{pid}/photos` restores recent jobs/results after a browser reload. `GET /api/photo-capabilities` reports whether local model configuration exists. `POST /api/projects/{pid}/photos` accepts PNG data URLs `image`/`depth`/`semantic`, camera position/target/FOV/aspect, lighting (`daylight`, `evening`, `overcast`), strength .55–.95, seed and resolution. It returns job/status/image/source/manifest URLs. `GET /api/projects/{pid}/photos/{jid}` reports queue, generation step, completion or failure. Swagger exposes the schemas.
+`GET /api/projects/{pid}/photos` restores recent jobs/results after a browser reload. `GET /api/photo-capabilities` reports local model availability, `highResolutionAvailable`, and supported `resolutions`. `POST /api/projects/{pid}/photos` accepts PNG data URLs `image`/`depth`/`semantic`, camera position/target/FOV/aspect, lighting (`sunny`, `daylight`, `evening`, `overcast`), strength .55–.95, seed and resolution. It returns job/status/image/source/manifest URLs. `GET /api/projects/{pid}/photos/{jid}` reports queue, generation step, completion or failure. Swagger exposes the schemas.
 
 Files under `outputs/photo_jobs/{pid}/{jobId}`:
 
 - `source.png`, `depth.png`, `semantic.png`: exact submitted camera captures;
 - `settings.json`: seed, camera and requested settings;
-- `photo.png`: real model output, never a fallback image;
+- `composition.png`, `detail.png` (HD only): intermediate stages;
+- `photo.png`: real model output at the selected resolution, never a fallback image;
 - `manifest.json`: model, device, size, elapsed inference time, prompt and camera;
 - `inference.log`, `status.json`: diagnosis and progress.
 
@@ -63,7 +65,7 @@ The source CAD scene and original captures remain unchanged. `conditioning_sourc
 
 ## Progress and local LLM refinements
 
-A real progress bar follows worker diffusion steps, stays below 100% during final decoding, and completes only after the output file is ready. ETA uses recent measured runtimes, current step timing and queue position; it is approximate. Queue/run timestamps and estimates are stored in `job.json`. Polling and job recovery continue after reloading the page.
+A real progress bar follows composition steps, detail steps and completed upscaling tiles, stays below 100% during final decoding, and completes only after the output file is ready. ETA uses recent measured runtimes, current step timing and queue position; it is approximate. Queue/run timestamps and estimates are stored in `job.json`. Polling and job recovery continue after reloading the page.
 
 After a result completes, chat sends the request to the existing local LLM. The model translates it into constrained appearance controls: lighting, palette, color temperature, presentation finish, existing paving materials and optional illustrative background. A small-model prompt uses explicit `keep` values for unchanged settings and a worked example; explicit instructions to preserve sunshine override a contradictory lighting suggestion. Replies describe the controls actually applied. If the LLM is unavailable, the UI reports that rather than pretending to answer.
 

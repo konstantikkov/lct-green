@@ -32,7 +32,9 @@ def capabilities():
                 model/'text_encoder/model.safetensors', model/'vae/diffusion_pytorch_model.safetensors',
                 control/'config.json', control/'diffusion_pytorch_model.safetensors']
     ready = all(path.is_file() for path in required)
-    return {'available': ready, 'engine': 'Realistic Vision 5.1 + ControlNet segmentation',
+    from .photo_upscale import model_path
+    high_ready = model_path(model).is_file()
+    return {'available': ready, 'highResolutionAvailable':ready and high_ready, 'resolutions':[512,768,1024,1536,2048] if high_ready else [512,768], 'engine': 'Realistic Vision 5.1 + ControlNet segmentation',
             'execution': 'local', 'message': 'Локальная модель готова' if ready else 'Локальная фотомодель ещё не установлена'}
 
 
@@ -60,6 +62,10 @@ def decode_png(value):
 def submit(pid, settings):
     if not capabilities()['available']:
         raise FileNotFoundError('Install the local photo model first; no remote API is used.')
+    if settings.get('resolution',512)>=1024:
+        from .photo_upscale import model_path
+        if not model_path(configuration()[1]).is_file():
+            raise FileNotFoundError('Install local Real-ESRGAN weights to enable high resolution.')
     source = decode_png(settings.pop('image'))
     depth = decode_png(settings.pop('depth'))
     semantic = decode_png(settings.pop('semantic'))
@@ -126,6 +132,7 @@ def status(pid, jid):
 
 
 def estimate_seconds(pid,settings):
+    from .photo_quality import workload
     estimates=[]
     parent=config.OUTPUT_DIR/'photo_jobs'/pid
     folders=sorted(parent.glob('*/manifest.json'),key=lambda f:f.stat().st_mtime,reverse=True)[:10]
@@ -133,11 +140,12 @@ def estimate_seconds(pid,settings):
         try:
             m=json.loads(path.read_text())
             duration=float(m['elapsedSeconds'])
-            factor=settings.get('strength',.85)/max(m.get('strength',.85),.1)
-            factor*=(settings.get('resolution',512)/max(m.get('width',512),m.get('height',512)))**2
-            if duration>0:estimates.append(duration*factor)
+            previous={'resolution':m.get('qualityPlan',{}).get('resolution',max(m.get('width',512),m.get('height',512))),'strength':m.get('strength',.85),'camera':m.get('camera')}
+            previous_upscale=120 if previous['resolution']>=1024 else 0
+            factor=workload(settings)/max(workload(previous),.1)
+            if duration>0:estimates.append(max(1,duration-previous_upscale)*factor+(120 if settings.get('resolution',512)>=1024 else 0))
         except (OSError,ValueError,KeyError,TypeError):pass
-    return round(statistics.median(estimates)) if estimates else 420
+    return round(statistics.median(estimates)) if estimates else round(420*workload(settings)+(120 if settings.get('resolution',512)>=1024 else 0))
 
 
 def progress_details(folder,data):
@@ -152,9 +160,12 @@ def progress_details(folder,data):
         since=max(1,time.time()-data.get('generationStartedAt',meta.get('startedAt',time.time())))
         remaining=max(5,math.ceil(since/step*max(0,total-step)+25))
         progress=min(95,10+85*step/total)
+        if 'progressStart' in data:
+            progress=min(98,data['progressStart']+(data['progressEnd']-data['progressStart'])*step/total)
+            remaining=max(5,math.ceil(since/step*max(0,total-step)+data.get('remainingStageSeconds',5)))
     else:
         remaining=max(30,math.ceil(estimate-elapsed))
-        progress=2 if data['state']=='QUEUED' else 5
+        progress=2 if data['state']=='QUEUED' else max(5,data.get('progressStart',5))
     return {'progressPercent':round(progress),'remainingSeconds':remaining,'estimatedSeconds':estimate}
 
 

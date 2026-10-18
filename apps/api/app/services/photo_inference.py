@@ -101,9 +101,10 @@ def main():
     # PyTorch scaled-dot-product attention is faster and avoids the many
     # tiny CPU operations introduced by maximum attention slicing.
     image = Image.open(folder/'source.png').convert('RGB')
-    limit = settings.get('resolution', 512)
-    scale = limit/max(image.size)
-    size = tuple(max(64, round(x*scale/8)*8) for x in image.size)
+    from photo_quality import quality_plan, dimensions
+    quality = quality_plan(settings)
+    source_size = image.size
+    size = dimensions(source_size, quality['baseResolution'])
     image = image.resize(size, Image.Resampling.LANCZOS)
     semantic = Image.open(folder/'semantic.png').convert('RGB').resize(size, Image.Resampling.NEAREST)
     depth = Image.open(folder/'depth.png').convert('RGB').resize(size, Image.Resampling.BILINEAR)
@@ -128,20 +129,53 @@ def main():
     if settings['lighting']=='sunny':negative += ', overcast, storm clouds, grey sky, gloomy, desaturated, winter, dull lighting, harsh HDR'
     if not settings.get('buildingCount', 0):negative += ', buildings, houses, urban skyline'
     started = time.monotonic()
-    generation_started_at=time.time()
-    def progress(pipeline, step, timestep, values):
+    metadata=json.loads((folder/'job.json').read_text()) if (folder/'job.json').is_file() else {}
+    estimate=metadata.get('estimatedSeconds',1100 if quality['detailResolution'] else 420)
+    phase={'start':5,'end':70 if quality['detailResolution'] else 95,'later':estimate*.3 if quality['detailResolution'] else 25,'name':'Композиция и освещение','began':time.time()}
+    def report(step,total):
         tmp = folder/'status.tmp'
-        tmp.write_text(json.dumps({'state': 'GENERATING', 'step': step+1, 'totalSteps': pipeline.num_timesteps, 'generationStartedAt':generation_started_at,
-                                  'message': 'Локальная генерация фотографии…'}))
+        tmp.write_text(json.dumps({'state': 'GENERATING', 'step': step, 'totalSteps': total, 'generationStartedAt':phase['began'],
+                                  'progressStart':phase['start'],'progressEnd':phase['end'],'remainingStageSeconds':phase['later'],
+                                  'message':phase['name']}))
         tmp.replace(folder/'status.json')
+    def progress(pipeline, step, timestep, values):
+        report(step+1,pipeline.num_timesteps)
         return values
+    report(0,1)
     seed = settings.get('seed', 42)
     with torch.inference_mode():
         result = pipe(prompt=prompt, negative_prompt=negative, image=image, control_image=semantic,
-                      strength=settings.get('strength', .85), num_inference_steps=24,
+                      strength=settings.get('strength', .85), num_inference_steps=quality['baseSteps'],
                       guidance_scale=6, controlnet_conditioning_scale=1.1, control_guidance_end=.95,
                       generator=torch.Generator(device=device).manual_seed(seed),
                       callback_on_step_end=progress).images[0]
+    result.save(folder/'composition.png')
+    if quality['detailResolution']:
+        # Low denoising adds leaf/paving detail while the original CAD labels
+        # continue to guide object positions, rather than recursively editing AI geometry.
+        phase.update(start=70,end=88,later=estimate*.12,name='Детализация листвы и материалов',began=time.time())
+        report(0,1)
+        detail_size=dimensions(source_size,quality['detailResolution'])
+        detail_semantic=Image.open(folder/'semantic.png').convert('RGB').resize(detail_size,Image.Resampling.NEAREST)
+        detail_source=Image.open(folder/'source.png').convert('RGB').resize(detail_size,Image.Resampling.LANCZOS)
+        detail_depth=Image.open(folder/'depth.png').convert('RGB').resize(detail_size,Image.Resampling.BILINEAR)
+        _,detail_semantic,_=prepare_backdrop(detail_source,detail_semantic,detail_depth,settings)
+        with torch.inference_mode():
+            result=pipe(prompt=prompt+', fine individual leaves, subtle bark texture, fine realistic material detail',negative_prompt=negative,
+                image=result.resize(detail_size,Image.Resampling.LANCZOS),control_image=detail_semantic,
+                strength=quality['detailStrength'],num_inference_steps=quality['detailSteps'],guidance_scale=5,
+                controlnet_conditioning_scale=1.1,control_guidance_end=1.,
+                generator=torch.Generator(device=device).manual_seed(seed+1),callback_on_step_end=progress).images[0]
+        result.save(folder/'detail.png')
+        # Release diffusion weights before neural upscaling to fit CPU workstations.
+        del pipe,control
+        import gc
+        gc.collect()
+        if device=='cuda':torch.cuda.empty_cache()
+        phase.update(start=88,end=98,later=5,name='Real-ESRGAN · увеличение разрешения',began=time.time())
+        report(0,1)
+        from photo_upscale import upscale, model_path, MODEL_SHA256
+        result=upscale(result,dimensions(source_size,quality['resolution']),model_path(args.model),device,report)
     if settings['lighting']=='sunny':
         from PIL import ImageEnhance
         result=ImageEnhance.Color(result).enhance(1.12)
@@ -150,6 +184,7 @@ def main():
     result.save(folder/'photo.png')
     (folder/'manifest.json').write_text(json.dumps({
         'engine': 'Realistic Vision 5.1 + ControlNet segmentation', 'execution': 'local', 'device': device,
+        'qualityPlan':quality,'upscaler':{'model':'Real-ESRGAN general-x4v3','sha256':MODEL_SHA256} if quality['detailResolution'] else None,
         'seed': seed, 'width': result.width, 'height': result.height, 'elapsedSeconds': round(time.monotonic()-started, 1),
         'iterationId':settings.get('iterationId'),'planDigest':settings.get('planDigest'),
         'appearance':{k:settings.get(k) for k in ('palette','temperature','finish','surfaceStyle')}, 'parentJobId':settings.get('parentJobId'),

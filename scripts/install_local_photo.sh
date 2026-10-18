@@ -20,4 +20,11 @@ for repo,directory,patterns in models:
  snapshot_download(repo,revision=revision,local_dir=base/directory,allow_patterns=patterns,max_workers=2)
  (base/directory/'provenance.json').write_text(json.dumps({'repository':repo,'revision':revision}))
 PY
+# Compact learned upscaler; downloaded only during installation, verified again at inference.
+curl -fL --retry 3 -o "$photo_root/photo-models/realesr-general-x4v3.pth" https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth
+"$photo_root/photo-venv/bin/python" - "$photo_root/photo-models/realesr-general-x4v3.pth" <<'PYVERIFY'
+import hashlib,sys
+from pathlib import Path
+assert hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest() == '8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292', 'Real-ESRGAN checksum mismatch'
+PYVERIFY
 printf 'PHOTO_PYTHON=%s/photo-venv/bin/python\nPHOTO_MODEL_DIR=%s/photo-models/realistic-vision\nPHOTO_CONTROL_DIR=%s/photo-models/controlnet-seg\n' "$photo_root" "$photo_root" "$photo_root"

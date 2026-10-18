@@ -988,7 +988,7 @@ class PhotoSettings(BaseModel):
     background: Literal["park", "source"] = "park"
     strength: float = Field(default=.85, ge=.55, le=.95, allow_inf_nan=False)
     seed: int = Field(default=42, ge=0, le=2**31-1)
-    resolution: Literal[512, 768] = 512
+    resolution: Literal[512, 768, 1024, 1536, 2048] = 512
 
 
 @app.get('/api/photo-capabilities')

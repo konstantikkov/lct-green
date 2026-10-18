@@ -229,7 +229,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
     </div>
   );
 }
