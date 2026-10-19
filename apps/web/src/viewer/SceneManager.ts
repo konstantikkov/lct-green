@@ -137,6 +137,10 @@ export class SceneManager {
   private downPx = 0;
   private downPy = 0;
 
+  // 360° panorama points (3D only; never part of photo captures)
+  private panoramaMarkers = new THREE.Group();
+  private pointPicker: ((point: [number, number] | null) => void) | null = null;
+
   // placement drag-move (iteration 6)
   private placementDrag: PlacementDragState | null = null;
   private scratchM = new THREE.Matrix4();
@@ -205,6 +209,9 @@ export class SceneManager {
     this.selectionRing.position.z = Z.selection;
     this.selectionRing.raycast = () => {};
     this.scene.add(this.selectionRing);
+    this.panoramaMarkers.name = "panorama-markers";
+    this.panoramaMarkers.visible = false;
+    this.scene.add(this.panoramaMarkers);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas.parentElement ?? canvas);
@@ -368,7 +375,7 @@ export class SceneManager {
       this.editablePreview.photoMaterials.forEach((material,mesh)=>{
         materials.set(mesh,mesh.material);mesh.material=material;
       });
-      this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
+      this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o===this.panoramaMarkers||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
       if(ground)ground.scale.set(12,12,1); // neutral ground continues to the horizon; no source objects are added
       this.scene.fog=null;this.scene.background=new THREE.Color(0xbecfda);
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const image=read();
@@ -398,15 +405,64 @@ export class SceneManager {
     if(this.mode!=="3d")return;
     const selected=this.selectionRing.visible;
     try {
-      this.selectionRing.visible=false;
+      this.selectionRing.visible=false;this.panoramaMarkers.visible=false;
       this.editablePreview?.circleMeshes.forEach(m=>(m.material as THREE.MeshBasicMaterial).opacity=0);
       this.filterPipeline.render();
       const link=document.createElement("a");
       link.download=`${this.doc?.projectId??"landscape"}_plan.png`;
       link.href=this.canvas.toDataURL("image/png");link.click();
     } finally {
-      this.selectionRing.visible=selected;this.setPlantingCircles(this.plantingCircles);
+      this.selectionRing.visible=selected;this.panoramaMarkers.visible=true;this.setPlantingCircles(this.plantingCircles);
     }
+  }
+
+  /** Ground point under the screen centre and the compass bearing of the
+   *  view (0 = +Y, clockwise), used as a 360° panorama standing point. */
+  panoramaViewpoint(): { x: number; y: number; heading: number } | null {
+    if (this.mode !== "3d") return null;
+    const point = this.groundPoint(this.width / 2, this.height / 2) ?? [this.orbit.tx, this.orbit.ty];
+    const forward = new THREE.Vector3();
+    this.camera3d.getWorldDirection(forward);
+    const heading = (THREE.MathUtils.radToDeg(Math.atan2(forward.x, forward.y)) + 360) % 360;
+    return { x: point[0], y: point[1], heading };
+  }
+
+  /** Next plain left click in the 3D view reports its ground point (null when
+   *  the click misses the ground); passing null cancels. */
+  setPointPicker(picker: ((point: [number, number] | null) => void) | null) {
+    const previous = this.pointPicker;
+    this.pointPicker = picker;
+    this.canvas.style.cursor = picker ? "crosshair" : "";
+    if (previous && previous !== picker) previous(null);
+  }
+
+  /** Pins for panorama points; `active` marks the pending/selected one. */
+  setPanoramaMarkers(points: { x: number; y: number; active?: boolean }[]) {
+    for (const child of [...this.panoramaMarkers.children]) {
+      this.panoramaMarkers.remove(child);
+      disposeObject(child);
+    }
+    // Readable from the whole-site view: pins grow with the site, ~1 m per 60 m.
+    const span = this.extents ? Math.max(this.extents.max[0] - this.extents.min[0], this.extents.max[1] - this.extents.min[1]) : 60;
+    const scale = Math.max(1, span / 60);
+    for (const point of points) {
+      const material = new THREE.MeshBasicMaterial({ color: point.active ? 0xf59e0b : 0x38bdf8, depthTest: false, transparent: true });
+      const pin = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 3, 8), material);
+      pole.rotation.x = Math.PI / 2;
+      pole.position.z = 1.5;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.55, 16, 12), material);
+      head.position.z = 3.2;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.4, 32), material);
+      ring.position.z = .05;
+      pin.add(pole, head, ring);
+      pin.position.set(point.x, point.y, 0);
+      pin.scale.setScalar(scale);
+      pin.renderOrder = 10;
+      pin.traverse(o => { o.raycast = () => {}; o.renderOrder = 10; });
+      this.panoramaMarkers.add(pin);
+    }
+    this.invalidate();
   }
 
   setPresentationCamera(preset:"aerial"|"garden") {
@@ -473,6 +529,8 @@ export class SceneManager {
     }
     this.slotRoot.visible = mode === "2d";
     this.root3d.visible = mode === "3d";
+    this.panoramaMarkers.visible = mode === "3d";
+    if (mode !== "3d") this.setPointPicker(null);
     this.updateSelectionRing();
     this.applyVisibility();
     this.invalidate();
@@ -995,7 +1053,13 @@ export class SceneManager {
       }
       this.dragging = false;
       c.releasePointerCapture(e.pointerId);
-      if (!this.panned && e.button === 0) {
+      if (!this.panned && e.button === 0 && this.pointPicker && this.mode === "3d") {
+        const rect = c.getBoundingClientRect();
+        const picker = this.pointPicker;
+        this.pointPicker = null;
+        c.style.cursor = "";
+        picker(this.groundPoint(e.clientX - rect.left, e.clientY - rect.top));
+      } else if (!this.panned && e.button === 0) {
         const rect = c.getBoundingClientRect();
         const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
         if (hit?.kind === "placement") this.cb.onPickPlacement(hit.placement);

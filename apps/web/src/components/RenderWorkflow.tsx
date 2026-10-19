@@ -3,12 +3,13 @@ import {useEffect,useRef,useState} from "react";
 import {Btn} from "./ui";
 import {useApp} from "../state/store";
 import {loadIteration} from "../state/actions";
+import {PanoramaPanel,type PanoramaTools} from "./PanoramaPanel";
 export type PhotoCapture={image:string;depth:string;semantic:string;siteBounds:{min:[number,number];max:[number,number]};buildingCount:number;fenceCount?:number;camera:{position:number[];target:number[];fov:number;aspect:number}};
 type Job={jobId?:string;statusUrl:string;imageUrl:string;sourceUrl:string;manifestUrl:string;iterationId?:string|null};
 type Message={role:string;content:string};
 type Progress={state:string;progressPercent?:number;remainingSeconds?:number;queuePosition?:number;message?:string};
 function minutes(seconds:number){return seconds<60?"меньше минуты":`около ${Math.ceil(seconds/60)} мин`;}
-export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChange,onReconstructionChange,reconstructionSettings}:{reconstructionSettings:{buildingHeightM:number;showFences:boolean};onReconstructionChange:(settings:{buildingHeightM:number;showFences:boolean})=>void;projectId:string;sceneReady:boolean;onAspectChange:(aspect:number|null)=>void;capture:(aspect?:number,longEdge?:number)=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
+export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChange,onReconstructionChange,reconstructionSettings,panorama}:{panorama:PanoramaTools;reconstructionSettings:{buildingHeightM:number;showFences:boolean};onReconstructionChange:(settings:{buildingHeightM:number;showFences:boolean})=>void;projectId:string;sceneReady:boolean;onAspectChange:(aspect:number|null)=>void;capture:(aspect?:number,longEdge?:number)=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
   const [background,setBackground]=useState("park");
   const [buildingHeight,setBuildingHeight]=useState(reconstructionSettings.buildingHeightM),[showFences,setShowFences]=useState(reconstructionSettings.showFences);
   const resize=usePanelResize("greenplan-render-width",340,"left");
@@ -78,5 +79,6 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
         <form className="mt-auto flex gap-2" onSubmit={e=>{e.preventDefault();void refine();}}><input aria-label="Пожелание к рендеру" maxLength={1000} value={text} onChange={e=>setText(e.target.value)} disabled={busy||sending||!samePlan} placeholder={samePlan?"Как улучшить результат?":"Сначала создайте рендер выбранного плана"} className="min-w-0 flex-1 rounded border border-ink-600 bg-ink-800 px-3 py-2 text-xs"/><Btn disabled={busy||sending||!samePlan||!text.trim()}>{sending?"LLM…":"Отправить"}</Btn></form>
         <p className="mt-1 text-2xs text-ink-400">{samePlan?"Редактируем результат по сохранённым плану и камере.":"Выбран другой план — сначала создайте для него рендер."}</p>
       </div></div>}
+    <PanoramaPanel projectId={projectId} iterationId={plan?.iterationId} reconstruction={reconstructionSettings} tools={panorama} disabled={!plan||!sceneReady||!!loading||!!moving}/>
   </section>;
 }

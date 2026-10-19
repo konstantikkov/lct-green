@@ -10,6 +10,73 @@ import bpy
 from mathutils import Vector
 
 
+def use_gpu(scene):
+    """Select the first available GPU backend; CPU when none is usable."""
+    prefs = bpy.context.preferences.addons['cycles'].preferences
+    for kind in ('OPTIX', 'CUDA', 'HIP', 'METAL', 'ONEAPI'):
+        try:
+            prefs.compute_device_type = kind
+        except TypeError:
+            continue
+        prefs.refresh_devices()
+        if any(d.type == kind for d in prefs.devices):
+            for d in prefs.devices:
+                d.use = d.type == kind
+            scene.cycles.device = 'GPU'
+            return kind
+    return 'CPU'
+
+
+def place_panorama(scene, cam, a, ox, oy):
+    """Equirectangular camera at eye height above the ground under the point.
+
+    The downward ray skips plantings and fence/light rods; passing through a
+    building roof marks the point as inside a building.
+    """
+    x = a.target_x-ox if a.target_x is not None else 0
+    y = a.target_y-oy if a.target_y is not None else 0
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    origin, ground, inside = Vector((x, y, 10000)), 0., False
+    for _ in range(256):
+        hit, loc, _, _, obj, _ = scene.ray_cast(depsgraph, origin, Vector((0, 0, -1)))
+        if not hit:
+            break
+        obj = obj.original
+        if obj.get('cadCategory') == 'BUILDING':
+            inside = True
+        elif not obj.get('plantingId') and not obj.name.startswith(('CAD fence', 'CAD light')):
+            ground = loc.z
+            break
+        origin = loc - Vector((0, 0, 1e-3))
+    cam.location = (x, y, ground+a.eye_height)
+    # Rotating the default -Z view by 90° about X faces +Y; Z turns clockwise.
+    cam.rotation_euler = (math.radians(90), 0, -math.radians(a.heading))
+    cam.data.type = 'PANO'
+    if hasattr(cam.data, 'panorama_type'):
+        cam.data.panorama_type = 'EQUIRECTANGULAR'
+    else:
+        cam.data.cycles.panorama_type = 'EQUIRECTANGULAR'
+    cam.data.dof.use_dof = False
+    cam.data.clip_start = .02
+    # The neutral ground continues towards the horizon instead of ending
+    # at a visible edge; it adds no source objects.
+    background = scene.objects.get('Studio background')
+    if background:
+        background.scale = (12, 12, 1)
+        # Seen edge-on, the pale studio grey reads as water and its specular
+        # lobe mirrors the sky; a dark matte earth tone reads as distant ground.
+        for m in background.data.materials:
+            nodes = m.node_tree.nodes if m and m.node_tree else []
+            for node in nodes:
+                if node.type == 'VALTORGB':
+                    node.color_ramp.elements[0].color = (.07, .075, .05, 1)
+                    node.color_ramp.elements[-1].color = (.13, .14, .09, 1)
+                elif node.type == 'BSDF_PRINCIPLED' and 'Specular IOR Level' in node.inputs:
+                    node.inputs['Specular IOR Level'].default_value = 0
+    return {'eye': [x+ox, y+oy, ground+a.eye_height], 'groundZ': ground, 'heading': a.heading,
+            'eyeHeight': a.eye_height, 'insideBuilding': inside}
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--scene', default='scene.json')
@@ -29,7 +96,13 @@ def main():
     p.add_argument('--preview-only', action='store_true')
     p.add_argument('--assets')
     p.add_argument('--detail', choices=['presentation','cad'], default='cad')
-    p.add_argument('--view', choices=['aerial','pedestrian'], default='aerial')
+    p.add_argument('--view', choices=['aerial','pedestrian','panorama'], default='aerial')
+    # Panorama: --target-x/--target-y is the standing point (CAD metres),
+    # --heading the compass bearing at the image centre (0 = +Y, clockwise).
+    p.add_argument('--heading', type=float, default=0)
+    p.add_argument('--eye-height', type=float, default=1.6)
+    p.add_argument('--grass-radius', type=float, default=0)
+    p.add_argument('--device', choices=['CPU','AUTO'], default='CPU')
     a = p.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
     data = json.loads(Path(a.scene).read_text())
     rng = random.Random(data['seed'])
@@ -38,6 +111,7 @@ def main():
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
+    device = use_gpu(scene) if a.device == 'AUTO' else 'CPU'
     scene.cycles.samples = a.samples
     scene.cycles.use_denoising = True
     scene.cycles.max_bounces = 8
@@ -46,7 +120,8 @@ def main():
     scene.cycles.adaptive_threshold = .03
     scene.render.resolution_x, scene.render.resolution_y = a.width, a.height
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.file_format = 'JPEG' if Path(a.output).suffix.lower() in ('.jpg','.jpeg') else 'PNG'
+    scene.render.image_settings.quality = 92
     scene.render.filepath = str(Path(a.output).resolve())
     scene.view_settings.exposure = a.exposure
     scene.view_settings.view_transform = 'AgX' if bpy.app.version >= (4, 0, 0) else 'Filmic'
@@ -283,6 +358,7 @@ def main():
     for i,item in enumerate([] if a.preview_only else data['placements']):
         kind=item['kind']; proto=plant(kind,i%4)
         obj=bpy.data.objects.new(item['id'],proto.data)
+        obj['plantingId']=item['id']
         scene.collection.objects.link(obj)
         x,y=item['position']; obj.location=(x-ox,y-oy,.06)
         r=float(item['crownRadiusM'])
@@ -328,6 +404,10 @@ def main():
         cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
     cam.data.lens=46;cam.data.clip_end=max(span*10,1000);scene.camera=cam
     cam.data.dof.use_dof=True;cam.data.dof.focus_distance=(target-cam.location).length;cam.data.dof.aperture_fstop=11
+    panorama=place_panorama(scene,cam,a,ox,oy) if a.view=='panorama' else None
+    if panorama and a.grass_radius>0:
+        from blender_grass import scatter_lawn
+        panorama['lawnClumps']=scatter_lawn(data,ox,oy,tuple(cam.location)[:2],a.grass_radius,seed=data.get('seed',42))
     try:scene.view_settings.look='AgX - Medium High Contrast'
     except (TypeError,ValueError):pass
     import json as _json
@@ -337,7 +417,8 @@ def main():
               'detail':a.detail,'view':a.view,'sourcePlantingCount':len(data['placements']),
               'assumptions':data.get('assumptions',[]),'sourcePlantingCoordinates':[p['position'] for p in data['placements']],
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
-              'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects)}
+              'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects),
+              'device':device,'panorama':panorama}
     Path(a.output).with_suffix('.manifest.json').write_text(_json.dumps(manifest,ensure_ascii=False),encoding='utf-8')
     if a.gltf:
         from preview_materials import prepare_materials

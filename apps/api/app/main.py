@@ -1132,16 +1132,90 @@ def get_render_image(pid: str, jid: str):
     try:
         if render_jobs.status(pid,jid)['state'] != 'COMPLETED':
             _err(409, 'RENDER_NOT_READY', 'The render is not complete.')
-        image = render_jobs.job_dir(pid,jid)/'render.png'
+        image = render_jobs.image(pid,jid)
     except (ValueError, FileNotFoundError):
         _err(404, 'RENDER_NOT_FOUND', 'No such render.')
-    return FileResponse(image, media_type='image/png', filename=f'{pid}_render.png')
+    jpeg = image.suffix == '.jpg'
+    return FileResponse(image, media_type='image/jpeg' if jpeg else 'image/png', filename=f'{pid}_render{image.suffix}')
 
 
 class ReconstructionSettings(BaseModel):
     excavationsAsBuildings:bool=True
     buildingHeightM:float=Field(default=9,ge=2,le=200,allow_inf_nan=False)
     showFences:bool=False
+
+
+class PanoramaRequest(BaseModel):
+    """Standing point in CAD metres; heading is the compass bearing of the
+    image centre (0 = +Y, clockwise)."""
+    x: float = Field(allow_inf_nan=False)
+    y: float = Field(allow_inf_nan=False)
+    heading: float = Field(default=0, ge=-360, le=360, allow_inf_nan=False)
+    eyeHeight: float = Field(default=1.6, ge=.5, le=60, allow_inf_nan=False)
+    quality: Literal["preview", "high", "ultra"] = "high"
+    grass: bool = True
+    reconstruction: ReconstructionSettings | None = None
+    iterationId: str | None = Field(default=None, max_length=128)
+
+
+# Equirectangular width (height is half) and Cycles samples.
+PANORAMA_QUALITY = {'preview': (2048, 64), 'high': (4096, 192), 'ultra': (8192, 256)}
+
+
+def _panorama_urls(pid: str, jid: str) -> dict:
+    return {'jobId': jid, 'statusUrl': f'/api/projects/{pid}/renders/{jid}',
+            'imageUrl': f'/api/projects/{pid}/renders/{jid}/image',
+            'manifestUrl': f'/api/projects/{pid}/panoramas/{jid}/manifest'}
+
+
+@app.post('/api/projects/{pid}/panoramas', status_code=202)
+def create_panorama(pid: str, req: PanoramaRequest):
+    """Equirectangular 360° Cycles render from a standing point (GPU when available)."""
+    import os
+    import time
+    from .services import render_jobs
+    from .services.local_render import scene_data
+    rt = _get_rt(pid)
+    rec = get_iteration(pid, req.iterationId) if req.iterationId else _selected_iteration(pid)
+    (x0, y0), (x1, y1) = rt.doc.extents.min, rt.doc.extents.max
+    margin = max(x1-x0, y1-y0, 20)*.25
+    if not (x0-margin <= req.x <= x1+margin and y0-margin <= req.y <= y1+margin):
+        _err(422, 'PANORAMA_OUTSIDE_SITE', 'The panorama point is outside the drawing.')
+    width, samples = PANORAMA_QUALITY[req.quality]
+    heading = req.heading % 360
+    settings = {'view': 'panorama', 'target_x': req.x, 'target_y': req.y, 'heading': heading,
+                'eye_height': req.eyeHeight, 'width': width, 'height': width//2, 'samples': samples,
+                'grass_radius': 30 if req.grass else 0, 'exposure': -.2,
+                'device': 'CPU' if os.environ.get('BLENDER_DEVICE', 'AUTO').upper() == 'CPU' else 'AUTO'}
+    meta = {'kind': 'panorama', 'x': req.x, 'y': req.y, 'heading': heading, 'eyeHeight': req.eyeHeight,
+            'quality': req.quality, 'grass': req.grass, 'iterationId': rec.get('iterationId'),
+            'createdAt': time.time()}
+    options = req.reconstruction.model_dump() if req.reconstruction else None
+    try:
+        jid = render_jobs.submit(pid, scene_data(rt.doc, rec, options), settings,
+                                 output='render.jpg', timeout=7200, meta=meta)
+    except FileNotFoundError as exc:
+        _err(503, 'BLENDER_UNAVAILABLE', str(exc))
+    except RuntimeError as exc:
+        _err(429, 'RENDER_QUEUE_FULL', str(exc))
+    return {**meta, **_panorama_urls(pid, jid), 'state': 'QUEUED'}
+
+
+@app.get('/api/projects/{pid}/panoramas')
+def list_panoramas(pid: str):
+    from .services import render_jobs
+    _get_rt(pid)
+    return [{**row, **_panorama_urls(pid, row['jobId'])} for row in render_jobs.listing(pid, 'panorama')]
+
+
+@app.get('/api/projects/{pid}/panoramas/{jid}/manifest')
+def get_panorama_manifest(pid: str, jid: str):
+    from .services import render_jobs
+    _get_rt(pid)
+    try:
+        return render_jobs.manifest(pid, jid)
+    except ValueError:
+        _err(404, 'RENDER_NOT_FOUND', 'No such render.')
 
 
 @app.get('/api/render-materials/{name}')

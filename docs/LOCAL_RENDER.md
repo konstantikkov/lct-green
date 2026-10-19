@@ -71,6 +71,45 @@ connection is required at runtime. Open `scene.blend` to adjust material default
 height assumptions, camera or Cycles device. A render manifest records source
 building/surface counts, plant coordinates, material use and assumptions.
 
+## 360° panoramas
+
+The 3D editor's **360° панорамы · Cycles** panel renders equirectangular
+panoramas of the same Cycles scene. Pick a standing point with
+**Указать точку кликом** or **Центр экрана**; the current view direction becomes
+the image centre. Eye height (1.6 m pedestrian … 40 m drone), quality
+(2048/4096/8192 px wide, 64/192/256 samples) and close-range lawn blades are
+selectable. Panoramas open in a full-screen viewer: drag to look around, wheel or
+pinch to zoom, rings on the ground and the mini-map move to neighbouring points.
+All points share one deterministic scene, so trees, buildings and lighting stay
+consistent between them.
+
+The camera stands at eye height above the ground under the point; plantings and
+fence/light rods are ignored when finding the ground, and a point inside a
+building footprint is reported as `insideBuilding` in the manifest. Beyond the
+site, the neutral ground plane is extended in a dark matte tone so the horizon
+reads as distant ground; no context is added.
+
+Lawn blades are instanced only inside source `GREEN_AREA` surfaces within 30 m
+of the point, never over roads, paving or buildings, with density fading to 10 %
+at the edge (`blender_grass.py`). They are a material-level detail of an
+existing lawn, not new scenery.
+
+Panoramas use the GPU automatically (OptiX → CUDA → HIP → Metal → oneAPI, CPU
+fallback); set `BLENDER_DEVICE=CPU` to force the CPU. A 4096×2048 panorama
+takes about a minute on an RTX 4060 Ti and much longer on a CPU. The API
+needs Blender: set `BLENDER_EXECUTABLE` to its binary.
+
+API: `POST /api/projects/{pid}/panoramas` with `x`, `y` (CAD metres), `heading`
+(compass bearing of the image centre, 0 = +Y, clockwise), `eyeHeight`,
+`quality`, `grass`, optional `iterationId` and `reconstruction`;
+`GET /api/projects/{pid}/panoramas` lists points with state and progress;
+the image is served by `/api/projects/{pid}/renders/{jobId}/image` (JPEG) and
+the manifest by `/api/projects/{pid}/panoramas/{jobId}/manifest`. Locally:
+
+```sh
+blender -b -t 8 --python render.py -- --scene scene.json --output pano.jpg --view panorama --target-x 32 --target-y 20 --heading 0 --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30
+```
+
 ## Validation
 
 Regression checks cover arbitrary layers and nested blocks, source preservation,

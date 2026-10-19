@@ -1,5 +1,6 @@
 import {RenderWorkflow} from "../components/RenderWorkflow";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PanoramaTools } from "../components/PanoramaPanel";
 import { SceneManager, type HoverHit } from "./SceneManager";
 import { DragChecker, dragAnnotationHtml } from "./dragCheck";
 import { hud } from "./hud";
@@ -202,6 +203,13 @@ export function ViewerCanvas() {
     mgrRef.current?.setSelectedPlacement(selection?.type === "placement" ? selection.placement : null);
   }, [selection]);
 
+  // Stable identity: the panorama panel registers markers/pickers in effects.
+  const panoramaTools = useMemo<PanoramaTools>(() => ({
+    viewpoint: () => mgrRef.current?.panoramaViewpoint() ?? null,
+    pick: picker => mgrRef.current?.setPointPicker(picker),
+    markers: points => mgrRef.current?.setPanoramaMarkers(points),
+  }), []);
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden md:flex-row">
     <div ref={containerRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -231,7 +239,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} reconstructionSettings={reconstruction} onReconstructionChange={settings=>{setReconstruction(settings);setPreviewStatus("Подготовка геометрии CAD…");mgrRef.current?.setReconstruction(settings);}} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} reconstructionSettings={reconstruction} onReconstructionChange={settings=>{setReconstruction(settings);setPreviewStatus("Подготовка геометрии CAD…");mgrRef.current?.setReconstruction(settings);}} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)} panorama={panoramaTools}/>}
     </div>
   );
 }
