@@ -2,6 +2,7 @@
 import argparse
 import json
 import math
+import os
 import random
 import sys
 from pathlib import Path
@@ -44,7 +45,7 @@ def place_panorama(scene, cam, a, ox, oy):
         obj = obj.original
         if obj.get('cadCategory') == 'BUILDING':
             inside = True
-        elif not obj.get('plantingId') and not obj.name.startswith(('CAD fence', 'CAD light')):
+        elif not obj.get('plantingId') and not obj.name.startswith(('CAD fence', 'CAD light', 'Lawn blades')):
             ground = loc.z
             break
         origin = loc - Vector((0, 0, 1e-3))
@@ -103,6 +104,8 @@ def main():
     p.add_argument('--eye-height', type=float, default=1.6)
     p.add_argument('--grass-radius', type=float, default=0)
     p.add_argument('--device', choices=['CPU','AUTO'], default='CPU')
+    # Tour: JSON list of {x, y, heading, output}; one scene, one render per point.
+    p.add_argument('--points')
     a = p.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
     data = json.loads(Path(a.scene).read_text())
     rng = random.Random(data['seed'])
@@ -404,7 +407,7 @@ def main():
         cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
     cam.data.lens=46;cam.data.clip_end=max(span*10,1000);scene.camera=cam
     cam.data.dof.use_dof=True;cam.data.dof.focus_distance=(target-cam.location).length;cam.data.dof.aperture_fstop=11
-    panorama=place_panorama(scene,cam,a,ox,oy) if a.view=='panorama' else None
+    panorama=place_panorama(scene,cam,a,ox,oy) if a.view=='panorama' and not a.points else None
     if panorama and a.grass_radius>0:
         from blender_grass import scatter_lawn
         panorama['lawnClumps']=scatter_lawn(data,ox,oy,tuple(cam.location)[:2],a.grass_radius,seed=data.get('seed',42))
@@ -419,6 +422,9 @@ def main():
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
               'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects),
               'device':device,'panorama':panorama}
+    if a.points:
+        render_tour(scene,cam,a,ox,oy,data,manifest)
+        return
     Path(a.output).with_suffix('.manifest.json').write_text(_json.dumps(manifest,ensure_ascii=False),encoding='utf-8')
     if a.gltf:
         from preview_materials import prepare_materials
@@ -432,6 +438,10 @@ def main():
     if a.blend:
         bpy.ops.file.pack_all()
         bpy.ops.wm.save_as_mainfile(filepath=str(Path(a.blend).resolve()))
+    render_still(scene)
+
+
+def render_still(scene):
     try:
         bpy.ops.render.render(write_still=True)
     except RuntimeError as exc:
@@ -440,6 +450,30 @@ def main():
         # Some Linux distribution builds omit OpenImageDenoise.
         scene.cycles.use_denoising = False
         bpy.ops.render.render(write_still=True)
+
+
+def render_tour(scene, cam, a, ox, oy, data, manifest):
+    """Render every tour point from the already built scene.
+
+    Each image appears atomically (rendered under a temporary name, then
+    renamed) so the API can serve finished points while later ones render.
+    """
+    from blender_grass import scatter_lawn
+    points = json.loads(Path(a.points).read_text(encoding='utf-8'))
+    for i, point in enumerate(points):
+        print(f'PANORAMA {i+1}/{len(points)}', flush=True)
+        Path(a.points).with_name('tour.progress').write_text(f'{i}/{len(points)}')
+        a.target_x, a.target_y, a.heading = point['x'], point['y'], point.get('heading', 0)
+        info = place_panorama(scene, cam, a, ox, oy)
+        if a.grass_radius > 0:
+            info['lawnClumps'] = scatter_lawn(data, ox, oy, tuple(cam.location)[:2], a.grass_radius, seed=data.get('seed', 42)+i)
+        out = Path(point['output']).resolve()
+        partial = out.with_name('partial_'+out.name)
+        scene.render.filepath = str(partial)
+        render_still(scene)
+        out.with_suffix('.manifest.json').write_text(json.dumps(
+            {**manifest, 'panorama': info, 'cameraPosition': list(cam.location)}, ensure_ascii=False), encoding='utf-8')
+        os.replace(partial, out)
 
 if __name__ == '__main__':
     main()

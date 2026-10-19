@@ -73,21 +73,39 @@ building/surface counts, plant coordinates, material use and assumptions.
 
 ## 360° panoramas
 
-The 3D editor's **360° панорамы · Cycles** panel renders equirectangular
-panoramas of the same Cycles scene. Pick a standing point with
-**Указать точку кликом** or **Центр экрана**; the current view direction becomes
-the image centre. Eye height (1.6 m pedestrian … 40 m drone), quality
-(2048/4096/8192 px wide, 64/192/256 samples) and close-range lawn blades are
-selectable. Panoramas open in a full-screen viewer: drag to look around, wheel or
-pinch to zoom, rings on the ground and the mini-map move to neighbouring points.
-All points share one deterministic scene, so trees, buildings and lighting stay
-consistent between them.
+The 3D editor's **360° панорамы · прогулка по участку** panel renders
+equirectangular Cycles panoramas of the same scene and links them into a
+walkable tour, like street-level imagery.
 
-The camera stands at eye height above the ground under the point; plantings and
-fence/light rods are ignored when finding the ground, and a point inside a
-building footprint is reported as `insideBuilding` in the manifest. Beyond the
-site, the neutral ground plane is extended in a dark matte tone so the horizon
-reads as distant ground; no context is added.
+**Создать тур автоматически** places 6, 12 or 20 standing points
+(`panorama_tour.py`): source paths (`SIDEWALK`) first, then lawns and parking,
+spread evenly (farthest-point seeding, then Lloyd relaxation so points move from
+site corners to the middle of their zone). Points keep 0.6 m from surface edges,
+1.5 m from buildings, and stay clear of tree trunks and shrub crowns. Without
+paths or lawns, the site minus roads is used. Neighbours are linked when the
+line between them does not cross a building, at most one per 45° sector, and
+links are symmetric so every move has a way back. Each point initially faces
+the next point of the walk.
+
+One Blender process renders all points from one scene build. Each finished
+image appears atomically, so the first points can be viewed while the rest
+render; progress and remaining time cover the whole tour. **Добавить точку
+вручную** adds single points (click on the ground or the screen centre); they
+link to tour points within 40 m. Blue pins in the 3D editor open finished
+panoramas; grey pins are still rendering.
+
+The viewer: drag to look around, wheel or pinch to zoom, chevrons on the ground
+or a click on the ground move to a neighbour, W/↑ and S/↓ step forward/back
+along the view direction, A/D turn, F toggles full screen. Moves zoom and fade
+into the next point; neighbour images are preloaded. A mini-map shows points,
+links and the view cone. Eye height (1.6 m pedestrian … 40 m drone), quality
+(2048/4096/8192 px wide, 64/192/256 samples) and lawn blades are selectable.
+
+The camera stands at eye height above the ground under the point; plantings,
+lawn blades and fence/light rods are ignored when finding the ground, and a point
+inside a building footprint is reported as `insideBuilding` in the manifest.
+Beyond the site, the neutral ground plane is extended in a dark matte tone so
+the horizon reads as distant ground; no context is added.
 
 Lawn blades are instanced only inside source `GREEN_AREA` surfaces within 30 m
 of the point, never over roads, paving or buildings, with density fading to 10 %
@@ -95,19 +113,21 @@ at the edge (`blender_grass.py`). They are a material-level detail of an
 existing lawn, not new scenery.
 
 Panoramas use the GPU automatically (OptiX → CUDA → HIP → Metal → oneAPI, CPU
-fallback); set `BLENDER_DEVICE=CPU` to force the CPU. A 4096×2048 panorama
-takes about a minute on an RTX 4060 Ti and much longer on a CPU. The API
-needs Blender: set `BLENDER_EXECUTABLE` to its binary.
+fallback); set `BLENDER_DEVICE=CPU` to force the CPU. On an RTX 4060 Ti a 4K
+point takes about a minute and a 6-point 2K tour about three and a half minutes;
+a CPU is much slower. The API needs Blender: set `BLENDER_EXECUTABLE`.
 
-API: `POST /api/projects/{pid}/panoramas` with `x`, `y` (CAD metres), `heading`
-(compass bearing of the image centre, 0 = +Y, clockwise), `eyeHeight`,
-`quality`, `grass`, optional `iterationId` and `reconstruction`;
-`GET /api/projects/{pid}/panoramas` lists points with state and progress;
-the image is served by `/api/projects/{pid}/renders/{jobId}/image` (JPEG) and
-the manifest by `/api/projects/{pid}/panoramas/{jobId}/manifest`. Locally:
+API: `POST /api/projects/{pid}/panorama-tour` (`maxPoints`, `eyeHeight`,
+`quality`, `grass`, optional `iterationId`, `reconstruction`) and
+`POST /api/projects/{pid}/panoramas` (`x`, `y` in CAD metres, `heading` = compass
+bearing of the image centre, 0 = +Y, clockwise) return one item per point;
+`GET /api/projects/{pid}/panoramas` lists points with state, progress and links;
+`/api/projects/{pid}/panoramas/{jobId}/{index}/image` (JPEG) and `/manifest`
+serve results; `DELETE /api/projects/{pid}/panoramas/{jobId}` removes a finished
+tour or point. Locally (`points.json`: `[{x, y, heading, output}]`):
 
 ```sh
-blender -b -t 8 --python render.py -- --scene scene.json --output pano.jpg --view panorama --target-x 32 --target-y 20 --heading 0 --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30
+blender -b -t 8 --python render.py -- --scene scene.json --output pano_000.jpg --view panorama --points points.json --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30
 ```
 
 ## Validation

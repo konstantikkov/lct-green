@@ -207,7 +207,7 @@ export function ViewerCanvas() {
   const panoramaTools = useMemo<PanoramaTools>(() => ({
     viewpoint: () => mgrRef.current?.panoramaViewpoint() ?? null,
     pick: picker => mgrRef.current?.setPointPicker(picker),
-    markers: points => mgrRef.current?.setPanoramaMarkers(points),
+    markers: (points, onClick) => mgrRef.current?.setPanoramaMarkers(points, onClick),
   }), []);
 
   return (

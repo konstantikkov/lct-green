@@ -150,14 +150,18 @@ def scatter_lawn(data, ox, oy, eye, radius, density=260, seed=42):
         w0 = ((y1 - y2) * (p[0] - x2) + (x2 - x1) * (p[1] - y2)) / det
         w1 = ((y2 - y0) * (p[0] - x2) + (x0 - x2) * (p[1] - y2)) / det
         points.append((p[0], p[1], w0 * z0 + w1 * z1 + (1 - w0 - w1) * z2))
-    if not points:
-        return 0
-    collection, variants = _clumps(rng, _blade_material())
     geo = bpy.data.meshes.new('Lawn blades (panorama)')
     geo.vertices.add(len(points))
     geo.vertices.foreach_set('co', [c for p in points for c in p])
     geo.update()
-    obj = bpy.data.objects.new('Lawn blades (panorama)', geo)
-    bpy.context.scene.collection.objects.link(obj)
-    obj.modifiers.new('Lawn blades', 'NODES').node_group = _instancer(collection, variants, seed)
+    obj = bpy.data.objects.get('Lawn blades (panorama)')
+    if obj is not None:
+        # Tours re-scatter around each point; clumps and instancing are reused.
+        old, obj.data = obj.data, geo
+        bpy.data.meshes.remove(old)
+    else:
+        collection, variants = _clumps(rng, _blade_material())
+        obj = bpy.data.objects.new('Lawn blades (panorama)', geo)
+        bpy.context.scene.collection.objects.link(obj)
+        obj.modifiers.new('Lawn blades', 'NODES').node_group = _instancer(collection, variants, seed)
     return len(points)

@@ -1145,12 +1145,7 @@ class ReconstructionSettings(BaseModel):
     showFences:bool=False
 
 
-class PanoramaRequest(BaseModel):
-    """Standing point in CAD metres; heading is the compass bearing of the
-    image centre (0 = +Y, clockwise)."""
-    x: float = Field(allow_inf_nan=False)
-    y: float = Field(allow_inf_nan=False)
-    heading: float = Field(default=0, ge=-360, le=360, allow_inf_nan=False)
+class PanoramaSettings(BaseModel):
     eyeHeight: float = Field(default=1.6, ge=.5, le=60, allow_inf_nan=False)
     quality: Literal["preview", "high", "ultra"] = "high"
     grass: bool = True
@@ -1158,64 +1153,147 @@ class PanoramaRequest(BaseModel):
     iterationId: str | None = Field(default=None, max_length=128)
 
 
+class PanoramaRequest(PanoramaSettings):
+    """Standing point in CAD metres; heading is the compass bearing of the
+    image centre (0 = +Y, clockwise)."""
+    x: float = Field(allow_inf_nan=False)
+    y: float = Field(allow_inf_nan=False)
+    heading: float = Field(default=0, ge=-360, le=360, allow_inf_nan=False)
+
+
+class PanoramaTourRequest(PanoramaSettings):
+    maxPoints: int = Field(default=12, ge=2, le=30)
+
+
 # Equirectangular width (height is half) and Cycles samples.
 PANORAMA_QUALITY = {'preview': (2048, 64), 'high': (4096, 192), 'ultra': (8192, 256)}
 
 
-def _panorama_urls(pid: str, jid: str) -> dict:
-    return {'jobId': jid, 'statusUrl': f'/api/projects/{pid}/renders/{jid}',
-            'imageUrl': f'/api/projects/{pid}/renders/{jid}/image',
-            'manifestUrl': f'/api/projects/{pid}/panoramas/{jid}/manifest'}
-
-
-@app.post('/api/projects/{pid}/panoramas', status_code=202)
-def create_panorama(pid: str, req: PanoramaRequest):
-    """Equirectangular 360° Cycles render from a standing point (GPU when available)."""
+def _submit_panoramas(pid: str, req: PanoramaSettings, points: list, scene: dict, rec: dict, tour: bool) -> dict:
+    """One Blender job renders every point of ``points`` from one scene."""
     import os
     import time
     from .services import render_jobs
-    from .services.local_render import scene_data
-    rt = _get_rt(pid)
-    rec = get_iteration(pid, req.iterationId) if req.iterationId else _selected_iteration(pid)
-    (x0, y0), (x1, y1) = rt.doc.extents.min, rt.doc.extents.max
-    margin = max(x1-x0, y1-y0, 20)*.25
-    if not (x0-margin <= req.x <= x1+margin and y0-margin <= req.y <= y1+margin):
-        _err(422, 'PANORAMA_OUTSIDE_SITE', 'The panorama point is outside the drawing.')
     width, samples = PANORAMA_QUALITY[req.quality]
-    heading = req.heading % 360
-    settings = {'view': 'panorama', 'target_x': req.x, 'target_y': req.y, 'heading': heading,
-                'eye_height': req.eyeHeight, 'width': width, 'height': width//2, 'samples': samples,
-                'grass_radius': 30 if req.grass else 0, 'exposure': -.2,
+    settings = {'view': 'panorama', 'eye_height': req.eyeHeight, 'width': width, 'height': width//2,
+                'samples': samples, 'grass_radius': 30 if req.grass else 0, 'exposure': -.2,
                 'device': 'CPU' if os.environ.get('BLENDER_DEVICE', 'AUTO').upper() == 'CPU' else 'AUTO'}
-    meta = {'kind': 'panorama', 'x': req.x, 'y': req.y, 'heading': heading, 'eyeHeight': req.eyeHeight,
+    meta = {'kind': 'panorama', 'tour': tour, 'points': points, 'eyeHeight': req.eyeHeight,
             'quality': req.quality, 'grass': req.grass, 'iterationId': rec.get('iterationId'),
             'createdAt': time.time()}
-    options = req.reconstruction.model_dump() if req.reconstruction else None
     try:
-        jid = render_jobs.submit(pid, scene_data(rt.doc, rec, options), settings,
-                                 output='render.jpg', timeout=7200, meta=meta)
+        jid = render_jobs.submit(pid, scene, settings, timeout=600+2400*len(points), meta=meta,
+                                 points=[{k: p[k] for k in ('x', 'y', 'heading')} for p in points])
     except FileNotFoundError as exc:
         _err(503, 'BLENDER_UNAVAILABLE', str(exc))
     except RuntimeError as exc:
         _err(429, 'RENDER_QUEUE_FULL', str(exc))
-    return {**meta, **_panorama_urls(pid, jid), 'state': 'QUEUED'}
+    return {**meta, 'jobId': jid, 'state': 'QUEUED'}
+
+
+def _panorama_scene(pid: str, req: PanoramaSettings):
+    from .services.local_render import scene_data
+    rt = _get_rt(pid)
+    rec = get_iteration(pid, req.iterationId) if req.iterationId else _selected_iteration(pid)
+    options = req.reconstruction.model_dump() if req.reconstruction else None
+    return rt, rec, scene_data(rt.doc, rec, options)
+
+
+def _panorama_items(pid: str, job: dict) -> list[dict]:
+    """Flatten a job into one viewer item per point (id ``<jobId>-<index>``)."""
+    from .services import render_jobs
+    jid, points = job['jobId'], job.get('points', [])
+    root = render_jobs.job_dir(pid, jid)
+    current = job.get('currentPoint', 0)
+    items = []
+    for i, point in enumerate(points):
+        ready = (root/render_jobs.tour_output(i)).is_file()
+        state = ('COMPLETED' if ready else job['state'] if job['state'] in ('FAILED', 'QUEUED')
+                 else 'RENDERING' if i == current else 'QUEUED')
+        item = {'id': f'{jid}-{i}', 'jobId': jid, 'index': i, 'x': point['x'], 'y': point['y'],
+                'heading': point.get('heading', 0), 'eyeHeight': job['eyeHeight'], 'quality': job['quality'],
+                'tour': job.get('tour', False), 'iterationId': job.get('iterationId'), 'createdAt': job.get('createdAt'),
+                'links': [f'{jid}-{j}' for j in point.get('links', [])], 'state': state,
+                'imageUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/image',
+                'manifestUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/manifest'}
+        if state == 'RENDERING':
+            # Progress of this point alone, from the job's overall fraction.
+            overall = job.get('progressPercent', 2)*len(points)/100
+            item['progressPercent'] = max(2, min(99, round(100*(overall-i))))
+            if job.get('remainingSeconds') is not None:
+                item['remainingSeconds'] = job['remainingSeconds']
+        if state == 'FAILED':
+            item['error'] = job.get('error')
+        items.append(item)
+    return items
+
+
+@app.post('/api/projects/{pid}/panoramas', status_code=202)
+def create_panorama(pid: str, req: PanoramaRequest):
+    """Equirectangular 360° Cycles render from one standing point (GPU when available)."""
+    rt, rec, scene = _panorama_scene(pid, req)
+    (x0, y0), (x1, y1) = rt.doc.extents.min, rt.doc.extents.max
+    margin = max(x1-x0, y1-y0, 20)*.25
+    if not (x0-margin <= req.x <= x1+margin and y0-margin <= req.y <= y1+margin):
+        _err(422, 'PANORAMA_OUTSIDE_SITE', 'The panorama point is outside the drawing.')
+    job = _submit_panoramas(pid, req, [{'x': req.x, 'y': req.y, 'heading': req.heading % 360, 'links': []}],
+                            scene, rec, tour=False)
+    return _panorama_items(pid, job)
+
+
+@app.post('/api/projects/{pid}/panorama-tour', status_code=202)
+def create_panorama_tour(pid: str, req: PanoramaTourRequest):
+    """Place standing points along paths and lawns automatically, link
+    neighbours with a clear line of sight, and render them in one job."""
+    from .services.panorama_tour import tour_points
+    _, rec, scene = _panorama_scene(pid, req)
+    points = tour_points(scene, max_points=req.maxPoints)
+    if not points:
+        _err(422, 'NO_WALKABLE_AREA', 'No paths or lawns to stand on were found in the drawing.')
+    return _panorama_items(pid, _submit_panoramas(pid, req, points, scene, rec, tour=True))
 
 
 @app.get('/api/projects/{pid}/panoramas')
 def list_panoramas(pid: str):
     from .services import render_jobs
     _get_rt(pid)
-    return [{**row, **_panorama_urls(pid, row['jobId'])} for row in render_jobs.listing(pid, 'panorama')]
+    return [item for job in render_jobs.listing(pid, 'panorama') for item in _panorama_items(pid, job)]
 
 
-@app.get('/api/projects/{pid}/panoramas/{jid}/manifest')
-def get_panorama_manifest(pid: str, jid: str):
+@app.delete('/api/projects/{pid}/panoramas/{jid}', status_code=204)
+def delete_panoramas(pid: str, jid: str):
     from .services import render_jobs
     _get_rt(pid)
     try:
-        return render_jobs.manifest(pid, jid)
+        if render_jobs.status(pid, jid)['state'] in ('QUEUED', 'RENDERING'):
+            _err(409, 'RENDER_IN_PROGRESS', 'Wait until the render finishes.')
+        shutil.rmtree(render_jobs.job_dir(pid, jid))
+    except (ValueError, FileNotFoundError):
+        _err(404, 'RENDER_NOT_FOUND', 'No such render.')
+
+
+def _panorama_file(pid: str, jid: str, index: int, suffix: str) -> Path:
+    from .services import render_jobs
+    _get_rt(pid)
+    try:
+        path = (render_jobs.job_dir(pid, jid)/render_jobs.tour_output(max(index, 0))).with_suffix(suffix)
     except ValueError:
         _err(404, 'RENDER_NOT_FOUND', 'No such render.')
+    if index < 0 or not path.is_file():
+        _err(404, 'RENDER_NOT_FOUND', 'The panorama is not ready.')
+    return path
+
+
+@app.get('/api/projects/{pid}/panoramas/{jid}/{index}/image')
+def get_panorama_image(pid: str, jid: str, index: int):
+    # Finished images never change, so the browser may keep them.
+    return FileResponse(_panorama_file(pid, jid, index, '.jpg'), media_type='image/jpeg',
+                        filename=f'{pid}_panorama_{index+1}.jpg', headers={'Cache-Control': 'private, max-age=86400'})
+
+
+@app.get('/api/projects/{pid}/panoramas/{jid}/{index}/manifest')
+def get_panorama_manifest(pid: str, jid: str, index: int):
+    return json.loads(_panorama_file(pid, jid, index, '.manifest.json').read_text(encoding='utf-8'))
 
 
 @app.get('/api/render-materials/{name}')

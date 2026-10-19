@@ -58,6 +58,8 @@ const CLEAR_COLORS: Record<Theme, Record<ViewMode, number>> = {
   dark: { "2d": 0x0b0f14, "3d": 0xdce3df },
 };
 
+export type PanoramaMarker = { id?: string; x: number; y: number; state: "done" | "pending" | "active" };
+
 /** Owns the three.js scene; imperative API driven by React effects. */
 export class SceneManager {
   private plantingCircles=true;
@@ -140,6 +142,7 @@ export class SceneManager {
   // 360° panorama points (3D only; never part of photo captures)
   private panoramaMarkers = new THREE.Group();
   private pointPicker: ((point: [number, number] | null) => void) | null = null;
+  private panoramaMarkerClick: ((id: string) => void) | null = null;
 
   // placement drag-move (iteration 6)
   private placementDrag: PlacementDragState | null = null;
@@ -436,8 +439,10 @@ export class SceneManager {
     if (previous && previous !== picker) previous(null);
   }
 
-  /** Pins for panorama points; `active` marks the pending/selected one. */
-  setPanoramaMarkers(points: { x: number; y: number; active?: boolean }[]) {
+  /** Pins for panorama points: rendered (blue, clickable), rendering (grey)
+   *  and the point chosen for the next render (amber). */
+  setPanoramaMarkers(points: PanoramaMarker[], onClick: ((id: string) => void) | null = null) {
+    this.panoramaMarkerClick = onClick;
     for (const child of [...this.panoramaMarkers.children]) {
       this.panoramaMarkers.remove(child);
       disposeObject(child);
@@ -446,7 +451,8 @@ export class SceneManager {
     const span = this.extents ? Math.max(this.extents.max[0] - this.extents.min[0], this.extents.max[1] - this.extents.min[1]) : 60;
     const scale = Math.max(1, span / 60);
     for (const point of points) {
-      const material = new THREE.MeshBasicMaterial({ color: point.active ? 0xf59e0b : 0x38bdf8, depthTest: false, transparent: true });
+      const color = point.state === "active" ? 0xf59e0b : point.state === "pending" ? 0x9ca3af : 0x38bdf8;
+      const material = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
       const pin = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 3, 8), material);
       pole.rotation.x = Math.PI / 2;
@@ -459,10 +465,22 @@ export class SceneManager {
       pin.position.set(point.x, point.y, 0);
       pin.scale.setScalar(scale);
       pin.renderOrder = 10;
-      pin.traverse(o => { o.raycast = () => {}; o.renderOrder = 10; });
+      pin.traverse(o => { o.renderOrder = 10; });
+      // Only the head of a finished point is clickable.
+      for (const part of [pole, ring]) part.raycast = () => {};
+      if (point.state !== "done" || !point.id) head.raycast = () => {};
+      head.userData.panoramaId = point.id;
       this.panoramaMarkers.add(pin);
     }
     this.invalidate();
+  }
+
+  private panoramaMarkerAt(e: PointerEvent): string | null {
+    if (!this.panoramaMarkerClick || !this.panoramaMarkers.visible) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / this.width * 2 - 1, -(e.clientY - rect.top) / this.height * 2 + 1), this.camera3d);
+    const hit = this.raycaster.intersectObjects(this.panoramaMarkers.children, true)[0];
+    return hit ? String(hit.object.userData.panoramaId) : null;
   }
 
   setPresentationCamera(preset:"aerial"|"garden") {
@@ -1059,6 +1077,8 @@ export class SceneManager {
         this.pointPicker = null;
         c.style.cursor = "";
         picker(this.groundPoint(e.clientX - rect.left, e.clientY - rect.top));
+      } else if (!this.panned && e.button === 0 && this.mode === "3d" && this.panoramaMarkerAt(e)) {
+        this.panoramaMarkerClick?.(this.panoramaMarkerAt(e)!);
       } else if (!this.panned && e.button === 0) {
         const rect = c.getBoundingClientRect();
         const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);

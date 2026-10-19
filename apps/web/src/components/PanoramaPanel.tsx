@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "./ui";
 import { PanoramaViewer, type Panorama } from "../viewer/PanoramaViewer";
+import type { PanoramaMarker } from "../viewer/SceneManager";
 
 export type PanoramaTools = {
   viewpoint: () => { x: number; y: number; heading: number } | null;
   pick: (picker: ((point: [number, number] | null) => void) | null) => void;
-  markers: (points: { x: number; y: number; active?: boolean }[]) => void;
+  markers: (points: PanoramaMarker[], onClick: ((id: string) => void) | null) => void;
 };
 
-const QUALITY: Record<string, string> = { preview: "Черновик · 2048×1024", high: "Высокое · 4096×2048", ultra: "Максимум · 8192×4096" };
+const QUALITY: Record<string, string> = { preview: "Черновик · 2K", high: "Высокое · 4K", ultra: "Максимум · 8K" };
 const pending = (p: Panorama) => p.state === "QUEUED" || p.state === "RENDERING";
+const minutes = (s: number) => (s < 60 ? "меньше минуты" : `~${Math.ceil(s / 60)} мин`);
 
-/** 360° Cycles panoramas from standing points chosen in the 3D scene. */
+/** 360° Cycles panoramas: an automatic walkable tour, plus manual points. */
 export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled }: {
   projectId: string; iterationId?: string; disabled: boolean;
   reconstruction: { buildingHeightM: number; showFences: boolean }; tools: PanoramaTools;
@@ -20,6 +22,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const [point, setPoint] = useState<{ x: number; y: number; heading: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [eyeHeight, setEyeHeight] = useState(1.6), [quality, setQuality] = useState("high"), [grass, setGrass] = useState(true);
+  const [count, setCount] = useState(12);
   const [status, setStatus] = useState(""), [starting, setStarting] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -36,67 +39,113 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   }, [busy, refresh]);
 
   useEffect(() => {
-    tools.markers([...items.filter(i => i.state !== "FAILED").map(i => ({ x: i.x, y: i.y })), ...(point ? [{ ...point, active: true }] : [])]);
+    tools.markers([
+      ...items.filter(i => i.state !== "FAILED").map(i => ({ id: i.id, x: i.x, y: i.y, state: (i.state === "COMPLETED" ? "done" : "pending") as PanoramaMarker["state"] })),
+      ...(point ? [{ ...point, state: "active" as const }] : []),
+    ], setViewing);
   }, [items, point, tools]);
-  useEffect(() => () => { tools.pick(null); tools.markers([]); }, [tools]);
+  useEffect(() => () => { tools.pick(null); tools.markers([], null); }, [tools]);
 
+  async function post(path: string, body: object) {
+    setStarting(true); setStatus("Подготовка сцены…");
+    try {
+      const r = await fetch(`/api/projects/${projectId}/${path}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, eyeHeight, quality, grass, iterationId, reconstruction }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw Error(d.detail?.message || "Не удалось запустить рендер");
+      setItems(list => [...d, ...list]); setStatus("");
+      return true;
+    } catch (e) { setStatus(e instanceof Error ? e.message : String(e)); return false; }
+    finally { setStarting(false); }
+  }
+  async function startTour() { await post("panorama-tour", { maxPoints: count }); }
+  async function startPoint() {
+    const submitted = point;
+    if (!submitted) return;
+    // A point picked while the request was in flight is kept for the next render.
+    if (await post("panoramas", submitted)) setPoint(p => (p === submitted ? null : p));
+  }
   function pickPoint() {
     if (picking) { tools.pick(null); setPicking(false); return; }
     setPicking(true); setStatus("Кликните по земле в 3D-сцене");
     tools.pick(p => {
-      setPicking(false);
-      if (!p) { setStatus(""); return; }
-      setPoint({ x: p[0], y: p[1], heading: tools.viewpoint()?.heading ?? 0 }); setStatus("");
+      setPicking(false); setStatus("");
+      if (p) setPoint({ x: p[0], y: p[1], heading: tools.viewpoint()?.heading ?? 0 });
     });
   }
   function centrePoint() {
     const v = tools.viewpoint();
     if (v) { setPoint(v); setStatus(""); } else setStatus("Откройте 3D-редактор");
   }
-  async function start() {
-    const submitted = point;
-    if (!submitted) return;
-    setStarting(true); setStatus("Подготовка сцены…");
-    try {
-      const r = await fetch(`/api/projects/${projectId}/panoramas`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...submitted, eyeHeight, quality, grass, iterationId, reconstruction }),
-      });
-      const d = await r.json();
-      if (!r.ok) throw Error(d.detail?.message || "Не удалось запустить рендер");
-      // A point picked while the request was in flight is kept for the next render.
-      setItems(list => [d, ...list]); setPoint(p => p === submitted ? null : p); setStatus("");
-    } catch (e) { setStatus(e instanceof Error ? e.message : String(e)); }
-    finally { setStarting(false); }
+  async function remove(jobId: string) {
+    const r = await fetch(`/api/projects/${projectId}/panoramas/${jobId}`, { method: "DELETE" });
+    if (r.ok || r.status === 404) setItems(list => list.filter(i => i.jobId !== jobId));
+    else setStatus("Дождитесь окончания рендера, затем удалите");
   }
 
+  const jobs = useMemo(() => {
+    const groups = new Map<string, Panorama[]>();
+    for (const item of items) groups.set(item.jobId, [...(groups.get(item.jobId) ?? []), item]);
+    return [...groups.values()];
+  }, [items]);
   const done = items.filter(i => i.state === "COMPLETED");
+  const active = jobs.find(g => g.some(pending));
+  const activeDone = active?.filter(i => i.state === "COMPLETED").length ?? 0;
+  const remaining = active?.find(i => i.state === "RENDERING")?.remainingSeconds;
+  const activePercent = active ? Math.round(active.reduce((sum, i) => sum + (i.state === "COMPLETED" ? 100 : i.progressPercent ?? 0), 0) / active.length) : 0;
+  const select = "mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2";
+
   return <details className="mt-4 rounded border border-ink-600 p-3 text-xs" open>
-    <summary className="cursor-pointer font-semibold">360° панорамы · Cycles</summary>
-    <p className="my-2 text-ink-400">Трассировка лучей по геометрии CAD с теми же деревьями и материалами. Трава на газонах моделируется рядом с точкой съёмки. Результат одинаков между точками: можно переходить от одной панорамы к другой.</p>
-    <div className="my-2 flex flex-wrap gap-2">
-      <Btn onClick={pickPoint} disabled={disabled}>{picking ? "Отменить выбор" : "Указать точку кликом"}</Btn>
-      <Btn onClick={centrePoint} disabled={disabled || picking}>Центр экрана</Btn>
-    </div>
-    {point && <p className="my-1 font-mono text-ink-300">X {point.x.toFixed(1)} · Y {point.y.toFixed(1)} · взгляд {Math.round(point.heading)}°</p>}
+    <summary className="cursor-pointer font-semibold">360° панорамы · прогулка по участку</summary>
+    <p className="my-2 text-ink-400">Точки расставляются автоматически вдоль дорожек и по газонам, рендерятся в Cycles и связываются переходами — как в уличных панорамах.</p>
     <fieldset disabled={disabled || starting} className="my-2 grid grid-cols-2 gap-3 disabled:opacity-60">
-      <label>Высота глаз<select aria-label="Высота глаз" value={eyeHeight} onChange={e => setEyeHeight(Number(e.target.value))} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2">
-        <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
-      <label>Качество<select aria-label="Качество панорамы" value={quality} onChange={e => setQuality(e.target.value)} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2">
+      <label>Точек в туре<select aria-label="Количество точек" value={count} onChange={e => setCount(Number(e.target.value))} className={select}>
+        {[6, 12, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+      <label>Качество<select aria-label="Качество панорамы" value={quality} onChange={e => setQuality(e.target.value)} className={select}>
         {Object.entries(QUALITY).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label className="col-span-2 flex items-start gap-2"><input type="checkbox" checked={grass} onChange={e => setGrass(e.target.checked)} />Объёмная трава на газонах в радиусе 30 м</label>
+      <label>Высота глаз<select aria-label="Высота глаз" value={eyeHeight} onChange={e => setEyeHeight(Number(e.target.value))} className={select}>
+        <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
+      <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
     </fieldset>
-    <Btn variant="primary" onClick={() => void start()} disabled={disabled || starting || !point}>{starting ? "Запуск…" : "Рендер 360°"}</Btn>
-    <p className="mt-1 text-2xs text-ink-400">С видеокартой NVIDIA — около минуты на 4K; на CPU — от 15 минут.</p>
+    <div className="flex flex-wrap gap-2">
+      <Btn variant="primary" onClick={() => void startTour()} disabled={disabled || starting || !!active}>{starting ? "Запуск…" : "Создать тур автоматически"}</Btn>
+      <Btn onClick={() => done[0] && setViewing((done.find(i => i.tour) ?? done[0]).id)} disabled={!done.length}>Открыть панорамы{done.length ? ` · ${done.length}` : ""}</Btn>
+    </div>
+    <p className="mt-1 text-2xs text-ink-400">С видеокартой NVIDIA — около минуты на точку в 4K; на CPU — от 15 минут. Первые точки можно смотреть, пока рендерятся остальные.</p>
+    {active && <div className="mt-3" aria-live="polite">
+      <div className="mb-1 flex justify-between gap-2"><span>{active.length > 1 ? `Тур: готово ${activeDone} из ${active.length}` : "Рендер точки"}</span><span>{remaining ? `осталось ${minutes(remaining)}` : active.some(i => i.state === "QUEUED" && !activeDone) ? "в очереди" : ""}</span></div>
+      <progress aria-label="Прогресс панорам" className="h-2 w-full accent-emerald-500" max="100" value={Math.max(activePercent, 1)} />
+    </div>}
     {status && <p className="mt-2" role="status">{status}</p>}
-    {items.length > 0 && <ul className="mt-3 space-y-2">
-      {items.map(item => <li key={item.jobId} className="flex items-center justify-between gap-2 rounded bg-ink-800 p-2">
-        <span className="font-mono">{item.x.toFixed(1)}, {item.y.toFixed(1)} · {item.eyeHeight} м</span>
-        {item.state === "COMPLETED" ? <Btn onClick={() => setViewing(item.jobId)}>Открыть 360°</Btn>
-          : item.state === "FAILED" ? <span className="text-red-400" title={item.error}>Ошибка</span>
-          : <span className="text-ink-300">{item.state === "QUEUED" ? "В очереди" : `${item.progressPercent ?? 1}%`}{item.remainingSeconds ? ` · ${Math.ceil(item.remainingSeconds / 60)} мин` : ""}</span>}
-      </li>)}
+
+    <details className="mt-3 rounded border border-ink-700 p-2">
+      <summary className="cursor-pointer">Добавить точку вручную</summary>
+      <div className="my-2 flex flex-wrap gap-2">
+        <Btn onClick={pickPoint} disabled={disabled}>{picking ? "Отменить выбор" : "Указать кликом"}</Btn>
+        <Btn onClick={centrePoint} disabled={disabled || picking}>Центр экрана</Btn>
+        <Btn onClick={() => void startPoint()} disabled={disabled || starting || !point}>Рендер точки</Btn>
+      </div>
+      {point ? <p className="font-mono text-ink-300">X {point.x.toFixed(1)} · Y {point.y.toFixed(1)} · взгляд {Math.round(point.heading)}°</p>
+        : <p className="text-ink-400">Ручные точки связываются с точками тура в радиусе 40 м.</p>}
+    </details>
+
+    {jobs.length > 0 && <ul className="mt-3 space-y-2">
+      {jobs.map(group => {
+        const first = group[0], ready = group.filter(i => i.state === "COMPLETED");
+        const failed = group.find(i => i.state === "FAILED");
+        return <li key={first.jobId} className="flex items-center justify-between gap-2 rounded bg-ink-800 p-2">
+          <span>{first.tour ? `Тур · ${group.length} точек` : `Точка ${first.x.toFixed(0)}, ${first.y.toFixed(0)}`} · {first.eyeHeight} м
+            <span className="block text-2xs text-ink-400">{failed ? <span className="text-red-400" title={failed.error}>Ошибка рендера</span> : group.some(pending) ? `готово ${ready.length} из ${group.length}` : QUALITY[first.quality]}</span></span>
+          <span className="flex gap-1">
+            {ready.length > 0 && <Btn onClick={() => setViewing(ready[0].id)}>Открыть</Btn>}
+            {!group.some(pending) && <Btn variant="ghost" onClick={() => void remove(first.jobId)} title="Удалить">✕</Btn>}
+          </span>
+        </li>;
+      })}
     </ul>}
-    {viewing && done.length > 0 && <PanoramaViewer items={done} startId={viewing} onClose={() => setViewing(null)} />}
+    {done.length > 0 && <p className="mt-2 text-2xs text-ink-400">Синий маркер в 3D-сцене — готовая панорама: кликните, чтобы открыть.</p>}
+    {viewing && done.some(i => i.id === viewing) && <PanoramaViewer items={items.filter(i => i.state !== "FAILED")} startId={viewing} onClose={() => setViewing(null)} />}
   </details>;
 }

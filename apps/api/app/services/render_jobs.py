@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 
 from .. import config
@@ -31,8 +32,16 @@ def job_dir(pid, jid):
 OUTPUTS = ('render.png', 'render.jpg')
 
 
-def submit(pid, data, settings, output='render.png', timeout=1800, meta=None):
-    """Queue a Blender job; ``meta`` is stored as job.json for listings."""
+def tour_output(index):
+    return f'pano_{index:03d}.jpg'
+
+
+def submit(pid, data, settings, output='render.png', timeout=1800, meta=None, points=None):
+    """Queue a Blender job; ``meta`` is stored as job.json for listings.
+
+    With ``points`` ([{x, y, heading}]) one Blender process renders a
+    panorama per point into ``tour_output(i)``.
+    """
     blender = shutil.which(os.environ.get('BLENDER_EXECUTABLE', 'blender'))
     if not blender:
         raise FileNotFoundError('Install Blender on the API host, or download the portable render bundle.')
@@ -48,6 +57,10 @@ def submit(pid, data, settings, output='render.png', timeout=1800, meta=None):
                 if asset.suffix in {'.blend','.hdr','.jpg'}:
                     shutil.copyfile(asset,root/asset.name)
         (root/'scene.json').write_text(json.dumps(data), encoding='utf-8')
+        if points:
+            (root/'points.json').write_text(json.dumps(
+                [{**p, 'output': str(root/tour_output(i))} for i, p in enumerate(points)]), encoding='utf-8')
+            output = [tour_output(i) for i in range(len(points))]
         if meta is not None:
             (root/'job.json').write_text(json.dumps(meta, ensure_ascii=False), encoding='utf-8')
         _write_status(root/'status.json', {'state':'QUEUED'})
@@ -63,15 +76,18 @@ def submit(pid, data, settings, output='render.png', timeout=1800, meta=None):
 def _run(blender, root, jid, settings, output='render.png', timeout=1800):
     status = root/'status.json'
     try:
-        _write_status(status, {'state':'RENDERING'})
+        _write_status(status, {'state':'RENDERING', 'startedAt':time.time()})
+        outputs = output if isinstance(output, list) else [output]
         args = [blender, '-b', '-t', '4', '--python', str(Path(__file__).with_name('blender_scene.py')),
-                '--', '--scene', str(root/'scene.json'), '--output', str(root/output)]
+                '--', '--scene', str(root/'scene.json'), '--output', str(root/outputs[0])]
+        if (root/'points.json').is_file():
+            args += ['--points', str(root/'points.json')]
         for key, value in settings.items():
             if value is not None:
                 args += ['--'+key.replace('_','-'), str(value)]
         with (root/'render.log').open('w') as log:
             proc = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
-        if proc.returncode != 0 or not (root/output).is_file():
+        if proc.returncode != 0 or not all((root/name).is_file() for name in outputs):
             raise RuntimeError('Blender did not produce an image. Download the local bundle to inspect the scene.')
         _write_status(status, {'state':'COMPLETED'})
     except Exception as exc:
@@ -81,23 +97,38 @@ def _run(blender, root, jid, settings, output='render.png', timeout=1800):
         _slots.release()
 
 
-def _progress(log):
-    """Sample counter and remaining time from the tail of Cycles' log."""
+def _progress(root, started=None):
+    """Overall progress: tour point (tour.progress) plus Cycles' sample counter
+    from the tail of the log; remaining time extrapolates the average point."""
     try:
-        with log.open('rb') as f:
-            f.seek(max(0, log.stat().st_size-4096))
+        with (root/'render.log').open('rb') as f:
+            f.seek(max(0, (root/'render.log').stat().st_size-4096))
             tail = f.read().decode('utf-8', 'replace')
     except OSError:
         return {}
+    try:
+        index, count = map(int, (root/'tour.progress').read_text().split('/'))
+    except (OSError, ValueError):
+        index, count = 0, 1
+    if 'PANORAMA' in tail:
+        # Sample lines before the marker belong to the previous tour point.
+        tail = tail[tail.rfind('PANORAMA'):]
     samples = re.findall(r'Sample (\d+)/(\d+)', tail)
-    if not samples:
-        return {'progressPercent': 2}
-    done, total = map(int, samples[-1])
-    result = {'progressPercent': max(2, min(99, round(100*done/max(total, 1))))}
+    fraction = int(samples[-1][0])/max(int(samples[-1][1]), 1) if samples else 0
+    done = index+fraction
+    result = {'progressPercent': max(2, min(99, round(100*done/count)))}
+    if (root/'points.json').is_file():
+        result['currentPoint'] = index
     remaining = re.findall(r'Remaining:(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)', tail)
     if remaining:
         h, m, sec = remaining[-1]
-        result['remainingSeconds'] = round(int(h or 0)*3600+int(m)*60+float(sec))
+        current = int(h or 0)*3600+int(m)*60+float(sec)
+        later = count-index-1
+        if later and started and done > .05:
+            later *= (time.time()-started)/done
+        else:
+            later *= current/max(1-fraction, .05)
+        result['remainingSeconds'] = round(current+later)
     return result
 
 
@@ -107,18 +138,13 @@ def status(pid, jid):
     if data['state'] in ('QUEUED','RENDERING') and jid not in _active:
         return {'state':'FAILED','error':'The service restarted. Start a new render.'}
     if data['state'] == 'RENDERING':
-        data = {**data, **_progress(root/'render.log')}
+        data = {**data, **_progress(root, data.get('startedAt'))}
     return data
 
 
 def image(pid, jid):
     root = job_dir(pid, jid)
     return next((root/name for name in OUTPUTS if (root/name).is_file()), root/OUTPUTS[0])
-
-
-def manifest(pid, jid):
-    path = image(pid, jid).with_suffix('.manifest.json')
-    return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
 
 
 def listing(pid, kind):
