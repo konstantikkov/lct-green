@@ -486,7 +486,7 @@ export class SceneManager {
     this.invalidate();
   }
 
-  private panoramaMarkerAt(e: PointerEvent): string | null {
+  private panoramaMarkerAt(e: Pick<PointerEvent,"clientX"|"clientY">): string | null {
     if (!this.panoramaMarkerClick || !this.panoramaMarkers.visible) return null;
     const rect = this.canvas.getBoundingClientRect();
     this.raycaster.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / this.width * 2 - 1, -(e.clientY - rect.top) / this.height * 2 + 1), this.camera3d);
@@ -991,9 +991,11 @@ export class SceneManager {
   }
 
   private processHover() {
-    const hit = this.pickAt(this.hoverPx, this.hoverPy);
+    const box=this.canvas.getBoundingClientRect();
+    const pin=this.mode==='3d'&&this.panoramaMarkerAt({clientX:box.left+this.hoverPx,clientY:box.top+this.hoverPy});
+    const hit = pin ? null : this.pickAt(this.hoverPx, this.hoverPy);
     // The selected planting is draggable — signal it with a grab cursor.
-    this.canvas.style.cursor = hit
+    this.canvas.style.cursor = this.pointPicker ? "crosshair" : pin ? "pointer" : hit
       ? hit.kind === "placement" && hit.placement.id === this.selectedPlacement?.id
         ? "grab"
         : "pointer"
