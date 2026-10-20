@@ -458,9 +458,9 @@ export class SceneManager {
       this.panoramaMarkers.remove(child);
       disposeObject(child);
     }
-    // Readable from the whole-site view: pins grow with the site, ~1 m per 60 m.
+    // Compact pins retain site-relative sizing at half the previous scale.
     const span = this.extents ? Math.max(this.extents.max[0] - this.extents.min[0], this.extents.max[1] - this.extents.min[1]) : 60;
-    const scale = Math.max(1, span / 60);
+    const scale = Math.max(.5, span / 120);
     for (const point of points) {
       const color = point.state === "active" ? 0xf59e0b : point.state === "pending" ? 0x9ca3af : 0x38bdf8;
       const material = new THREE.MeshBasicMaterial({ color, depthTest: true, depthWrite: true, transparent: false, opacity: 1 });
