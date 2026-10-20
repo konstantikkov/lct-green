@@ -4,6 +4,8 @@
 > назначение, архитектура, алгоритм, интерпретируемость, схема процесса BPMN
 > ([docs/bpmn/](docs/bpmn/)), инструкция по запуску и проверке, ограничения.
 
+Текущее состояние: [панели и поля интерфейса](docs/INTERFACE_GUIDE.md) · [архитектура и модули](docs/CURRENT_ARCHITECTURE.md).
+
 GreenPlan takes a site plan (**DWG / DXF**), understands what is on it (buildings,
 roads, sidewalks, utilities, existing vegetation), builds **regulatory exclusion
 zones**, computes the **allowed planting area**, and generates an **optimized,

@@ -55,6 +55,7 @@ export function RegulatoryStatusChip({ verdict }: { verdict: RegulatoryVerdict |
   if (!verdict) {
     return (
       <Badge
+        wrap
         tone="amber"
         data-testid="regulatory-status"
         title="Итерация создана до внедрения детерминированной проверки соответствия"
@@ -65,7 +66,7 @@ export function RegulatoryStatusChip({ verdict }: { verdict: RegulatoryVerdict |
   }
   const p = STATUS_PRESENTATION[verdict.status];
   return (
-    <Badge tone={p.tone} data-testid="regulatory-status" title={p.title}>
+    <Badge wrap tone={p.tone} data-testid="regulatory-status" title={p.title}>
       {p.label}
     </Badge>
   );

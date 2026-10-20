@@ -72,11 +72,12 @@ export function Btn({
 }
 
 export function Badge({
-  children, tone = "grey", title, onClick,
+  children, tone = "grey", title, onClick, wrap = false,
   "data-testid": testid,
 }: {
   children: ReactNode;
   tone?: "grey" | "green" | "amber" | "red" | "blue" | "violet";
+  wrap?: boolean;
   title?: string;
   onClick?: () => void;
   "data-testid"?: string;
@@ -89,7 +90,7 @@ export function Badge({
     blue: "border-sky-300 text-sky-800 bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:bg-sky-950/60",
     violet: "border-violet-300 text-violet-800 bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:bg-violet-950/60",
   } as const;
-  const cls = `inline-flex items-center border px-1 py-px rounded-sm text-2xs leading-4 whitespace-nowrap ${tones[tone]} ${onClick ? "cursor-pointer hover:brightness-125" : ""}`;
+  const cls = `inline-flex items-center border px-1 py-px rounded-sm text-2xs leading-4 ${wrap ? "min-w-0 max-w-full whitespace-normal break-words" : "whitespace-nowrap"} ${tones[tone]} ${onClick ? "cursor-pointer hover:brightness-125" : ""}`;
   return (
     <span className={cls} title={title} onClick={onClick} data-testid={testid}>
       {children}
