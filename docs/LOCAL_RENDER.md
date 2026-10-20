@@ -8,6 +8,19 @@ pergola, furniture, additional paving or automatic perennial bed. The former
 presentation-context generator and its UI toggle were removed. Legacy
 `detail=presentation` requests remain accepted but cannot add scenery.
 
+## Instant human-height walkthrough
+
+Drag **🚶 Вид от человека** onto the CAD map or 3D viewport to enter the
+existing scene at 1.6 m above the ground. Clicking the button and then the ground
+also works. Drag to look around; WASD, arrow keys, the wheel or on-screen buttons
+move the viewpoint. Escape or **Вернуться к обзору** restores the overview.
+Camera-photo generation uses the current human viewpoint and viewing direction.
+This WebGL view opens immediately and does not run a panorama render.
+
+Cycles panorama tours remain a separate offline feature. A 12-point high-quality
+tour can take many hours on this CPU server. New tours default to six preview
+points; this does not change already running jobs.
+
 ## Import and regeneration
 
 A new DXF/DWG/ZIP upload schedules the source 3D scene and material preparation in
