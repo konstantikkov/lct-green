@@ -1,6 +1,7 @@
 import json
 import math
 from types import SimpleNamespace
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from shapely.geometry import LineString, Point, Polygon
@@ -165,3 +166,53 @@ def test_scene_carries_mature_placements_and_growth_parameters():
         sr.excavation_buildings, sr.enrich_surfaces = orig
     assert data['placements'][0]['crownRadiusM'] == 3.5
     assert data['species']['tree_linden']['growth']['yearsToMature'] > 0
+
+
+def test_season_reaches_blender_and_winter_has_no_lawn_blades(monkeypatch, tmp_path):
+    from app import config
+    monkeypatch.setattr(config, 'OUTPUT_DIR', tmp_path)
+    submitted = []
+    main = _patch(monkeypatch, submitted)
+    with TestClient(main.app) as c:
+        r = c.post('/api/projects/p/panoramas', json={'x': 32, 'y': 20, 'season': 'winter', 'grass': True})
+        assert r.status_code == 202 and r.json()[0]['season'] == 'winter'
+        settings = submitted[-1][1]
+        assert settings['season'] == 'winter' and settings['grass_radius'] == 0
+        c.post('/api/projects/p/panorama-tour', json={'maxPoints': 4, 'season': 'autumn'})
+        assert submitted[-1][1]['season'] == 'autumn' and submitted[-1][1]['grass_radius'] == 30
+        c.post('/api/projects/p/panoramas', json={'x': 32, 'y': 20})
+        assert submitted[-1][1]['season'] == 'summer'
+        assert c.post('/api/projects/p/panoramas', json={'x': 32, 'y': 20, 'season': 'monsoon'}).status_code == 422
+
+
+def test_winter_drops_only_deciduous_leaves(monkeypatch):
+    import importlib
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, 'bpy', SimpleNamespace())
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / 'app' / 'services'))
+    season = importlib.import_module('blender_season')
+    from app.services.rules import load_species
+    catalog = load_species()
+    # the whole catalog is deciduous — larch included
+    assert {s['id'] for s in catalog if s['foliage'] == 'deciduous'} == {s['id'] for s in catalog}
+    larch = next(s for s in catalog if s['id'] == 'tree_larch')
+    assert season.is_leafless(larch, 'winter') and not season.is_leafless(larch, 'autumn')
+    assert not season.is_leafless({'foliage': 'evergreen'}, 'winter')
+    assert not season.is_leafless(None, 'winter')
+    assert set(season.BLOOM) == {'Syringa', 'Philadelphus'}
+    assert {season.genus(s) for s in catalog} <= set(season.AUTUMN_TONE)
+
+
+def test_bundle_ships_growth_and_season_modules(tmp_path):
+    import zipfile
+    from app.services import local_render
+    doc = SimpleNamespace()
+    dxf = tmp_path / 'plan.dxf'; dxf.write_text('0\nEOF\n')
+    orig = local_render.scene_data
+    local_render.scene_data = lambda d, i, o=None: {}
+    try:
+        local_render.write_bundle(tmp_path / 'b.zip', doc, {}, dxf)
+    finally:
+        local_render.scene_data = orig
+    names = zipfile.ZipFile(tmp_path / 'b.zip').namelist()
+    assert {'growth.py', 'blender_season.py', 'render.py'} <= set(names)

@@ -118,7 +118,7 @@ point takes about a minute and a 6-point 2K tour about three and a half minutes;
 a CPU is much slower. The API needs Blender: set `BLENDER_EXECUTABLE`.
 
 API: `POST /api/projects/{pid}/panorama-tour` (`maxPoints`, `eyeHeight`,
-`quality`, `grass`, optional `iterationId`, `reconstruction`, `ageYears`) and
+`quality`, `grass`, optional `iterationId`, `reconstruction`, `ageYears`, `season`) and
 `POST /api/projects/{pid}/panoramas` (`x`, `y` in CAD metres, `heading` = compass
 bearing of the image centre, 0 = +Y, clockwise) return one item per point;
 `GET /api/projects/{pid}/panoramas` lists points with state, progress and links;
@@ -127,7 +127,7 @@ serve results; `DELETE /api/projects/{pid}/panoramas/{jobId}` removes a finished
 tour or point. Locally (`points.json`: `[{x, y, heading, output}]`):
 
 ```sh
-blender -b -t 8 --python render.py -- --scene scene.json --output pano_000.jpg --view panorama --points points.json --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30
+blender -b -t 8 --python render.py -- --scene scene.json --output pano_000.jpg --view panorama --points points.json --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30 --season autumn --age-years 15
 ```
 
 ## Plant age
@@ -153,6 +153,30 @@ crown radius in plan (X, Y), height vertically. The mature look of a plant
 stays as before. Age affects **only the picture**: the plan, the validator,
 the planting schedule and the DXF export always use mature crowns. The
 editor's planting circles keep showing the mature crown footprint.
+
+## Seasons
+
+`season` = `spring` | `summer` (default) | `autumn` | `winter` in
+`POST /panoramas`, `POST /panorama-tour` and `POST /renders`, passed to Blender
+as `--season`; the panorama panel has a «Сезон» choice and the viewer header
+names the season. All changes are materials, light and leafless copies of the
+existing plant meshes (`blender_season.py`); no geometry is added.
+
+| Season | Foliage | Ground and light |
+|---|---|---|
+| summer | unchanged | unchanged |
+| spring | light young green; lilac (*Syringa*) and mock orange (*Philadelphus*) flower through a noise-masked blossom colour in the leaf material | unchanged |
+| autumn | the «Season palette» ramp on every leaf material, toned per genus (linden and larch yellow, maple orange, rowan and cotoneaster red, lilac drops its leaves green) with a little per-plant spread | warmer sun at ~25°, slightly desaturated HDR |
+| winter | deciduous species (`foliage: deciduous` in `species.yaml`; all catalog species, Siberian larch included) render only their branches — leaf faces are deleted, so nothing floats | lawns, open ground and the horizon plane turn to matte snow; no lawn blades are scattered; cooler sun at ~20°, greyer HDR |
+
+The «Season palette» node is now driven by `--season`; the legacy
+`--detail presentation` no longer switches it on. Autumn tones and blossom
+colours are illustrative appearance choices, not phenology data. The 3D
+editor tints crowns lightly to match (winter: faint bare-wood crowns) — only
+Cycles renders show leaf loss and snow.
+
+Paved surfaces stay clear in winter. Planting beds that sit slightly below a
+lawn keep that step under the snow, which shows as a thin shadow line.
 
 ## Validation
 

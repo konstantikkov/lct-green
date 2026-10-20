@@ -4,6 +4,8 @@ import type {
   LayerInfo, Placement, ProjectDocument, SpeciesInfo,
 } from "../api/types";
 import { scaleAt } from "./growth";
+import { seasonTint } from "./season";
+import type { Season } from "./PanoramaViewer";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
 import { buildEditablePreview, downloadSourceModel, type EditablePreview } from "./blenderPreview";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -683,6 +685,7 @@ export class SceneManager {
 
   private reconstruction={buildingHeightM:9,showFences:false};
   private plantAge: number | null = null;
+  private season: Season = "summer";
   private speciesById = new Map<string, SpeciesInfo>();
 
   /** Visual plant age (null = mature). Scales each plant's crown (XY) and
@@ -692,6 +695,35 @@ export class SceneManager {
     this.plantAge = years;
     this.speciesById = new Map((species ?? []).map((sp) => [sp.id, sp]));
     this.applyPlantAge();
+  }
+
+  /** Light seasonal tint of the editor crowns (Cycles renders do the real
+   *  thing): spring lighter, autumn per genus, winter faint bare-wood grey. */
+  setSeason(season: Season) {
+    this.season = season;
+    this.applySeason();
+  }
+
+  private applySeason() {
+    const preview = this.editablePreview;
+    if (!preview) return;
+    for (const p of this.iteration?.placements ?? []) {
+      const tint = seasonTint(this.season, this.speciesById.get(p.speciesId));
+      preview.plantGroups.get(p.id)?.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.userData.crown) return;
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (mesh.userData.summerColor == null) mesh.userData.summerColor = mat.color.getHex();
+        mat.color.setHex(mesh.userData.summerColor);
+        if (tint) mat.color.lerp(new THREE.Color(tint.color), tint.mix);
+        if (mat.transparent !== (this.season === "winter")) mat.needsUpdate = true;
+        mat.transparent = this.season === "winter";
+        mat.opacity = this.season === "winter" ? 0.22 : 1;
+        mat.depthWrite = this.season !== "winter";
+        mesh.castShadow = this.season !== "winter";
+      });
+    }
+    this.invalidate(true);
   }
 
   private applyPlantAge() {
@@ -720,6 +752,7 @@ export class SceneManager {
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
       this.applyPlantAge();
+      this.applySeason();
     }
     if(this.mode==="3d")this.scene.fog=this.fog3d;
     this.massingDirty=false;this.applyVisibility();this.invalidate(true);

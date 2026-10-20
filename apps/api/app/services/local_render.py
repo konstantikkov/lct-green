@@ -86,7 +86,7 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
     with ZipFile(path, "w", ZIP_DEFLATED) as z:
         z.writestr("scene.json", json.dumps(scene_data(doc, iteration), ensure_ascii=False))
         z.write(script, "render.py")
-        for dependency in ("blender_landscape.py","blender_grass.py","render_geometry.py","preview_materials.py","source_materials.py","growth.py"):
+        for dependency in ("blender_landscape.py","blender_grass.py","render_geometry.py","preview_materials.py","source_materials.py","growth.py","blender_season.py"):
             z.write(script.with_name(dependency),dependency)
         assets = Path(__file__).parents[1]/'assets'
         if assets.is_dir():
@@ -104,5 +104,7 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
                     "For production: --samples 512 --width 3840 --height 2160\n"
                     "Use --blend scene.blend to save an editable scene and choose your own camera/materials in Blender.\n"
                     "Camera: --azimuth 225 --elevation 30 --distance 1.0 (relative to site span).\n"
+                    "Plant age: --age-years 0|5|15|30 scales plants by the illustrative growth model (omit = mature).\n"
+                    "Season: --season spring|summer|autumn|winter (winter: leafless deciduous plants, snow on lawns).\n"
                     "Optional --assets trees.blend: mesh objects named TREE or SHRUB replace procedural vegetation.\n"
                     "Geometry, coordinates and assumptions are recorded in scene.json; plan.dxf is the exported plan.\n")

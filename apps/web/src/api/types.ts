@@ -265,6 +265,9 @@ export interface SpeciesInfo {
   kind: PlantKind;
   displayName: string;
   displayNameRu: string;
+  latin?: string;
+  /** deciduous | evergreen — winter renders drop deciduous leaves */
+  foliage?: string | null;
   parameters: { crownRadiusM: number; matureHeightM: number; rootZoneRadiusM: number };
   /** Illustrative nursery-stock defaults (rules/species.yaml planting_stock). */
   plantingStock?: {

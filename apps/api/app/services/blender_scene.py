@@ -105,6 +105,7 @@ def main():
     p.add_argument('--grass-radius', type=float, default=0)
     # Years after planting (growth.py); omitted = mature, as checked and exported.
     p.add_argument('--age-years', type=float, default=None)
+    p.add_argument('--season', choices=['spring','summer','autumn','winter'], default='summer')
     p.add_argument('--device', choices=['CPU','AUTO'], default='CPU')
     # Tour: JSON list of {x, y, heading, output}; one scene, one render per point.
     p.add_argument('--points')
@@ -306,14 +307,7 @@ def main():
                         bs = m.node_tree.nodes.get('Principled BSDF')
                         bs.inputs['Base Color'].default_value = (.065,.18,.02,1)
                         bs.inputs['Roughness'].default_value = .48
-                        if a.detail=='presentation' and not m.node_tree.nodes.get('Season palette'):
-                            nodes=m.node_tree.nodes;links=m.node_tree.links
-                            info=nodes.new('ShaderNodeObjectInfo');ramp=nodes.new('ShaderNodeValToRGB');ramp.name='Season palette'
-                            ramp.color_ramp.elements[0].color=(.035,.12,.015,1)
-                            ramp.color_ramp.elements[1].color=(.32,.075,.015,1)
-                            ramp.color_ramp.elements.new(.70).color=(.13,.24,.035,1)
-                            ramp.color_ramp.elements.new(.9).color=(.42,.25,.035,1)
-                            links.new(info.outputs['Random'],ramp.inputs[0]);links.new(ramp.outputs[0],bs.inputs['Base Color'])
+                        # the «Season palette» is driven by --season (blender_season.py)
                     elif m:
                         m.use_nodes = True
                         m.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value = (.16,.08,.03,1)
@@ -362,15 +356,20 @@ def main():
 
     sys.path.insert(0,str(Path(__file__).resolve().parent))
     from growth import scale_at
+    import blender_season as season
     for i,item in enumerate([] if a.preview_only else data['placements']):
         kind=item['kind']; proto=plant(kind,i%4)
-        obj=bpy.data.objects.new(item['id'],proto.data)
+        species=data.get('species',{}).get(item.get('speciesId'))
+        # winter: deciduous plants keep only their branches
+        geo=season.leafless_mesh(proto.data) if season.is_leafless(species,a.season) else proto.data
+        obj=bpy.data.objects.new(item['id'],geo)
         obj['plantingId']=item['id']
+        season.mark_instance(obj,species,a.season)
         scene.collection.objects.link(obj)
         x,y=item['position']; obj.location=(x-ox,y-oy,.06)
         r=float(item['crownRadiusM'])
         # crown (XY) and height (Z) ratios of the illustrative growth model
-        crown,height=scale_at(data.get('species',{}).get(item.get('speciesId')),a.age_years)
+        crown,height=scale_at(species,a.age_years)
         obj.scale=(r/1.45*crown,r/1.45*crown,r/1.45*height)
         obj.rotation_euler.z=rng.random()*math.tau
     sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -378,6 +377,8 @@ def main():
     enrich({**data,'placements':[]} if a.preview_only else data,ox,oy,presentation=False)
     from source_materials import apply_source_materials
     apply_source_materials(asset_root)
+    season.tone_leaves(a.season)
+    season.snow_ground(a.season)
     world=bpy.data.worlds.new('Physical sky');scene.world=world;world.use_nodes=True
     nodes=world.node_tree.nodes
     sky=nodes.new('ShaderNodeTexSky');sky.sky_type='NISHITA'
@@ -394,6 +395,7 @@ def main():
     bpy.ops.object.light_add(type='SUN', location=(0,0,50))
     sun=bpy.context.object;sun.data.energy=1.8;sun.data.angle=math.radians(2.5)
     sun.rotation_euler=(math.radians(55),math.radians(-15),math.radians(-35))
+    season.light(a.season,sun,nodes.get('Background'),environment if hdr.is_file() else None)
     az,el=math.radians(a.azimuth),math.radians(a.elevation)
     bpy.context.view_layer.update()
     corners=[obj.matrix_world@Vector(c) for obj in scene.objects if obj.type=='MESH' and obj.name!='Studio background' for c in obj.bound_box]
@@ -414,6 +416,7 @@ def main():
     cam.data.lens=46;cam.data.clip_end=max(span*10,1000);scene.camera=cam
     cam.data.dof.use_dof=True;cam.data.dof.focus_distance=(target-cam.location).length;cam.data.dof.aperture_fstop=11
     panorama=place_panorama(scene,cam,a,ox,oy) if a.view=='panorama' and not a.points else None
+    if a.season=='winter':a.grass_radius=0  # lawns are under snow
     if panorama and a.grass_radius>0:
         from blender_grass import scatter_lawn
         panorama['lawnClumps']=scatter_lawn(data,ox,oy,tuple(cam.location)[:2],a.grass_radius,seed=data.get('seed',42))
@@ -427,7 +430,7 @@ def main():
               'assumptions':data.get('assumptions',[]),'sourcePlantingCoordinates':[p['position'] for p in data['placements']],
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
               'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects),
-              'device':device,'panorama':panorama,'ageYears':a.age_years}
+              'device':device,'panorama':panorama,'ageYears':a.age_years,'season':a.season}
     if a.points:
         render_tour(scene,cam,a,ox,oy,data,manifest)
         return

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "./ui";
-import { PanoramaViewer, panoramaConditions, type Panorama } from "../viewer/PanoramaViewer";
+import { PanoramaViewer, panoramaConditions, SEASON_LABELS, type Panorama, type Season } from "../viewer/PanoramaViewer";
 import type { PanoramaMarker } from "../viewer/SceneManager";
 
 export type PanoramaTools = {
@@ -25,6 +25,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const [count, setCount] = useState(12);
   // "" = mature (as checked and exported)
   const [age, setAge] = useState("");
+  const [season, setSeason] = useState<Season>("summer");
   const [status, setStatus] = useState(""), [starting, setStarting] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -54,7 +55,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
       const r = await fetch(`/api/projects/${projectId}/${path}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, eyeHeight, quality, grass, iterationId, reconstruction,
-          ageYears: age === "" ? null : Number(age) }),
+          ageYears: age === "" ? null : Number(age), season }),
       });
       const d = await r.json();
       if (!r.ok) throw Error(d.detail?.message || "Не удалось запустить рендер");
@@ -110,10 +111,13 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
         {Object.entries(QUALITY).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Высота глаз<select aria-label="Высота глаз" value={eyeHeight} onChange={e => setEyeHeight(Number(e.target.value))} className={select}>
         <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
-      <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
+      <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass && season !== "winter"} disabled={season === "winter"} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
       <label title="Условная модель роста (rules/species.yaml). План, проверка норм и DXF не меняются">Возраст посадок<select aria-label="Возраст посадок" value={age} onChange={e => setAge(e.target.value)} className={select}>
         <option value="">Зрелые · как в проверке</option><option value="0">При посадке</option><option value="5">Через 5 лет</option><option value="15">Через 15 лет</option><option value="30">Через 30 лет</option></select></label>
+      <label title="Материалы и свет; геометрия сцены не меняется">Сезон<select aria-label="Сезон" value={season} onChange={e => setSeason(e.target.value as Season)} className={select}>
+        {(Object.keys(SEASON_LABELS) as Season[]).map(k => <option key={k} value={k}>{SEASON_LABELS[k][0].toUpperCase() + SEASON_LABELS[k].slice(1)}</option>)}</select></label>
     </fieldset>
+    {season === "winter" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Зимой листопадные породы без листьев, газоны под снегом, объёмная трава не создаётся.</p>}
     {age !== "" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Возраст меняет только размер растений в кадре — по условной модели роста. Проверка норм и экспорт DXF всегда по зрелым размерам.</p>}
     <div className="flex flex-wrap gap-2">
       <Btn variant="primary" onClick={() => void startTour()} disabled={disabled || starting || !!active}>{starting ? "Запуск…" : "Создать тур автоматически"}</Btn>

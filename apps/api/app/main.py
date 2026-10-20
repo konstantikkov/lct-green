@@ -1095,6 +1095,8 @@ class RenderSettings(BaseModel):
     exposure: float = Field(default=-.2, ge=-4, le=4)
     target_x: float | None = Field(default=None, allow_inf_nan=False)
     target_y: float | None = Field(default=None, allow_inf_nan=False)
+    season: Literal["spring", "summer", "autumn", "winter"] = "summer"
+    age_years: int | None = Field(default=None, ge=0, le=100)
 
 
 @app.post('/api/projects/{pid}/renders', status_code=202)
@@ -1154,6 +1156,7 @@ class PanoramaSettings(BaseModel):
     # Years after planting for the growth model (None = mature). Scales
     # the rendered plants only; the plan, checks and DXF stay mature.
     ageYears: int | None = Field(default=None, ge=0, le=100)
+    season: Literal["spring", "summer", "autumn", "winter"] = "summer"
 
 
 class PanoramaRequest(PanoramaSettings):
@@ -1179,12 +1182,13 @@ def _submit_panoramas(pid: str, req: PanoramaSettings, points: list, scene: dict
     from .services import render_jobs
     width, samples = PANORAMA_QUALITY[req.quality]
     settings = {'view': 'panorama', 'eye_height': req.eyeHeight, 'width': width, 'height': width//2,
-                'samples': samples, 'grass_radius': 30 if req.grass else 0, 'exposure': -.2,
-                'age_years': req.ageYears,
+                # lawns lie under snow in winter: no lawn blades
+                'samples': samples, 'grass_radius': 30 if req.grass and req.season != 'winter' else 0,
+                'exposure': -.2, 'age_years': req.ageYears, 'season': req.season,
                 'device': 'CPU' if os.environ.get('BLENDER_DEVICE', 'AUTO').upper() == 'CPU' else 'AUTO'}
     meta = {'kind': 'panorama', 'tour': tour, 'points': points, 'eyeHeight': req.eyeHeight,
             'quality': req.quality, 'grass': req.grass, 'iterationId': rec.get('iterationId'),
-            'ageYears': req.ageYears, 'createdAt': time.time()}
+            'ageYears': req.ageYears, 'season': req.season, 'createdAt': time.time()}
     try:
         jid = render_jobs.submit(pid, scene, settings, timeout=600+2400*len(points), meta=meta,
                                  points=[{k: p[k] for k in ('x', 'y', 'heading')} for p in points])
@@ -1217,7 +1221,7 @@ def _panorama_items(pid: str, job: dict) -> list[dict]:
         item = {'id': f'{jid}-{i}', 'jobId': jid, 'index': i, 'x': point['x'], 'y': point['y'],
                 'heading': point.get('heading', 0), 'eyeHeight': job['eyeHeight'], 'quality': job['quality'],
                 'tour': job.get('tour', False), 'iterationId': job.get('iterationId'), 'createdAt': job.get('createdAt'),
-                'ageYears': job.get('ageYears'),
+                'ageYears': job.get('ageYears'), 'season': job.get('season', 'summer'),
                 'links': [f'{jid}-{j}' for j in point.get('links', [])], 'state': state,
                 'imageUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/image',
                 'manifestUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/manifest'}

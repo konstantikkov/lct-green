@@ -117,7 +117,7 @@ export function buildEditablePreview(doc:ProjectDocument, placements:Placement[]
         const crown=new THREE.Mesh(new THREE.SphereGeometry(r*.68,12,8),new THREE.MeshStandardMaterial({color:p.kind==="TREE"?0x608a44:0x759e51,roughness:1}));
         crown.scale.z=p.kind==="TREE"?1.15:.65;
         crown.position.set(Math.cos(angle)*r*.3,Math.sin(angle)*r*.3,(p.kind==="TREE"?2+r:r*.55)+Math.sin(lobe*2.4)*r*.17);
-        crown.castShadow=crown.receiveShadow=true;plant.add(crown);
+        crown.castShadow=crown.receiveShadow=true;crown.userData.crown=true;plant.add(crown);
       }
       if(p.kind==="TREE"){
         const stem=new THREE.Mesh(new THREE.CylinderGeometry(.09,.13,2+r,8),new THREE.MeshStandardMaterial({color:0x8b7f6c,roughness:1}));

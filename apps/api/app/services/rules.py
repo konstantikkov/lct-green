@@ -288,6 +288,7 @@ def load_species() -> list[dict]:
             "displayName": s.get("display_name", s["id"]),
             "displayNameRu": s.get("display_name_ru", ""),
             "latin": s.get("latin", ""),
+            "foliage": s.get("foliage"),
             "parameters": {
                 "crownRadiusM": float(p.get("crown_radius_m", 2.0)),
                 "matureHeightM": float(p.get("mature_height_m", 10.0)),

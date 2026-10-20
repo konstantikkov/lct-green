@@ -10,11 +10,16 @@ export type Panorama = {
   progressPercent?: number; remainingSeconds?: number; error?: string; createdAt?: number; iterationId?: string | null;
   /** years after planting (null/absent = mature) */
   ageYears?: number | null;
+  season?: Season;
 };
 
-/** «через 15 лет» etc. for the header and the panel list. */
-export function panoramaConditions(p: Pick<Panorama, "ageYears">): string {
-  return p.ageYears == null ? "зрелые посадки" : p.ageYears === 0 ? "при посадке" : ageLabel(p.ageYears);
+export type Season = "spring" | "summer" | "autumn" | "winter";
+export const SEASON_LABELS: Record<Season, string> = { spring: "весна", summer: "лето", autumn: "осень", winter: "зима" };
+
+/** «лето · через 15 лет» etc. for the header and the panel list. */
+export function panoramaConditions(p: Pick<Panorama, "ageYears" | "season">): string {
+  const age = p.ageYears == null ? "зрелые посадки" : p.ageYears === 0 ? "при посадке" : ageLabel(p.ageYears);
+  return `${SEASON_LABELS[p.season ?? "summer"]} · ${age}`;
 }
 
 type Neighbour = { item: Panorama; bearing: number; distance: number };

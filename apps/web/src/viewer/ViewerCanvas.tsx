@@ -8,6 +8,7 @@ import { useApp, getState } from "../state/store";
 import { clearMoveToast, movePlacement, select, setMassingDetail, setViewMode } from "../state/actions";
 import { getTheme, useTheme } from "../theme";
 import { AGE_STOPS, ageLabel } from "./growth";
+import { SEASON_LABELS, type Season } from "./PanoramaViewer";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -109,6 +110,7 @@ export function ViewerCanvas() {
   const species = useApp((s) => s.species);
   const [ageStop, setAgeStop] = useState(AGE_STOPS.length - 1);
   const plantAge = AGE_STOPS[ageStop];
+  const [season, setSeason] = useState<Season>("summer");
   const theme = useTheme();
 
   useEffect(() => {
@@ -204,6 +206,7 @@ export function ViewerCanvas() {
   useEffect(() => { mgrRef.current?.setMode(viewMode); }, [viewMode]);
   useEffect(() => { mgrRef.current?.setMassingDetail(massingDetail); }, [massingDetail]);
   useEffect(() => { mgrRef.current?.setPlantAge(plantAge, species); }, [plantAge, species, iteration]);
+  useEffect(() => { mgrRef.current?.setSeason(season); }, [season, species, iteration]);
   useEffect(() => {
     mgrRef.current?.setSelectedPlacement(selection?.type === "placement" ? selection.placement : null);
   }, [selection]);
@@ -230,6 +233,12 @@ export function ViewerCanvas() {
         <input type="range" min={0} max={AGE_STOPS.length - 1} step={1} value={ageStop} aria-label="Возраст посадок"
           onChange={(e) => setAgeStop(Number(e.target.value))} className="mt-1 w-full accent-emerald-500" />
         <div className="flex justify-between text-2xs text-ink-400"><span>посадка</span><span>5</span><span>15</span><span>30 лет</span><span>зрелые</span></div>
+        <div role="group" aria-label="Сезон" className="mt-2 flex rounded border border-ink-600 p-0.5">
+          {(Object.keys(SEASON_LABELS) as Season[]).map((k) => (
+            <button key={k} type="button" aria-pressed={season === k} onClick={() => setSeason(k)}
+              className={`flex-1 rounded px-1 py-0.5 text-2xs ${season === k ? "bg-ink-600 text-ink-100" : "text-ink-400 hover:bg-ink-800"}`}>{SEASON_LABELS[k]}</button>
+          ))}
+        </div>
         <p className="mt-1 text-2xs text-ink-400" title="Размеры саженцев и годы до зрелости — условные садоводческие значения rules/species.yaml">
           Только визуализация по условной модели роста. Проверка норм и экспорт DXF всегда используют размеры зрелых растений; круги показывают зрелую крону.
         </p>
