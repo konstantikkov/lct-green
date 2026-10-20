@@ -110,8 +110,6 @@ export function ViewerCanvas() {
   const species = useApp((s) => s.species);
   const [ageStop, setAgeStop] = useState(AGE_STOPS.length - 1);
   const plantAge = AGE_STOPS[ageStop];
-  const [humanView,setHumanView]=useState(false);
-  const [humanPick,setHumanPick]=useState(false);
   const [season, setSeason] = useState<Season>("summer");
   const theme = useTheme();
 
@@ -213,18 +211,6 @@ export function ViewerCanvas() {
     mgrRef.current?.setSelectedPlacement(selection?.type === "placement" ? selection.placement : null);
   }, [selection]);
 
-  useEffect(()=>{
-    if(viewMode==='2d'){mgrRef.current?.exitHumanView();setHumanView(false);setHumanPick(false);}
-  },[viewMode]);
-  useEffect(()=>{
-    const exit=(e:KeyboardEvent)=>{
-      if(e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable="true"]'))return;
-      if(e.key==='Escape'||e.key.toLowerCase()==='f'){
-        mgrRef.current?.exitHumanView();mgrRef.current?.setPointPicker(null);setHumanView(false);setHumanPick(false);
-      }
-    };
-    window.addEventListener('keydown',exit);return()=>window.removeEventListener('keydown',exit);
-  },[]);
   // Stable identity: the panorama panel registers markers/pickers in effects.
   const panoramaTools = useMemo<PanoramaTools>(() => ({
     viewpoint: () => mgrRef.current?.panoramaViewpoint() ?? null,
@@ -235,18 +221,8 @@ export function ViewerCanvas() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden md:flex-row">
     <div ref={containerRef} className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-      {viewMode==="3d"&&!humanView&&renderAspect&&frameSize.width>0&&<div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 border border-white/70" style={{width:Math.min(frameSize.width,frameSize.height*renderAspect),height:Math.min(frameSize.height,frameSize.width/renderAspect),boxShadow:"0 0 0 3000px rgba(0,0,0,.32)"}}><span className="absolute bottom-2 left-2 text-xs text-white">Границы рендера</span></div>}
-      <canvas ref={canvasRef} className="block h-full w-full touch-none"
-        onDragOver={e=>{if(e.dataTransfer.types.includes('application/greenplan-person')){e.preventDefault();e.dataTransfer.dropEffect='copy';}}}
-        onDrop={e=>{if(!e.dataTransfer.types.includes('application/greenplan-person'))return;e.preventDefault();if(mgrRef.current?.enterHumanView(e.clientX,e.clientY)){setHumanView(true);setViewMode('3d');}}} />
-      <div className="absolute bottom-12 left-3 z-30 max-w-64 rounded border border-ink-600 bg-ink-900/95 p-2 text-xs text-ink-100" data-testid="human-view-controls">
-        <button type="button" draggable aria-label="Перетащите человека на карту" className="cursor-grab rounded bg-amber-500 px-3 py-2 text-black" onDragStart={e=>{e.dataTransfer.setData('application/greenplan-person','1');e.dataTransfer.effectAllowed='copy';}}
-          onClick={()=>{setViewMode('3d');setHumanPick(true);mgrRef.current?.setPointPicker(point=>{setHumanPick(false);if(!point)return;if(mgrRef.current?.enterHumanPoint(point))setHumanView(true);});}}>🚶 Вид от человека</button>
-        <p className="mt-1">{humanView?'Высота глаз 1,6 м · мышь — осмотреться · WASD / стрелки / колесо — идти':humanPick?'Нажмите на землю для входа':'Перетащите человека на карту. Прогулка доступна сразу, без рендера.'}</p>
-        {humanPick&&<button type="button" className="mt-2 rounded border px-2 py-1" onClick={()=>{mgrRef.current?.setPointPicker(null);setHumanPick(false);}}>Отменить выбор</button>}
-        {humanView&&<div className="mt-2 flex gap-1">{[['Вперёд','w'],['Назад','s'],['Влево','a'],['Вправо','d']].map(([label,key])=><button key={key} type="button" className="rounded border px-1 py-1" onClick={()=>window.dispatchEvent(new KeyboardEvent('keydown',{key}))}>{label}</button>)}</div>}
-        {humanView&&<button type="button" className="mt-2 rounded border px-2 py-1" onClick={()=>{mgrRef.current?.exitHumanView();setHumanView(false);}}>Вернуться к обзору</button>}
-      </div>
+      {viewMode==="3d"&&renderAspect&&frameSize.width>0&&<div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 border border-white/70" style={{width:Math.min(frameSize.width,frameSize.height*renderAspect),height:Math.min(frameSize.height,frameSize.width/renderAspect),boxShadow:"0 0 0 3000px rgba(0,0,0,.32)"}}><span className="absolute bottom-2 left-2 text-xs text-white">Границы рендера</span></div>}
+      <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <div role="group" aria-label="Вид проекта" className="absolute right-3 top-3 z-20 flex rounded border border-ink-600 bg-ink-900/95 p-1 shadow-sm">
         {([ ["2d", "CAD"], ["3d", "3D-редактор"] ] as const).map(([mode, label]) => (
           <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`rounded px-3 py-1.5 text-xs transition-colors ${viewMode === mode ? "bg-ink-600 text-ink-100" : "text-ink-400 hover:bg-ink-800 hover:text-ink-100"}`}>{label}</button>

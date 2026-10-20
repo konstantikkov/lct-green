@@ -398,7 +398,7 @@ export class SceneManager {
         if(!materials.has(mesh))materials.set(mesh,mesh.material);mesh.material=palette[key];
       });
       this.renderer.setRenderTarget(target);this.renderer.render(this.scene,camera);const semantic=read();
-      return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),fenceCount:Number(this.editablePreview.group.userData.sourceFences??0),camera:{position:camera.position.toArray(),target:this.human?camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3())).toArray():[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
+      return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),fenceCount:Number(this.editablePreview.group.userData.sourceFences??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
     } finally {
       this.renderer.setRenderTarget(previous.target);this.scene.background=previous.background;this.scene.fog=previous.fog;this.scene.overrideMaterial=previous.override;this.renderer.setClearColor(previous.clear,previous.alpha);this.renderer.toneMapping=previous.tone;
       materials.forEach((material,mesh)=>mesh.material=material);Object.values(palette).forEach(m=>m.dispose());
@@ -668,45 +668,7 @@ export class SceneManager {
     this.update3dCamera();
   }
 
-  private human: {x:number;y:number;yaw:number;pitch:number} | null = null;
-  private savedOrbit: typeof this.orbit | null = null;
-
-  enterHumanView(clientX:number,clientY:number) {
-    const box=this.canvas.getBoundingClientRect();
-    const point=this.mode==='2d'?this.screenToWorld(clientX-box.left,clientY-box.top):this.groundPoint(clientX-box.left,clientY-box.top);
-    if(!point)return false;
-    return this.enterHumanPoint(point);
-  }
-
-  enterHumanPoint(point:[number,number]) {
-    if(!this.human)this.savedOrbit={...this.orbit};
-    this.human={x:point[0],y:point[1],yaw:this.orbit.az+Math.PI,pitch:0};
-    this.setPointPicker(null);this.setSelectedPlacement(null);
-    this.update3dCamera();return true;
-  }
-
-  exitHumanView() {
-    this.human=null;
-    if(this.savedOrbit)this.orbit={...this.savedOrbit};
-    this.savedOrbit=null;this.update3dCamera();
-  }
-
-  private walk(forward:number,right=0) {
-    if(!this.human)return;
-    const h=this.human;
-    h.x+=Math.cos(h.yaw)*forward+Math.sin(h.yaw)*right;
-    h.y+=Math.sin(h.yaw)*forward-Math.cos(h.yaw)*right;
-    this.update3dCamera();
-  }
-
   private update3dCamera() {
-    if(this.human){
-      const h=this.human,z=(this.editablePreview?.groundHeight(h.x,h.y)??0)+1.6;
-      this.camera3d.position.set(h.x,h.y,z);
-      this.camera3d.near=.05;this.camera3d.far=Math.max(this.orbit.dist*100,10000);
-      this.camera3d.lookAt(h.x+Math.cos(h.yaw)*Math.cos(h.pitch),h.y+Math.sin(h.yaw)*Math.cos(h.pitch),z+Math.sin(h.pitch));
-      this.camera3d.updateProjectionMatrix();this.invalidate();return;
-    }
     const { az, polar, dist, tx, ty, tz } = this.orbit;
     const sp = Math.sin(polar);
     this.camera3d.position.set(
@@ -1052,7 +1014,7 @@ export class SceneManager {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       // Pointer-down on the SELECTED planting starts a drag-move; anywhere
       // else keeps the existing pan/orbit behavior.
-      if (e.button === 0 && this.selectedPlacement && !this.human) {
+      if (e.button === 0 && this.selectedPlacement) {
         const rect = c.getBoundingClientRect();
         const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
         if (hit?.kind === "placement" && hit.placement.id === this.selectedPlacement.id) {
@@ -1107,10 +1069,6 @@ export class SceneManager {
             this.cx -= dx * mPerPx;
             this.cy += dy * mPerPx;
             this.updateCamera();
-          } else if(this.human){
-            this.human.yaw-=dx*.005;
-            this.human.pitch=THREE.MathUtils.clamp(this.human.pitch-dy*.005,-1.35,1.35);
-            this.update3dCamera();
           } else if (this.dragButton === 0) {
             // orbit
             this.orbit.az -= dx * 0.005;
@@ -1188,7 +1146,6 @@ export class SceneManager {
 
     c.addEventListener("wheel", (e) => {
       e.preventDefault();
-      if(this.human&&this.mode==="3d"){this.walk(-e.deltaY*.015);return;}
       const factor = Math.pow(1.0015, e.deltaY);
       if (this.mode === "2d") {
         const rect = c.getBoundingClientRect();
@@ -1279,8 +1236,6 @@ export class SceneManager {
         this.cx = wx - (px - this.width / 2) * mPerPx;
         this.cy = wy + (py - this.height / 2) * mPerPx;
         this.updateCamera();
-      } else if(this.human){
-        this.walk((this.pinchMidY-midY)*.03,(this.pinchMidX-midX)*.03);
       } else {
         // dolly + two-finger pan on the ground plane
         this.orbit.dist = Math.min(Math.max(this.orbit.dist * scale, 2), 1e6);
@@ -1329,8 +1284,6 @@ export class SceneManager {
           this.cx -= dx * mPerPx;
           this.cy += dy * mPerPx;
           this.updateCamera();
-        } else if(this.human){
-          this.human.yaw-=dx*.005;this.human.pitch=THREE.MathUtils.clamp(this.human.pitch-dy*.005,-1.35,1.35);this.update3dCamera();
         } else {
           this.orbit.az -= dx * 0.005;
           this.orbit.polar = Math.min(Math.max(this.orbit.polar - dy * 0.005, 0.08), 1.5);
@@ -1361,10 +1314,6 @@ export class SceneManager {
       this.tapCandidate = false;
       if (isTap) {
         const rect = this.canvas.getBoundingClientRect();
-        if(this.pointPicker&&this.mode==='3d'){
-          const picker=this.pointPicker;this.pointPicker=null;this.canvas.style.cursor='';
-          picker(this.groundPoint(e.clientX-rect.left,e.clientY-rect.top));return;
-        }
         const hit = this.pickAt(e.clientX - rect.left, e.clientY - rect.top);
         if (hit?.kind === "placement") this.cb.onPickPlacement(hit.placement);
         else if (hit?.kind === "zone") this.cb.onPickZone(hit.zone.id);
@@ -1383,15 +1332,6 @@ export class SceneManager {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    const target=e.target instanceof Element?e.target:null;
-    if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
-    if(this.human&&this.mode==='3d'){
-      const key=e.key.toLowerCase(),step=e.shiftKey?3:.75;
-      if(['w','s','a','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key)){
-        e.preventDefault();this.walk(['w','arrowup'].includes(key)?step:['s','arrowdown'].includes(key)?-step:0,['d','arrowright'].includes(key)?step:['a','arrowleft'].includes(key)?-step:0);return;
-      }
-      if(key==='f'){this.exitHumanView();this.fitToExtents();return;}
-    }
     if (e.key === "Escape" && this.placementDrag) {
       this.cancelPlacementDrag();
       return;

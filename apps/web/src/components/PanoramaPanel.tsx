@@ -103,7 +103,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
 
   return <details className="mt-4 rounded border border-ink-600 p-3 text-xs" open>
     <summary className="cursor-pointer font-semibold">360° панорамы · прогулка по участку</summary>
-    <p className="my-2 text-ink-400">Для мгновенной прогулки перетащите человека на карту. Панорамный тур — отдельный офлайн-рендер: на CPU несколько часов на тур, в высоком качестве значительно дольше.</p>
+    <p className="my-2 text-ink-400">Панорамный тур — офлайн-рендер: на CPU несколько часов на тур, в высоком качестве значительно дольше.</p>
     <fieldset disabled={disabled || starting} className="my-2 grid grid-cols-2 gap-3 disabled:opacity-60">
       <label>Точек в туре<select aria-label="Количество точек" value={count} onChange={e => setCount(Number(e.target.value))} className={select}>
         {[6, 12, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
