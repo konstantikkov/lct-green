@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "./ui";
-import { PanoramaViewer, panoramaConditions, SEASON_LABELS, type Panorama, type Season } from "../viewer/PanoramaViewer";
+import { PanoramaViewer, panoramaConditions, type Panorama } from "../viewer/PanoramaViewer";
 import type { SceneAppearance } from "./RenderWorkflow";
 import type { PanoramaMarker } from "../viewer/SceneManager";
 
@@ -15,8 +15,8 @@ const pending = (p: Panorama) => p.state === "QUEUED" || p.state === "RENDERING"
 const minutes = (s: number) => (s < 60 ? "меньше минуты" : `~${Math.ceil(s / 60)} мин`);
 
 /** 360° Cycles panoramas: an automatic walkable tour, plus manual points. */
-export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled, appearance, onAppearanceChange }: {
-  appearance:SceneAppearance;onAppearanceChange:(settings:SceneAppearance)=>void;
+export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled, appearance, active:tabActive }: {
+  appearance:SceneAppearance;active:boolean;
   projectId: string; iterationId?: string; disabled: boolean;
   reconstruction: { buildingHeightM: number; showFences: boolean }; tools: PanoramaTools;
 }) {
@@ -25,10 +25,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const [picking, setPicking] = useState(false);
   const [eyeHeight, setEyeHeight] = useState(1.6), [quality, setQuality] = useState("preview"), [grass, setGrass] = useState(true);
   const [count, setCount] = useState(6);
-  // "" = mature (as checked and exported)
   const age=appearance.ageYears===null?'':String(appearance.ageYears),season=appearance.season;
-  const setAge=(value:string)=>onAppearanceChange({...appearance,ageYears:value===''?null:Number(value)});
-  const setSeason=(value:Season)=>onAppearanceChange({...appearance,season:value});
   const [status, setStatus] = useState(""), [starting, setStarting] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -45,11 +42,12 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   }, [busy, refresh]);
 
   useEffect(() => {
+    if(!tabActive){tools.markers([],null);tools.pick(null);setPicking(false);setViewing(null);return;}
     tools.markers([
       ...items.filter(i => i.state !== "FAILED").map(i => ({ id: i.id, x: i.x, y: i.y, state: (i.state === "COMPLETED" ? "done" : "pending") as PanoramaMarker["state"] })),
       ...(point ? [{ ...point, state: "active" as const }] : []),
     ], setViewing);
-  }, [items, point, tools]);
+  }, [items, point, tools, tabActive]);
   useEffect(() => () => { tools.pick(null); tools.markers([], null); }, [tools]);
 
   async function post(path: string, body: object) {
@@ -104,9 +102,8 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const activePercent = active ? Math.round(active.reduce((sum, i) => sum + (i.state === "COMPLETED" ? 100 : i.progressPercent ?? 0), 0) / active.length) : 0;
   const select = "mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2";
 
-  return <details className="mt-4 rounded border border-ink-600 p-3 text-xs" open>
-    <summary className="cursor-pointer font-semibold">360° панорамы · прогулка по участку</summary>
-    <p className="my-2 text-ink-400">Панорамный тур — офлайн-рендер: на CPU несколько часов на тур, в высоком качестве значительно дольше.</p>
+  return <div className="text-xs">
+    <p className="my-2 text-ink-400">На этом сервере тур может рендериться несколько часов.</p>
     <fieldset disabled={disabled || starting} className="my-2 grid grid-cols-2 gap-3 disabled:opacity-60">
       <label>Точек в туре<select aria-label="Количество точек" value={count} onChange={e => setCount(Number(e.target.value))} className={select}>
         {[6, 12, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
@@ -115,19 +112,12 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
       <label>Высота глаз<select aria-label="Высота глаз" value={eyeHeight} onChange={e => setEyeHeight(Number(e.target.value))} className={select}>
         <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
       <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass && season !== "winter"} disabled={season === "winter"} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
-      <label title="Условная модель роста (rules/species.yaml). План, проверка норм и DXF не меняются">Возраст посадок<select aria-label="Возраст посадок" value={age} onChange={e => setAge(e.target.value)} className={select}>
-        <option value="">Зрелые · как в проверке</option><option value="0">При посадке</option><option value="5">Через 5 лет</option><option value="15">Через 15 лет</option><option value="30">Через 30 лет</option></select></label>
-      <label title="Материалы и свет; геометрия сцены не меняется">Сезон<select aria-label="Сезон" value={season} onChange={e => setSeason(e.target.value as Season)} className={select}>
-        {(Object.keys(SEASON_LABELS) as Season[]).map(k => <option key={k} value={k}>{SEASON_LABELS[k][0].toUpperCase() + SEASON_LABELS[k].slice(1)}</option>)}</select></label>
     </fieldset>
-    <p className="mb-2 text-2xs text-ink-400">Сезон и возраст общие с 3D-видом и фото. Возраст меняет высоту и ширину крон по породе; сезон — листву, газон и свет. Применяется при новом запуске; готовые изображения не меняются.</p>
-    {season === "winter" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Зимой листопадные породы без листьев, газоны под снегом, объёмная трава не создаётся.</p>}
-    {age !== "" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Возраст меняет только размер растений в кадре — по условной модели роста. Проверка норм и экспорт DXF всегда по зрелым размерам.</p>}
     <div className="flex flex-wrap gap-2">
       <Btn variant="primary" onClick={() => void startTour()} disabled={disabled || starting || !!active}>{starting ? "Запуск…" : "Создать тур автоматически"}</Btn>
-      <Btn onClick={() => done[0] && setViewing((done.find(i => i.tour) ?? done[0]).id)} disabled={!done.length}>Открыть панорамы{done.length ? ` · ${done.length}` : ""}</Btn>
+
     </div>
-    <p className="mt-1 text-2xs text-ink-400">С видеокартой NVIDIA — около минуты на точку в 4K; на CPU — от 15 минут. Первые точки можно смотреть, пока рендерятся остальные.</p>
+
     {active && <div className="mt-3" aria-live="polite">
       <div className="mb-1 flex justify-between gap-2"><span>{active.length > 1 ? `Тур: готово ${activeDone} из ${active.length}` : "Рендер точки"}</span><span>{remaining ? `осталось ${minutes(remaining)}` : active.some(i => i.state === "QUEUED" && !activeDone) ? "в очереди" : ""}</span></div>
       <progress aria-label="Прогресс панорам" className="h-2 w-full accent-emerald-500" max="100" value={Math.max(activePercent, 1)} />
@@ -159,7 +149,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
         </li>;
       })}
     </ul>}
-    {done.length > 0 && <p className="mt-2 text-2xs text-ink-400">Синий маркер в 3D-сцене — готовая панорама: кликните, чтобы открыть.</p>}
+
     {viewing && done.some(i => i.id === viewing) && <PanoramaViewer items={items.filter(i => i.state !== "FAILED")} startId={viewing} onClose={() => setViewing(null)} />}
-  </details>;
+  </div>;
 }

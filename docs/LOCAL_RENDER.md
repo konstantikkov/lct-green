@@ -188,8 +188,14 @@ its scene must contain exactly two buildings and no illustrative scenery.
 
 ## Shared render appearance
 
-The existing season and planting-age controls share one value between the 3D
-editor and panorama panel. New camera photos, panorama points and tours use
+The 3D sidebar opens on the Tour tab. Render and Tour show only their own
+controls; season, planting age, plan selection and CAD reconstruction are shared
+once above the active panel. Switching tabs preserves settings and background
+job polling, hides tour pins/picking in Render, and hides the photo framing
+overlay in Tour. Panel transitions respect reduced-motion preferences.
+
+The season and planting-age controls share one value across the scene and both
+workflows. New camera photos, panorama points and tours use
 those values. Age scales plant height and crown width by the existing species
 growth model; it does not change mature dimensions used for validation or DXF.
 Season changes Cycles foliage, lawn/snow and lighting. Winter disables grass

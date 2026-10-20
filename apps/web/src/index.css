@@ -61,3 +61,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+@keyframes workflow-disclose {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.workflow-panel:not([hidden]) { animation: workflow-disclose 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .workflow-panel:not([hidden]) { animation: none; }
+}
