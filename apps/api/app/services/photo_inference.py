@@ -47,7 +47,7 @@ def prepare_backdrop(image, semantic, depth, settings):
         labels[far] = [4,250,7]
         yy,xx=np.mgrid[0:h,0:w]
         variation=(7*np.sin(xx*.043)+5*np.cos(yy*.061)).astype(int)
-        for channel,base in enumerate([93,139,62]):rgb[...,channel][far]=np.clip(base+variation[far],0,255)
+        for channel,base in enumerate({'winter':[221,227,229],'autumn':[147,137,79],'spring':[125,158,87]}.get(settings.get('season'),[93,139,62])):rgb[...,channel][far]=np.clip(base+variation[far],0,255)
         mask |= far
         # Derive the ground horizon from sky/earth transitions; existing
         # canopies interrupt it but must never become context themselves.
@@ -63,7 +63,7 @@ def prepare_backdrop(image, semantic, depth, settings):
                 rows=np.arange(top,min(h,horizon+2))
                 rows=rows[sky[rows,x]]
                 labels[rows,x]=[4,200,3]
-                rgb[rows,x]=[83,125,68]
+                rgb[rows,x]={'winter':[107,103,99],'autumn':[165,118,54],'spring':[128,158,88]}.get(settings.get('season'),[83,125,68])
                 mask[rows,x]=True
     if settings.get('lighting','sunny')=='sunny':
         # A bright input sky helps the model avoid the previous grey-sky prior.
@@ -112,26 +112,8 @@ def main():
     depth = Image.open(folder/'depth.png').convert('RGB').resize(size, Image.Resampling.BILINEAR)
     image,semantic,context_mask=prepare_backdrop(image,semantic,depth,settings)
     image.save(folder/'conditioning_source.png');semantic.save(folder/'conditioning_semantic.png');context_mask.save(folder/'context_mask.png')
-    light = {'sunny': 'bright cheerful summer morning sunshine, clear vivid blue sky, small soft white clouds, warm directional sunlight, luminous fresh green foliage, inviting premium landscape photography, balanced rich natural colors, welcoming sunny atmosphere',
-             'daylight': 'soft natural daylight, pale blue sky with soft clouds, balanced photographic exposure',
-             'evening': 'warm low evening sunlight, long soft shadows, delicate blue sky, realistic golden hour photography',
-             'overcast': 'bright overcast sky, soft diffuse light, subtle shadows, natural restrained colors'}[settings['lighting']]
-    architecture = ('realistic existing building surfaces, buildings only at the input silhouettes, ' if settings.get('buildingCount', 0) else 'open landscape with no buildings, no urban skyline, ')
-    prompt = ('RAW architectural landscape photograph, professionally photographed real urban landscaping, '
-              'deciduous trees with visible woody trunks and irregular leafy crowns, dense natural leaf detail, low leafy shrubs, realistic grass, physical paving materials, '
-              'same camera perspective and object positions as input, ' + architecture + light +
-              ('; a nearby dense belt of mature leafy park trees enclosing the background, lush green lawn and layered tree canopies, no open agricultural fields, no distant barren horizon, background greenery without additional buildings' if settings.get('background','park')=='park' else ''))
-    from photo_styles import appearance_prompt
-    prompt += appearance_prompt(settings)
-    negative = ('cartoon, illustration, videogame, unity, low poly, plastic, CGI, oversaturated, fake HDR, '
-                'new buildings, extra buildings, skyscrapers, additional paths, extra objects, furniture, '
-                'people, rocks, boulders, topiary, clipped spherical trees, green balls, sculpture, text, watermark, distorted architecture, blurry, fantasy')
-    if not settings.get('fenceCount',0):negative += ', fence, fences, railing, railings, wire mesh, barriers, balustrade'
-    negative += ', desert, arid land, sand dunes, barren landscape, farmland, wheat field, endless empty field, dry yellow grass, prairie'
-    negative += ', isolated display model, floating diorama, miniature model, blank studio background'
-    if settings.get('background','park')=='park':negative += ', empty horizon'
-    if settings['lighting']=='sunny':negative += ', overcast, storm clouds, grey sky, gloomy, desaturated, winter, dull lighting, harsh HDR'
-    if not settings.get('buildingCount', 0):negative += ', buildings, houses, urban skyline'
+    from photo_styles import photo_prompts
+    prompt,negative=photo_prompts(settings)
     started = time.monotonic()
     metadata=json.loads((folder/'job.json').read_text()) if (folder/'job.json').is_file() else {}
     estimate=metadata.get('estimatedSeconds',1100 if quality['detailResolution'] else 420)

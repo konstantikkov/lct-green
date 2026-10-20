@@ -990,6 +990,8 @@ class PhotoSettings(BaseModel):
     iterationId: str | None = Field(default=None,max_length=128)
     buildingCount: int = Field(default=0, ge=0, le=100000)
     fenceCount: int = Field(default=0,ge=0,le=100000)
+    ageYears: int | None = Field(default=None, ge=0, le=100)
+    season: Literal["spring", "summer", "autumn", "winter"] = "summer"
     lighting: Literal["sunny", "daylight", "evening", "overcast"] = "sunny"
     background: Literal["park", "source"] = "park"
     strength: float = Field(default=.85, ge=.55, le=.95, allow_inf_nan=False)

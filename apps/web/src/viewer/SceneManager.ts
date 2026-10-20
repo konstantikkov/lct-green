@@ -368,6 +368,7 @@ export class SceneManager {
       vertexShader:`varying float viewDepth;void main(){vec4 p=modelViewMatrix*vec4(position,1.);viewDepth=-p.z;gl_Position=projectionMatrix*p;}`,
       fragmentShader:`uniform float distanceLimit;varying float viewDepth;void main(){float d=clamp(1.-viewDepth/distanceLimit,0.,1.);gl_FragColor=vec4(vec3(d),1.);}`});
     const materials=new Map<THREE.Mesh,THREE.Material|THREE.Material[]>();
+    const seasonalMaterials:THREE.Material[]=[];
     const palette:Record<string,THREE.MeshBasicMaterial>={};
     const colors:Record<string,number>={tree:0x04c803,plant:0xccff04,BUILDING:0xb47878,ROAD:0x8c8c8c,PARKING:0x8c8c8c,GREEN_AREA:0x04fa07,SIDEWALK:0xebff07,FENCE:0xffb806,earth:0x787846};
     const read=(renderTarget=target)=>{
@@ -380,6 +381,13 @@ export class SceneManager {
     try {
       this.editablePreview.photoMaterials.forEach((material,mesh)=>{
         materials.set(mesh,mesh.material);mesh.material=material;
+      });
+      if(this.season==='winter')this.editablePreview.group.traverse(o=>{
+        const mesh=o as THREE.Mesh;if(!mesh.isMesh)return;
+        if(o.userData.cadCategory!=='GREEN_AREA'&&!o.userData.sourceTerrain&&o.name!=='composition-ground')return;
+        if(!materials.has(mesh))materials.set(mesh,mesh.material);
+        const snow=new THREE.MeshStandardMaterial({color:0xe1e7e9,roughness:1,side:THREE.DoubleSide});
+        seasonalMaterials.push(snow);mesh.material=snow;
       });
       this.scene.traverse(o=>{if(o===this.selectionRing||o===this.detailGroup3d||o===this.panoramaMarkers||o.name==="editable-planting-circles"||(o as THREE.Line).isLine){hidden.push({object:o,visible:o.visible});o.visible=false;}});
       if(ground)ground.scale.set(12,12,1); // neutral ground continues to the horizon; no source objects are added
@@ -401,7 +409,7 @@ export class SceneManager {
       return {image,depth:depthImage,semantic,siteBounds:this.doc!.extents,buildingCount:Number(this.editablePreview.group.userData.sourceBuildings??0),fenceCount:Number(this.editablePreview.group.userData.sourceFences??0),camera:{position:camera.position.toArray(),target:[this.orbit.tx,this.orbit.ty,this.orbit.tz],fov:camera.fov,aspect:camera.aspect}};
     } finally {
       this.renderer.setRenderTarget(previous.target);this.scene.background=previous.background;this.scene.fog=previous.fog;this.scene.overrideMaterial=previous.override;this.renderer.setClearColor(previous.clear,previous.alpha);this.renderer.toneMapping=previous.tone;
-      materials.forEach((material,mesh)=>mesh.material=material);Object.values(palette).forEach(m=>m.dispose());
+      materials.forEach((material,mesh)=>mesh.material=material);seasonalMaterials.forEach(m=>m.dispose());Object.values(palette).forEach(m=>m.dispose());
       if(ground&&groundScale)ground.scale.copy(groundScale);
       hidden.forEach(({object,visible})=>object.visible=visible);depth.dispose();target.dispose();depthTarget.dispose();this.invalidate();
     }
@@ -455,7 +463,7 @@ export class SceneManager {
     const scale = Math.max(1, span / 60);
     for (const point of points) {
       const color = point.state === "active" ? 0xf59e0b : point.state === "pending" ? 0x9ca3af : 0x38bdf8;
-      const material = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
+      const material = new THREE.MeshBasicMaterial({ color, depthTest: true, depthWrite: true, transparent: false, opacity: 1 });
       const pin = new THREE.Group();
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 3, 8), material);
       pole.rotation.x = Math.PI / 2;
@@ -465,10 +473,10 @@ export class SceneManager {
       const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.4, 32), material);
       ring.position.z = .05;
       pin.add(pole, head, ring);
-      pin.position.set(point.x, point.y, 0);
+      pin.position.set(point.x, point.y, this.editablePreview?.groundHeight(point.x,point.y)??0);
       pin.scale.setScalar(scale);
-      pin.renderOrder = 10;
-      pin.traverse(o => { o.renderOrder = 10; });
+      pin.renderOrder = 0;
+      pin.traverse(o => { o.renderOrder = 0; });
       // Only the head of a finished point is clickable.
       for (const part of [pole, ring]) part.raycast = () => {};
       if (point.state !== "done" || !point.id) head.raycast = () => {};
@@ -483,7 +491,14 @@ export class SceneManager {
     const rect = this.canvas.getBoundingClientRect();
     this.raycaster.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / this.width * 2 - 1, -(e.clientY - rect.top) / this.height * 2 + 1), this.camera3d);
     const hit = this.raycaster.intersectObjects(this.panoramaMarkers.children, true)[0];
-    return hit ? String(hit.object.userData.panoramaId) : null;
+    if(!hit)return null;
+    const blockers:THREE.Object3D[]=[];
+    this.root3d.traverseVisible(o=>{const mesh=o as THREE.Mesh;if(mesh.isMesh&&o.name!=="editable-planting-circles"){
+      const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+      if(mats.some(m=>m.visible&&m.depthWrite&&(!m.transparent||m.opacity>=.95)))blockers.push(o);
+    }});
+    if(this.raycaster.intersectObjects(blockers,false).some(blocker=>blocker.distance<hit.distance-.01))return null;
+    return String(hit.object.userData.panoramaId);
   }
 
   setPresentationCamera(preset:"aerial"|"garden") {

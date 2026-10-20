@@ -172,3 +172,26 @@ def test_sunny_presentation_preserves_camera_and_bounds_in_job(photo_api,monkeyp
     assert json.loads(json.dumps(captured[0]['camera']))==data['camera']
     assert captured[0]['siteBounds']['min']==(-20.,-30.)
     assert captured[0]['background']=='park'
+
+
+def test_photo_season_and_age_reach_worker(photo_api, monkeypatch):
+    seen=[]
+    monkeypatch.setattr(photo_jobs,'submit',lambda pid,settings: seen.append(settings) or 'a'*32)
+    response=photo_api.post('/api/projects/test/photos',json={**payload(),'season':'winter','ageYears':5})
+    assert response.status_code==202
+    assert seen[0]['season']=='winter' and seen[0]['ageYears']==5
+    for changes in ({'season':'invalid'},{'ageYears':-1},{'ageYears':101}):
+        assert photo_api.post('/api/projects/test/photos',json={**payload(),**changes}).status_code==422
+
+
+def test_seasonal_photo_prompts_respect_winter_and_young_trees():
+    from app.services.photo_styles import photo_prompts
+    prompt,negative=photo_prompts({'lighting':'sunny','season':'winter','ageYears':5})
+    assert 'leafless deciduous' in prompt and 'snow-covered' in prompt
+    assert '5 years after planting' in prompt and 'do not enlarge young trees' in prompt
+    assert 'summer morning' not in prompt and 'lush green lawn' not in prompt
+    assert 'winter' not in [word.strip() for word in negative.split(',')]
+    prompt,_=photo_prompts({'lighting':'evening','season':'autumn','ageYears':None})
+    assert 'golden yellow orange' in prompt and 'mature catalog sizes' in prompt
+    prompt,_=photo_prompts({'lighting':'daylight'})
+    assert 'summer' in prompt

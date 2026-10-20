@@ -185,3 +185,19 @@ closed building outlines, absence of demo data in downloads, preview preparation
 on upload/re-import, worker mode and planting movement. A real Blender canary
 uses a CAD fixture with two building footprints and five classified surfaces;
 its scene must contain exactly two buildings and no illustrative scenery.
+
+## Shared render appearance
+
+The existing season and planting-age controls share one value between the 3D
+editor and panorama panel. New camera photos, panorama points and tours use
+those values. Age scales plant height and crown width by the existing species
+growth model; it does not change mature dimensions used for validation or DXF.
+Season changes Cycles foliage, lawn/snow and lighting. Winter disables grass
+blades. Camera photos preserve age-scaled input geometry, use seasonal prompts
+and background conditioning, and capture snow-colored ground in winter; their
+appearance remains an illustrative diffusion result. Existing rendered images
+keep their saved settings until regenerated. Eye height and panorama quality
+remain panorama controls; the camera photo uses its current editor camera.
+
+Map panorama pins are opaque and depth-tested, and cannot be selected through
+opaque trees or buildings. Pins remain excluded from photo captures.

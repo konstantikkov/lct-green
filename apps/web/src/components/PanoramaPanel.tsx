@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "./ui";
 import { PanoramaViewer, panoramaConditions, SEASON_LABELS, type Panorama, type Season } from "../viewer/PanoramaViewer";
+import type { SceneAppearance } from "./RenderWorkflow";
 import type { PanoramaMarker } from "../viewer/SceneManager";
 
 export type PanoramaTools = {
@@ -14,7 +15,8 @@ const pending = (p: Panorama) => p.state === "QUEUED" || p.state === "RENDERING"
 const minutes = (s: number) => (s < 60 ? "меньше минуты" : `~${Math.ceil(s / 60)} мин`);
 
 /** 360° Cycles panoramas: an automatic walkable tour, plus manual points. */
-export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled }: {
+export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled, appearance, onAppearanceChange }: {
+  appearance:SceneAppearance;onAppearanceChange:(settings:SceneAppearance)=>void;
   projectId: string; iterationId?: string; disabled: boolean;
   reconstruction: { buildingHeightM: number; showFences: boolean }; tools: PanoramaTools;
 }) {
@@ -24,8 +26,9 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const [eyeHeight, setEyeHeight] = useState(1.6), [quality, setQuality] = useState("preview"), [grass, setGrass] = useState(true);
   const [count, setCount] = useState(6);
   // "" = mature (as checked and exported)
-  const [age, setAge] = useState("");
-  const [season, setSeason] = useState<Season>("summer");
+  const age=appearance.ageYears===null?'':String(appearance.ageYears),season=appearance.season;
+  const setAge=(value:string)=>onAppearanceChange({...appearance,ageYears:value===''?null:Number(value)});
+  const setSeason=(value:Season)=>onAppearanceChange({...appearance,season:value});
   const [status, setStatus] = useState(""), [starting, setStarting] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -117,6 +120,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
       <label title="Материалы и свет; геометрия сцены не меняется">Сезон<select aria-label="Сезон" value={season} onChange={e => setSeason(e.target.value as Season)} className={select}>
         {(Object.keys(SEASON_LABELS) as Season[]).map(k => <option key={k} value={k}>{SEASON_LABELS[k][0].toUpperCase() + SEASON_LABELS[k].slice(1)}</option>)}</select></label>
     </fieldset>
+    <p className="mb-2 text-2xs text-ink-400">Сезон и возраст общие с 3D-видом и фото. Возраст меняет высоту и ширину крон по породе; сезон — листву, газон и свет. Применяется при новом запуске; готовые изображения не меняются.</p>
     {season === "winter" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Зимой листопадные породы без листьев, газоны под снегом, объёмная трава не создаётся.</p>}
     {age !== "" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Возраст меняет только размер растений в кадре — по условной модели роста. Проверка норм и экспорт DXF всегда по зрелым размерам.</p>}
     <div className="flex flex-wrap gap-2">

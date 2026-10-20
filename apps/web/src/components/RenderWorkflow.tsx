@@ -4,12 +4,13 @@ import {Btn} from "./ui";
 import {useApp} from "../state/store";
 import {loadIteration} from "../state/actions";
 import {PanoramaPanel,type PanoramaTools} from "./PanoramaPanel";
+export type SceneAppearance={season:import("../viewer/PanoramaViewer").Season;ageYears:number|null};
 export type PhotoCapture={image:string;depth:string;semantic:string;siteBounds:{min:[number,number];max:[number,number]};buildingCount:number;fenceCount?:number;camera:{position:number[];target:number[];fov:number;aspect:number}};
 type Job={jobId?:string;statusUrl:string;imageUrl:string;sourceUrl:string;manifestUrl:string;iterationId?:string|null};
 type Message={role:string;content:string};
 type Progress={state:string;progressPercent?:number;remainingSeconds?:number;queuePosition?:number;message?:string};
 function minutes(seconds:number){return seconds<60?"меньше минуты":`около ${Math.ceil(seconds/60)} мин`;}
-export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChange,onReconstructionChange,reconstructionSettings,panorama}:{panorama:PanoramaTools;reconstructionSettings:{buildingHeightM:number;showFences:boolean};onReconstructionChange:(settings:{buildingHeightM:number;showFences:boolean})=>void;projectId:string;sceneReady:boolean;onAspectChange:(aspect:number|null)=>void;capture:(aspect?:number,longEdge?:number)=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
+export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChange,onReconstructionChange,reconstructionSettings,panorama,appearance,onAppearanceChange}:{appearance:SceneAppearance;onAppearanceChange:(settings:SceneAppearance)=>void;panorama:PanoramaTools;reconstructionSettings:{buildingHeightM:number;showFences:boolean};onReconstructionChange:(settings:{buildingHeightM:number;showFences:boolean})=>void;projectId:string;sceneReady:boolean;onAspectChange:(aspect:number|null)=>void;capture:(aspect?:number,longEdge?:number)=>PhotoCapture;camera:(view:"aerial"|"garden")=>void}){
   const [background,setBackground]=useState("park");
   const [buildingHeight,setBuildingHeight]=useState(reconstructionSettings.buildingHeightM),[showFences,setShowFences]=useState(reconstructionSettings.showFences);
   const resize=usePanelResize("greenplan-render-width",340,"left");
@@ -45,7 +46,7 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
   },[job,key]);
   useEffect(()=>{setResultSize(null);if(!result)return;let stopped=false;void fetch(result.manifestUrl).then(r=>r.ok?r.json():null).then(d=>{if(!stopped&&d)setResultSize(d);}).catch(()=>{});void fetch(result.statusUrl+'/chat').then(r=>r.ok?r.json():[]).then(d=>{if(!stopped)setMessages(d);}).catch(()=>{});return()=>{stopped=true;};},[result]);
   async function generate(){if(!plan)return;setBusy(true);setStatus("Фиксируем план и камеру…");setProgress({state:'QUEUED',progressPercent:1});setDeadline(Date.now()+(resolution>=1024?1200000:420000));
-    try{const input=capture(aspect,resolution>=1024?1280:768);const r=await fetch(`/api/projects/${projectId}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,iterationId:plan.iterationId,lighting,background,strength,seed:42,resolution})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить рендер");setJob(d);}
+    try{const input=capture(aspect,resolution>=1024?1280:768);const r=await fetch(`/api/projects/${projectId}/photos`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...input,iterationId:plan.iterationId,lighting,background,strength,seed:42,resolution,...appearance})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось запустить рендер");setJob(d);}
     catch(e){setBusy(false);setProgress(null);setStatus(e instanceof Error?e.message:String(e));}
   }
   async function refine(){if(!result||!samePlan||!text.trim())return;setSending(true);setStatus("LLM уточняет изменения…");
@@ -55,7 +56,7 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
   return <section ref={panel} style={{"--render-panel-width":`${resize.width}px`} as import("react").CSSProperties} className="relative shrink-0 max-h-[48%] overflow-y-auto border-t border-ink-600 bg-ink-900 px-4 pt-4 pb-20 text-ink-100 md:max-h-full md:w-[var(--render-panel-width)] md:border-l md:border-t-0 md:pb-4" aria-label="Генерация 3D-рендера">
     {resize.handle}
     <h2 className="mb-1 text-sm font-semibold">Настройки рендера</h2>
-    <p className="mb-4 text-xs text-ink-400">Выберите композицию в сцене. Светлая рамка показывает будущий кадр.</p>
+    <p className="mb-4 text-xs text-ink-400">Выберите композицию в сцене. Светлая рамка показывает будущий кадр. Сезон и возраст посадок из 3D-вида применяются к фото и новым панорамам.</p>
     <details className="mb-4 rounded border border-ink-600 p-3 text-xs"><summary className="cursor-pointer font-semibold">Геометрия из CAD</summary><p className="my-2 text-ink-400">Замкнутые контуры зданий → объёмы. Высота из CAD имеет приоритет. Котлованы с замкнутым или пунктирным контуром считаются зданиями; без отметок рельеф остаётся плоским.</p><label>Высота зданий без данных CAD, м<input aria-label="Высота зданий без данных CAD" type="number" min="2" max="200" value={buildingHeight} onChange={e=>setBuildingHeight(Number(e.target.value))} className="my-2 block w-full rounded border border-ink-600 bg-ink-800 p-2"/></label><label className="my-2 flex items-start gap-2"><input type="checkbox" checked={showFences} onChange={e=>setShowFences(e.target.checked)}/>Моделировать ограждения из CAD (условная высота 1,3 м)</label><Btn disabled={busy||sending||!Number.isFinite(buildingHeight)||buildingHeight<2||buildingHeight>200} onClick={()=>onReconstructionChange({buildingHeightM:buildingHeight,showFences})}>Перестроить 3D-сцену</Btn><p className="mt-2 text-ink-400">Не меняет исходный CAD. Для высот и рельефа в старых загрузках сначала нажмите «Обновить импорт».</p></details>
     <fieldset disabled={busy||sending} className="mb-4 grid grid-cols-2 gap-3 text-xs disabled:opacity-60">
       <label className="col-span-2">Пресет<select aria-label="Пресет рендера" value={preset} className="mt-1 block w-full rounded border border-ink-600 bg-ink-800 p-2" onChange={e=>{const v=e.target.value;setPreset(v);if(v==='advertising'){setLighting('sunny');setStrength(.85);}if(v==='natural'){setLighting('daylight');setStrength(.7);}if(v==='evening'){setLighting('evening');setStrength(.8);}}}><option value="advertising">Солнечный · рекламный</option><option value="natural">Естественный · ближе к CAD</option><option value="evening">Вечерний свет</option><option value="custom">Свой вариант</option></select></label>
@@ -79,6 +80,6 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
         <form className="mt-auto flex gap-2" onSubmit={e=>{e.preventDefault();void refine();}}><input aria-label="Пожелание к рендеру" maxLength={1000} value={text} onChange={e=>setText(e.target.value)} disabled={busy||sending||!samePlan} placeholder={samePlan?"Как улучшить результат?":"Сначала создайте рендер выбранного плана"} className="min-w-0 flex-1 rounded border border-ink-600 bg-ink-800 px-3 py-2 text-xs"/><Btn disabled={busy||sending||!samePlan||!text.trim()}>{sending?"LLM…":"Отправить"}</Btn></form>
         <p className="mt-1 text-2xs text-ink-400">{samePlan?"Редактируем результат по сохранённым плану и камере.":"Выбран другой план — сначала создайте для него рендер."}</p>
       </div></div>}
-    <PanoramaPanel projectId={projectId} iterationId={plan?.iterationId} reconstruction={reconstructionSettings} tools={panorama} disabled={!plan||!sceneReady||!!loading||!!moving}/>
+    <PanoramaPanel appearance={appearance} onAppearanceChange={onAppearanceChange} projectId={projectId} iterationId={plan?.iterationId} reconstruction={reconstructionSettings} tools={panorama} disabled={!plan||!sceneReady||!!loading||!!moving}/>
   </section>;
 }

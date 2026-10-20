@@ -262,7 +262,7 @@ export function ViewerCanvas() {
           : "F — вписать · перетаскивание — вращение · правая кнопка — сдвиг · колесо — приближение · выбранную посадку можно перетащить"}
       </div>
     </div>
-    {doc&&viewMode === "3d"&&<RenderWorkflow key={doc.projectId} projectId={doc.projectId} reconstructionSettings={reconstruction} onReconstructionChange={settings=>{setReconstruction(settings);setPreviewStatus("Подготовка геометрии CAD…");mgrRef.current?.setReconstruction(settings);}} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)} panorama={panoramaTools}/>}
+    {doc&&viewMode === "3d"&&<RenderWorkflow appearance={{season,ageYears:plantAge}} onAppearanceChange={settings=>{setSeason(settings.season);setAgeStop(AGE_STOPS.findIndex(age=>age===settings.ageYears));}} key={doc.projectId} projectId={doc.projectId} reconstructionSettings={reconstruction} onReconstructionChange={settings=>{setReconstruction(settings);setPreviewStatus("Подготовка геометрии CAD…");mgrRef.current?.setReconstruction(settings);}} onAspectChange={setRenderAspect} sceneReady={previewStatus.startsWith("Макет CAD")} capture={(aspect,longEdge)=>{if(!mgrRef.current)throw Error("Сцена недоступна");return mgrRef.current.capturePhotoInput(aspect,longEdge);}} camera={view=>mgrRef.current?.setPresentationCamera(view)} panorama={panoramaTools}/>}
     </div>
   );
 }
