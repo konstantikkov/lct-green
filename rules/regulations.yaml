@@ -59,7 +59,10 @@
 #   NOT MODELLED — table 9.1 rows whose obstacle category does not exist in
 #   models/ir.py Category yet. Recorded with full citation, enabled: false,
 #   so the registry is normatively complete without pretending to enforce:
-#     трамвайное полотно, подошва откоса, подпорная стенка, ЛКС ТМК.
+#     трамвайное полотно, подошва откоса, ЛКС ТМК.
+#   2026-10-20 — подпорная стенка modelled (RETAINING_WALL), tree 3,0 / shrub
+#   1,0 enabled; TREE_OVER_UNDERGROUND_PARKING added as a project decision
+#   (outside_area, safe_buffer): no trees over an underground car park slab.
 #   2026-09-27 — merged onto Iteration 5: base structure (role, condition,
 #   VISIBILITY_TRIANGLE_NO_TALL_PLANTS) kept from Iteration 5; the table 9.1
 #   note-1 crown limit is expressed as condition.crown_diameter_max_m.
@@ -815,7 +818,7 @@ rules:
     role: regulatory
     note: Категория SLOPE_TOE не реализована в классификаторе — правило выключено.
   - id: TREE_RETAINING_WALL_MIN_DISTANCE
-    enabled: false
+    enabled: true
     applies_to: {planting_type: [TREE], obstacle_type: [RETAINING_WALL]}
     constraint: {type: min_distance, distance_m: 3.0, units: m}
     condition: {crown_diameter_max_m: 5.0}
@@ -839,7 +842,44 @@ rules:
     status: verified
     severity: hard
     role: regulatory
-    note: Категория RETAINING_WALL не реализована в классификаторе — правило выключено.
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено. Слои подпорных стенок («Подпорная стенка») классифицируются как RETAINING_WALL; замкнутый контур стенки измеряется как линия."
+
+  - id: SHRUB_RETAINING_WALL_MIN_DISTANCE
+    enabled: true
+    applies_to: {planting_type: [SHRUB], obstacle_type: [RETAINING_WALL]}
+    constraint: {type: min_distance, distance_m: 1.0, units: m}
+    condition: {crown_diameter_max_m: 5.0}
+    source: {document: sp_42_13330_2016, clause: 'п. 9.6, таблица 9.1', title: "Расстояние от подошвы/внутренней грани подпорной стенки до кустарника", url: dataset/госты/Приказ Минстроя РФ от 30.12.2016 N 1034ПР Об утверждении СП 42.13330 СНиП 2.07.01-89.pdf#page=52, excerpt: 'Подошва или внутренняя грань подпорной стенки — 1,0 (до кустарника)'}
+    also_cited:
+      - document: ppm_743_2002
+        clause: п. 3.6.3, таблица 3.6.1
+        url: dataset/госты/743-ПП.pdf#page=28
+        excerpt: Подошва и внутренняя грань подпорных стенок — 3,0 (дерево) / 1,0 (кустарник)
+        relation: same_value
+      - document: ppm_623
+        clause: п. 4.2.4
+        url: dataset/госты/623-ПП.pdf#page=10
+        excerpt: '4.2.4. При проектировании озеленения следует обеспечивать: минимальные расстояния посадок деревьев и кустарников до инженерных сетей, зданий и сооружений (табл. 7.6 МГСН 1.01-99)'
+        relation: reference
+    status: verified
+    severity: hard
+    role: regulatory
+    note: "табл. 9.1 применима к деревьям с кроной ≤5 м; для больших крон расстояние должно быть увеличено"
+    assumption:
+
+  - id: TREE_OVER_UNDERGROUND_PARKING
+    enabled: true
+    applies_to: {planting_type: [TREE], obstacle_type: [UNDERGROUND_PARKING]}
+    constraint: {type: outside_area, units: m}
+    source:
+      document: Решение проекта
+      clause:
+      title: "Деревья не размещаются над подземным паркингом"
+    status: verified   # project decision on the drawing's geometry, not a legal citation
+    severity: hard
+    role: safe_buffer
+    note: "Решение проекта: толщина грунта на плите подземного паркинга в чертеже не задана, поэтому деревья над ним не размещаются; кустарники допускаются. Не правовая норма — нарушение исправляется, но на нормативный статус не влияет."
+    assumption:
   - id: TREE_LKS_TMK_MIN_DISTANCE
     enabled: false
     applies_to: {planting_type: [TREE], obstacle_type: [UTILITY_LKS_TMK]}

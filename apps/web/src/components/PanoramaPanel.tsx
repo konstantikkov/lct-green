@@ -3,6 +3,7 @@ import { Btn } from "./ui";
 import { PanoramaViewer, panoramaConditions, type Panorama } from "../viewer/PanoramaViewer";
 import type { SceneAppearance } from "./RenderWorkflow";
 import type { PanoramaMarker } from "../viewer/SceneManager";
+import type { ReconstructionSettings } from "../viewer/blenderPreview";
 
 export type PanoramaTools = {
   viewpoint: () => { x: number; y: number; heading: number } | null;
@@ -18,7 +19,7 @@ const minutes = (s: number) => (s < 60 ? "меньше минуты" : `~${Math.
 export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, disabled, appearance, active:tabActive }: {
   appearance:SceneAppearance;active:boolean;
   projectId: string; iterationId?: string; disabled: boolean;
-  reconstruction: { buildingHeightM: number; showFences: boolean }; tools: PanoramaTools;
+  reconstruction: ReconstructionSettings; tools: PanoramaTools;
 }) {
   const [items, setItems] = useState<Panorama[]>([]);
   const [point, setPoint] = useState<{ x: number; y: number; heading: number } | null>(null);

@@ -1144,7 +1144,7 @@ def get_render_image(pid: str, jid: str):
 
 
 class ReconstructionSettings(BaseModel):
-    excavationsAsBuildings:bool=True
+    excavationsAsBuildings:bool=False
     buildingHeightM:float=Field(default=9,ge=2,le=200,allow_inf_nan=False)
     showFences:bool=False
 

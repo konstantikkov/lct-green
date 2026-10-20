@@ -27,6 +27,10 @@ def scene_data(doc, iteration, options=None):
         if e.attributes.get('vertices3D'):continue
         if cat not in {"BUILDING", "ROAD", "SIDEWALK", "PARKING", "GREEN_AREA"}:
             continue
+        # a route (pedestrian movement line) is a centre line: it is not a
+        # surface and bounds none, even when drawn as a closed loop
+        if (li.classification.matchedKeyword or '').startswith('route:'):
+            continue
         if e.kind != "polygon" and not (e.kind=="polyline" and e.geometry.get("closed")):
             if e.kind == 'polyline':
                 from shapely.geometry import LineString
@@ -54,10 +58,17 @@ def scene_data(doc, iteration, options=None):
                          "height": e.attributes.get("heightM", 12)})
     # CAD boundaries often consist of separate LINE objects, not closed polylines.
     # Reconstruct only closed cycles; do not invent footprints for open lines.
+    from shapely import STRtree
+    from shapely.geometry import Polygon
     from shapely.ops import polygonize, unary_union, triangulate
+    # A cycle of edge lines encloses a pavement only when no building or lawn
+    # is drawn inside it: a fire-route edge looping round a courtyard (or a
+    # road ring round a lawn island) does not pave what it encloses.
+    enclosed=STRtree([unary_union([Polygon(t) for t in s['triangles']]).representative_point()
+                      for s in surfaces if s['category'] in ('BUILDING','GREEN_AREA')])
     for (layer, category), lines in surface_lines.items():
         for poly in polygonize(unary_union(lines)):
-            if poly.area < .5:
+            if poly.area < .5 or len(enclosed.query(poly, predicate='contains')):
                 continue
             faces = [list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
             surfaces.append({'category':category, 'layer':layer, 'triangles':faces,'height':12})

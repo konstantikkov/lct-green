@@ -60,10 +60,25 @@ def test_unit_conversion_mm():
     from app.services.dxf_parser import _guess_units
     units, scale, note = _guess_units(0, 150000)
     assert scale == 0.001 and "mm" in units
-    units, scale, _ = _guess_units(4, 100)
+    units, scale, _ = _guess_units(4, 150000)
     assert scale == 0.001
     units, scale, _ = _guess_units(6, 100)
     assert scale == 1.0
+
+
+def test_mm_header_on_a_plan_drawn_in_meters():
+    """236285.dxf: $INSUNITS=mm, but the plan spans 580 units — in mm the
+    whole site would be 0.6 m across, so the drawing is in meters."""
+    from app.services.dxf_parser import _guess_units
+    units, scale, note = _guess_units(4, 582)
+    assert scale == 1.0 and "mm" in units and "assumed meters" in note
+    # a real millimeter plan of a 150 m site stays in millimeters
+    assert _guess_units(4, 150000)[1] == 0.001
+    # 236287.dxf: one stray object at the origin stretches the span to 9180
+    # units, the plan itself spans 600 — still meters
+    assert _guess_units(4, 9180, core_span=600)[1] == 1.0
+    # a genuine 10 m drawing in millimeters stays in millimeters
+    assert _guess_units(4, 10000, core_span=10000)[1] == 0.001
 
 
 # ---- classification ---------------------------------------------------------
@@ -151,6 +166,55 @@ def test_vodootvod_is_a_drain_not_a_boundary():
     # the land-allocation sense must still resolve to a boundary
     assert classification.classify_layer_name("Отвод земель").category == "SITE_BOUNDARY"
     assert classification.classify_layer_name("Граница отвода").category == "SITE_BOUNDARY"
+
+
+@pytest.mark.parametrize("layer,expected", [
+    # "К1"/"К2" after another subject is the building (корпус), not the
+    # sewer network (СПОЗУ АГР АПР К2 and its xref "К1 СПОЗУ")
+    ("ГП озеленение К2", "GREEN_AREA"),
+    ("_ГП МАФ К1", "ANNOTATION"),
+    ("ГП здание к2", "BUILDING"),
+    ("К1 СПОЗУ|_Покрытия_газон", "GREEN_AREA"),
+    ("К1 СПОЗУ|ГП Автомобильный проезд", "ROAD"),
+    # alone or with a network word it is still the sewer
+    ("К2", "UTILITY_SEWER"),
+    ("Сети К2", "UTILITY_SEWER"),
+    ("Ливневка К2", "UTILITY_SEWER"),
+    # vehicle traffic-scheme arrows lie over the drawn driveways
+    ("ГП линия движения легкового транспорта", "ANNOTATION"),
+    ("_ГП_Направление движения пож техники", "ANNOTATION"),
+    # a pedestrian route stands in for a path the drawing may not hold
+    ("ГП линия движения пешеходов", "SIDEWALK"),
+    ("ГП линия движения мгн", "SIDEWALK"),
+    # coordinate call-outs are labels, not the boundary or the road
+    ("1КООРДИНАТЫ_граница_значения", "ANNOTATION"),
+    ("_ГП 2 оч Координаты проезды", "ANNOTATION"),
+    ("Координаты участка ГПЗУ", "ANNOTATION"),
+    # walls and transliterated topographic layers
+    ("Стены", "BUILDING"),
+    ("Общий план для подложки|Стены наружные", "BUILDING"),
+    ("Подпорная стенка", "RETAINING_WALL"),
+    ("ГП паркинг (покрытия)", "UNDERGROUND_PARKING"),
+    ("_ГП_контур паркинга", "UNDERGROUND_PARKING"),
+    ("Подземная автостоянка", "UNDERGROUND_PARKING"),
+    ("Парковка", "PARKING"),
+    ("Жилое", "BUILDING"),
+    ("1входы нежилые", "UNKNOWN"),
+    ("DOM", "BUILDING"),
+    ("DOROGA", "CURB"),
+    ("ZABOR", "FENCE"),
+    ("2.Резиновая крошка", "SIDEWALK"),
+    ("random_layer", "UNKNOWN"),
+    # an underground parking carries planting on its slab: not a car park
+    ("ГП_мульча_под_кустарники_над паркингом", "EXISTING_SHRUB"),
+])
+def test_corpus_suffix_and_traffic_scheme_layers(layer, expected):
+    assert classification.classify_layer_name(layer).category == expected
+
+
+def test_pedestrian_route_is_a_centre_line():
+    cls = classification.classify_layer_name("ГП линия движения пешеходов")
+    assert cls.matchedKeyword.startswith("route:")
 
 
 def test_uncertainty_not_hidden():
@@ -286,9 +350,9 @@ def test_existing_tree_buffer_is_not_a_citation():
 def test_unmodelled_categories_are_documented_but_disabled():
     """Table rows we cannot classify yet are cited, disabled, and never silent."""
     reg = load_registry()
+    # (подпорная стенка is modelled since 2026-10-20: tests/test_slab_and_walls.py)
     for rule_id in ("TREE_TRAM_TRACK_MIN_DISTANCE", "TREE_SLOPE_TOE_MIN_DISTANCE",
-                    "TREE_RETAINING_WALL_MIN_DISTANCE", "TREE_LKS_TMK_MIN_DISTANCE",
-                    "TREE_SCHOOL_BUILDING_MIN_DISTANCE"):
+                    "TREE_LKS_TMK_MIN_DISTANCE", "TREE_SCHOOL_BUILDING_MIN_DISTANCE"):
         r = reg.get(rule_id)
         assert r is not None, rule_id
         assert r.enabled is False, rule_id

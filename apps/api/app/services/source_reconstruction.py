@@ -77,42 +77,14 @@ def excavation_buildings(doc, surfaces, options):
     Close only mutual-nearest short gaps; never use a bounding box/convex hull.
     Accept only closed cycles containing an excavation label.
     """
-    if not options.get('excavationsAsBuildings',True):return []
-    from collections import Counter
-    from shapely.geometry import LineString,Point,Polygon
-    from shapely.ops import polygonize,unary_union,triangulate
+    if not options.get('excavationsAsBuildings',False):return []
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union,triangulate
+    from .geometry import EXCAVATION_GAP_M,excavation_footprints
     result=[]
-    for layer in doc.layers:
-        entities=[e for e in doc.entities if e.layer==layer.name]
-        labels=[e for e in entities if e.kind=='text' and 'КОТЛОВАН' in e.geometry.get('text','').upper()]
-        if not labels:continue
-        lines=[LineString(e.geometry['points']) for e in entities if e.kind=='polyline' and len(e.geometry.get('points',[]))>=2]
-        if not lines:continue
-        endpoints=[tuple(round(v,6) for v in p) for line in lines for p in (line.coords[0],line.coords[-1])]
-        counts=Counter(endpoints);ends=[p for p in counts if counts[p]==1]
-        outward={}
-        for line in lines:
-            coords=list(line.coords)
-            for p,q in [(coords[0],coords[1]),(coords[-1],coords[-2])]:
-                length=math.dist(p,q)
-                if length>1e-8:outward[tuple(round(v,6) for v in p)]=((p[0]-q[0])/length,(p[1]-q[1])/length)
-        def aligned(p,q):
-            length=math.dist(p,q)
-            if length<1e-8 or length>.65:return False
-            dx,dy=(q[0]-p[0])/length,(q[1]-p[1])/length
-            a,b=outward.get(p,(0,0)),outward.get(q,(0,0))
-            return a[0]*dx+a[1]*dy>.05 and -b[0]*dx-b[1]*dy>.05
-        # Spatial lookup avoids quadratic scans on dense topographic packages.
-        from shapely import STRtree
-        tree=STRtree([Point(p) for p in ends]);nearest={}
-        for i,p in enumerate(ends):
-            candidates=[int(j) for j in tree.query(Point(p).buffer(.65)) if int(j)!=i and aligned(p,ends[int(j)])]
-            if candidates:nearest[i]=min(candidates,key=lambda j:math.dist(p,ends[j]))
-        bridges=[LineString([ends[i],ends[j]]) for i,j in nearest.items() if i<j and nearest.get(j)==i]
-        for poly in polygonize(unary_union(lines+bridges)):
-            if poly.area<1 or not any(poly.covers(Point(e.geometry['position'])) for e in labels):continue
-            if any(s['category']=='BUILDING' and unary_union([Polygon(t) for t in s['triangles']]).covers(poly.representative_point()) for s in surfaces):continue
-            triangles=[list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
-            result.append({'category':'BUILDING','layer':layer.name,'triangles':triangles,
-                'interpretation':'excavation-as-building (user setting)','gapToleranceM':.65})
+    for layer,poly,_label in excavation_footprints(doc):
+        if any(s['category']=='BUILDING' and unary_union([Polygon(t) for t in s['triangles']]).covers(poly.representative_point()) for s in surfaces):continue
+        triangles=[list(t.exterior.coords)[:3] for t in triangulate(poly) if poly.covers(t)]
+        result.append({'category':'BUILDING','layer':layer,'triangles':triangles,
+            'interpretation':'excavation-as-building (user setting)','gapToleranceM':EXCAVATION_GAP_M})
     return result

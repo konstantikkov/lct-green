@@ -75,6 +75,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   ACCESS_ROUTE: "Пожарный проезд",
   FENCE: "Ограждение",
   LIGHTING: "Опора освещения",
+  RETAINING_WALL: "Подпорная стенка",
+  UNDERGROUND_PARKING: "Подземный паркинг",
   ANNOTATION: "Аннотации",
   UNKNOWN: "Не распознано",
   SPECIES_CROWN: "Крона породы",

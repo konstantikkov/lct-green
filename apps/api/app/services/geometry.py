@@ -101,7 +101,7 @@ def _hatch_area(rings: list, e: IREntity, repair_log: list[str] | None) -> BaseG
 
 def _linear_categories() -> set[str]:
     from ..models.ir import UTILITY_CATEGORIES
-    return {"CURB", "FENCE"} | UTILITY_CATEGORIES
+    return {"CURB", "FENCE", "RETAINING_WALL"} | UTILITY_CATEGORIES
 
 
 def build_geometry_index(doc: CadDocument) -> GeometryIndex:
@@ -128,7 +128,107 @@ def build_geometry_index(doc: CadDocument) -> GeometryIndex:
         idx.repair_log.append(f"{outlines} closed outline(s) of curbs, fences or networks "
                               "taken as lines, not areas")
     link_power_line_symbols(idx)
+    add_excavation_buildings(doc, idx)
     return idx
+
+
+EXCAVATION_GAP_M = 0.65  # longest dash gap closed when tracing an excavation outline
+
+
+def excavation_footprints(doc: CadDocument) -> list[tuple[str, Polygon, IREntity]]:
+    """Outlines of labelled excavations: (layer, footprint, «КОТЛОВАН» label).
+
+    A pit drawn on a general plan is the footprint of the building to come;
+    it is often a dashed linetype exploded into short pieces. Only
+    mutual-nearest gaps up to EXCAVATION_GAP_M along the dashes' own
+    direction are closed — never a bounding box or convex hull — and only
+    closed cycles holding a «КОТЛОВАН» label of the same layer count.
+    Shared by the 3D scene and the placement constraints so both see the
+    same building."""
+    import math
+    from collections import Counter
+
+    from shapely import STRtree
+    from shapely.ops import polygonize
+
+    by_layer: dict[str, list[IREntity]] = {}
+    for e in doc.entities:
+        by_layer.setdefault(e.layer, []).append(e)
+    result = []
+    for layer in doc.layers:
+        entities = by_layer.get(layer.name, [])
+        labels = [e for e in entities if e.kind == "text"
+                  and "КОТЛОВАН" in e.geometry.get("text", "").upper()]
+        if not labels:
+            continue
+        lines = [LineString(e.geometry["points"]) for e in entities
+                 if e.kind == "polyline" and len(e.geometry.get("points", [])) >= 2]
+        if not lines:
+            continue
+        endpoints = [tuple(round(v, 6) for v in p) for line in lines
+                     for p in (line.coords[0], line.coords[-1])]
+        counts = Counter(endpoints)
+        ends = [p for p in counts if counts[p] == 1]
+        outward = {}
+        for line in lines:
+            coords = list(line.coords)
+            for p, q in [(coords[0], coords[1]), (coords[-1], coords[-2])]:
+                length = math.dist(p, q)
+                if length > 1e-8:
+                    outward[tuple(round(v, 6) for v in p)] = ((p[0] - q[0]) / length,
+                                                             (p[1] - q[1]) / length)
+
+        def aligned(p, q):
+            length = math.dist(p, q)
+            if length < 1e-8 or length > EXCAVATION_GAP_M:
+                return False
+            dx, dy = (q[0] - p[0]) / length, (q[1] - p[1]) / length
+            a, b = outward.get(p, (0, 0)), outward.get(q, (0, 0))
+            return a[0] * dx + a[1] * dy > .05 and -b[0] * dx - b[1] * dy > .05
+        # spatial lookup avoids quadratic scans on dense topographic packages
+        tree = STRtree([Point(p) for p in ends])
+        nearest = {}
+        for i, p in enumerate(ends):
+            candidates = [int(j) for j in tree.query(Point(p).buffer(EXCAVATION_GAP_M))
+                          if int(j) != i and aligned(p, ends[int(j)])]
+            if candidates:
+                nearest[i] = min(candidates, key=lambda j: math.dist(p, ends[j]))
+        bridges = [LineString([ends[i], ends[j]]) for i, j in nearest.items()
+                   if i < j and nearest.get(j) == i]
+        for poly in polygonize(unary_union(lines + bridges)):
+            if poly.area < 1:
+                continue
+            label = next((e for e in labels if poly.covers(Point(e.geometry["position"]))), None)
+            if label is not None:
+                result.append((layer.name, poly, label))
+    return result
+
+
+def add_excavation_buildings(doc: CadDocument, idx: GeometryIndex) -> int:
+    """Labelled excavations become derived BUILDING entities, whatever their
+    layer is classified as: nothing is planted in the pit of a building to
+    come, and the building setback is measured from its outline — the same
+    footprint the 3D scene raises as a building. Outlines already covered by
+    a classified building are skipped. The drawing is not changed.
+    Returns the number of footprints added."""
+    existing = [g for _, g in idx.geoms_for(["BUILDING"])
+                if g.geom_type in ("Polygon", "MultiPolygon")]
+    added = 0
+    for layer, poly, label in excavation_footprints(doc):
+        if any(g.covers(poly.representative_point()) for g in existing):
+            continue
+        eid = f"{label.id}~excavation{added}"
+        idx.by_entity[eid] = poly
+        idx.entity_meta[eid] = IREntity(id=eid, type="EXCAVATION", layer=layer, kind="polygon",
+                                        geometry={"points": [list(c) for c in poly.exterior.coords],
+                                                  "closed": True},
+                                        attributes={"derived": "excavation_building"})
+        idx.by_category.setdefault("BUILDING", []).append(eid)
+        added += 1
+    if added:
+        idx.repair_log.append(f"excavations: {added} outline(s) labelled «котлован» taken as "
+                              "building footprints (nothing is planted in the pit)")
+    return added
 
 
 POWER_SYMBOL_MAX_M = 6.0     # a support symbol: 2.5 m stroke + 1 m arrow

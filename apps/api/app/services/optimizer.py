@@ -68,7 +68,8 @@ class PlantSpec:
 def hard_filter_candidates(cands: list[Candidate], kind: str,
                            registry: RuleRegistry, oracle: RuleDistanceOracle,
                            species_id: str | None = None) -> None:
-    """Marks candidates invalid when any effective hard min_distance rule fails.
+    """Marks candidates invalid when any effective hard min_distance rule fails
+    or the candidate lies inside an area of a hard outside_area rule.
 
     `species_id` adds the species-specific rules (e.g. 623-ПП п. 4.2.8 heat-main
     setbacks per genus); without it only kind-level rules are checked."""
@@ -76,6 +77,8 @@ def hard_filter_candidates(cands: list[Candidate], kind: str,
              for r in registry.rules_for(kind, {"min_distance"}, species_id=species_id)
              if r.severity == "hard"]
     rules = [(r, d) for r, d in rules if d is not None]
+    areas = [r for r in registry.rules_for(kind, {"outside_area"}, species_id=species_id)
+             if r.severity == "hard" and r.effective_source != "inactive"]
     for c in cands:
         if not c.valid:
             continue
@@ -86,6 +89,12 @@ def hard_filter_candidates(cands: list[Candidate], kind: str,
                 c.valid = False
                 c.rejected_by = rule.id
                 break
+        else:
+            for rule in areas:
+                if oracle.covering_area(rule.appliesTo.get("obstacle_type", []), pt)[1]:
+                    c.valid = False
+                    c.rejected_by = rule.id
+                    break
 
 
 def _local_density_scorer(cands: list[Candidate], radius: float):

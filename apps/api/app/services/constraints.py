@@ -47,6 +47,9 @@ class ExclusionZone:
     effectiveSource: str  # verified | assumption
     geometry: BaseGeometry
     source: dict = field(default_factory=dict)
+    # binds only its rule's planting kinds, so it is not cut from the common
+    # allowed area (trees over an underground car park; shrubs stay)
+    perKind: bool = False
 
     def to_api(self) -> dict:
         rings = polygon_to_rings(self.geometry)
@@ -57,6 +60,7 @@ class ExclusionZone:
             "polygon": rings[0] if rings else {"shell": [], "holes": []},
             "polygons": rings,
             "source": self.source,
+            "perKind": self.perKind,
         }
 
 
@@ -391,6 +395,27 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                             distanceM=dist, effectiveSource=rule.effective_source,
                             geometry=g.buffer(dist, resolution=6), source=src))
 
+    # outside_area rules: the areas themselves are the zones, kept per planting
+    # kind — the hard filter and the validator enforce them kind by kind
+    for ptype in planting_types:
+        for rule in registry.rules_for(ptype, {"outside_area"}):
+            if rule.id in seen_rules or rule.effective_source == "inactive":
+                continue
+            seen_rules.add(rule.id)
+            src = {"document": rule.source.document, "clause": rule.source.clause,
+                   "title": rule.source.title, "status": rule.status}
+            for cat in rule.appliesTo.get("obstacle_type", []):
+                for eid in idx.by_category.get(cat, []):
+                    g = idx.by_entity[eid]
+                    if g.geom_type not in ("Polygon", "MultiPolygon"):
+                        continue
+                    zone_seq += 1
+                    zones.append(ExclusionZone(
+                        id=f"excl_{zone_seq}", ruleId=rule.id, generatedFrom=eid,
+                        sourceLayer=idx.entity_meta[eid].layer, obstacleCategory=cat,
+                        distanceM=0.0, effectiveSource=rule.effective_source,
+                        geometry=g, source=src, perKind=True))
+
     # visibility triangles at road-road crossings (assumption-labeled): join
     # exclusion zones so generation avoids them; the validator re-checks them
     vis_zones = build_visibility_zones(idx, registry, zone_seq)
@@ -425,7 +450,7 @@ def build_constraints(doc: CadDocument, idx: GeometryIndex, registry: RuleRegist
                 subtract.append(g)
             else:
                 subtract.append(g.buffer(0.3))  # linear footprint gets nominal width
-    subtract.extend(z.geometry for z in zones)
+    subtract.extend(z.geometry for z in zones if not z.perKind)
 
     allowed: BaseGeometry = domain if domain is not None else Polygon()
     if subtract and not allowed.is_empty:

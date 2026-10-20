@@ -97,6 +97,20 @@ class RuleDistanceOracle:
         i = int(tree.nearest(p))
         return float(p.distance(geoms[i])), ids[i]
 
+    def covering_area(self, cats: list[str], p: Point) -> tuple[bool, str | None]:
+        """For outside_area rules: (any area of `cats` in the drawing, id of
+        the area covering `p` or None). Lines bound no area and are ignored."""
+        entry = self._tree_for(frozenset(cats))
+        if entry is None:
+            return False, None
+        tree, geoms, ids = entry
+        for i in tree.query(p):
+            g = geoms[int(i)]
+            if g.geom_type in ("Polygon", "MultiPolygon") and g.covers(p):
+                return True, ids[int(i)]
+        present = any(g.geom_type in ("Polygon", "MultiPolygon") for g in geoms)
+        return present, None
+
 
 def condition_confirmed(rule, placement: Placement) -> bool:
     """True when every applicability condition of the rule is confirmed for
@@ -299,6 +313,27 @@ def validate_plan(placements: list[Placement], idx: GeometryIndex,
                                             or stands_in_for_norm)
             tally.record(status, hard=counts_as_hard, rule_id=rule.id,
                          verified_passable=verified_passable)
+
+        # --- outside_area rules: not inside an area (trees over an
+        # underground car park). A project decision, not a norm, counts in
+        # the verdict only when violated — like a safe buffer -------------
+        for rule in registry.rules_for(p.kind, {"outside_area"}, species_id=p.speciesId):
+            if rule.effective_source == "inactive":
+                continue
+            present, inside_id = oracle.covering_area(rule.appliesTo.get("obstacle_type", []), pt)
+            if not present:
+                tally.record("NOT_APPLICABLE", hard=False, rule_id=rule.id,
+                             verified_passable=False)
+                continue
+            regulatory = rule.role == "regulatory"
+            if inside_id is not None:
+                hard.append({"plantingId": p.id, "ruleId": rule.id,
+                             "actual": 0.0, "requiredM": 0.0, "obstacle": inside_id})
+                tally.record("FAIL", hard=True, rule_id=rule.id,
+                             verified_passable=regulatory)
+            else:
+                tally.record("PASS" if regulatory else "UNVERIFIED", hard=regulatory,
+                             rule_id=rule.id, verified_passable=regulatory)
 
         # --- inside-site check ----------------------------------------------
         if inside_rule is not None:

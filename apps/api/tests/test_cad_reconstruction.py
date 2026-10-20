@@ -75,13 +75,83 @@ def test_excavation_dashes_become_building_only_when_labelled(tmp_path):
     for x in [0,9.6]:cad.modelspace().add_line((x,0),(x,10),dxfattribs={'layer':'arbitrary-1'})
     cad.modelspace().add_text('КОТЛОВАН',dxfattribs={'insert':(2,2),'layer':'arbitrary-1'})
     doc=parse(cad,tmp_path);before=doc.model_dump()
-    scene=scene_data(doc,{'placements':[]})
+    scene=scene_data(doc,{'placements':[]},{'excavationsAsBuildings':True})
     assert len(scene['surfaces'])==1
     assert scene['surfaces'][0]['category']=='BUILDING'
     assert scene['surfaces'][0]['interpretation'].startswith('excavation-as-building')
     assert scene['surfaces'][0]['height']==9
-    assert not scene_data(doc,{'placements':[]},{'excavationsAsBuildings':False})['surfaces']
+    # off by default: a pit is shown as a building only on request
+    assert not scene_data(doc,{'placements':[]})['surfaces']
     assert doc.model_dump()==before
+
+
+def test_excavation_is_a_building_for_placement_too(tmp_path):
+    """The 3D scene raises a labelled pit as a building; the constraints must
+    see the same footprint, or trees are planted inside the 3D building."""
+    from shapely.geometry import Point
+    from app.services.geometry import build_geometry_index
+    cad=drawing(tmp_path);cad.layers.new('ГП котлован')
+    for y in [0,10]:
+        for x in range(10):cad.modelspace().add_line((x,y),(x+.6,y),dxfattribs={'layer':'ГП котлован'})
+    for x in [0,9.6]:cad.modelspace().add_line((x,0),(x,10),dxfattribs={'layer':'ГП котлован'})
+    cad.modelspace().add_text('КОТЛОВАН',dxfattribs={'insert':(2,2),'layer':'ГП котлован'})
+    doc=parse(cad,tmp_path)
+    assert doc.layer_map()['ГП котлован'].classification.category=='UNKNOWN'
+    idx=build_geometry_index(doc)
+    buildings=idx.geoms_for(['BUILDING'])
+    assert len(buildings)==1
+    assert buildings[0][1].covers(Point(5,5)) and abs(buildings[0][1].area-96)<1
+    assert idx.entity_meta[buildings[0][0]].layer=='ГП котлован'
+    scene=scene_data(doc,{'placements':[]},{'excavationsAsBuildings':True})
+    assert [s['layer'] for s in scene['surfaces']]==['ГП котлован']
+    # hidden in 3D by default, still a building for placement
+    assert not scene_data(doc,{'placements':[]})['surfaces']
+
+
+def test_unlabelled_dashes_are_not_a_building_for_placement(tmp_path):
+    from app.services.geometry import build_geometry_index
+    cad=drawing(tmp_path);cad.layers.new('ГП котлован')
+    for y in [0,10]:
+        for x in range(10):cad.modelspace().add_line((x,y),(x+.6,y),dxfattribs={'layer':'ГП котлован'})
+    for x in [0,9.6]:cad.modelspace().add_line((x,0),(x,10),dxfattribs={'layer':'ГП котлован'})
+    assert not build_geometry_index(parse(cad,tmp_path)).geoms_for(['BUILDING'])
+
+
+def _edge_loop_around(tmp_path,inner_category):
+    """Road edge drawn as open lines looping round a 20×20 m yard; a 4×4 m
+    closed outline of `inner_category` inside it (None: nothing inside)."""
+    cad=drawing(tmp_path);cad.layers.new('ГП пожарный проезд');cad.layers.new('inner')
+    msp=cad.modelspace()
+    msp.add_lwpolyline([(0,0),(20,0),(20,20)],dxfattribs={'layer':'ГП пожарный проезд'})
+    msp.add_lwpolyline([(20,20),(0,20),(0,0)],dxfattribs={'layer':'ГП пожарный проезд'})
+    if inner_category:msp.add_lwpolyline([(8,8),(12,8),(12,12),(8,12)],close=True,dxfattribs={'layer':'inner'})
+    doc=parse(cad,tmp_path)
+    for layer in doc.layers:
+        if layer.name=='ГП пожарный проезд':layer.classification=LayerClassification(category='ROAD',source='user',requiresReview=False)
+        if layer.name=='inner' and inner_category:layer.classification=LayerClassification(category=inner_category,source='user',requiresReview=False)
+    return scene_data(doc,{'placements':[]})
+
+
+def test_edge_loop_round_a_courtyard_is_not_paved(tmp_path):
+    for inner in ('GREEN_AREA','BUILDING'):
+        roads=[s for s in _edge_loop_around(tmp_path,inner)['surfaces'] if s['category']=='ROAD']
+        assert not roads,inner
+
+
+def test_edge_loop_with_nothing_inside_is_still_paved(tmp_path):
+    from shapely.geometry import Polygon
+    roads=[s for s in _edge_loop_around(tmp_path,None)['surfaces'] if s['category']=='ROAD']
+    assert len(roads)==1 and abs(sum(Polygon(t).area for t in roads[0]['triangles'])-400)<1e-6
+
+
+def test_pedestrian_route_loop_is_not_paved(tmp_path):
+    cad=drawing(tmp_path);cad.layers.new('ГП линия движения пешеходов')
+    cad.modelspace().add_lwpolyline([(0,0),(20,0),(20,20),(0,20),(0,0)],dxfattribs={'layer':'ГП линия движения пешеходов'})
+    doc=parse(cad,tmp_path)
+    from app.services.classification import classify_layer_name
+    for layer in doc.layers:
+        if layer.name=='ГП линия движения пешеходов':layer.classification=classify_layer_name(layer.name)
+    assert not scene_data(doc,{'placements':[]})['surfaces']
 
 
 def test_proposed_lawn_surfaces_match_stored_polygon_holes(tmp_path):
@@ -104,7 +174,7 @@ def test_excavation_dash_repair_does_not_cut_across_corner(tmp_path):
         dx,dy=(b[0]-a[0])/10,(b[1]-a[1])/10
         for lo,hi in spans:cad.modelspace().add_line((a[0]+dx*lo,a[1]+dy*lo),(a[0]+dx*hi,a[1]+dy*hi),dxfattribs={'layer':'arbitrary-1'})
     cad.modelspace().add_text('КОТЛОВАН',dxfattribs={'insert':(5,5),'layer':'arbitrary-1'})
-    scene=scene_data(parse(cad,tmp_path),{'placements':[]})
+    scene=scene_data(parse(cad,tmp_path),{'placements':[]},{'excavationsAsBuildings':True})
     from shapely.geometry import Polygon
     assert len(scene['surfaces'])==1
     assert abs(sum(Polygon(t).area for t in scene['surfaces'][0]['triangles'])-100)<1e-6

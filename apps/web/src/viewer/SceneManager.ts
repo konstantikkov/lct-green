@@ -7,7 +7,7 @@ import { scaleAt } from "./growth";
 import { seasonTint } from "./season";
 import type { Season } from "./PanoramaViewer";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
-import { buildEditablePreview, downloadSourceModel, type EditablePreview } from "./blenderPreview";
+import { buildEditablePreview, downloadSourceModel, DEFAULT_RECONSTRUCTION, type EditablePreview, type ReconstructionSettings } from "./blenderPreview";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import {RenderFilterPipeline,DEFAULT_FILTERS,type RenderFilters} from "./renderFilters";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -698,7 +698,7 @@ export class SceneManager {
     this.invalidate();
   }
 
-  private reconstruction={buildingHeightM:9,showFences:false};
+  private reconstruction:ReconstructionSettings=DEFAULT_RECONSTRUCTION;
   private plantAge: number | null = null;
   private season: Season = "summer";
   private speciesById = new Map<string, SpeciesInfo>();
@@ -751,7 +751,7 @@ export class SceneManager {
     this.invalidate(true);
   }
 
-  setReconstruction(settings:{buildingHeightM:number;showFences:boolean}) {this.reconstruction=settings;this.massingDirty=true;if(this.mode==="3d")this.rebuild3d();}
+  setReconstruction(settings:ReconstructionSettings) {this.reconstruction=settings;this.massingDirty=true;if(this.mode==="3d")this.rebuild3d();}
 
   private rebuild3d() {
     this.editablePreview?.dispose();this.editablePreview=null;

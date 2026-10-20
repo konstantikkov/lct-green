@@ -161,12 +161,14 @@ const PACKAGE_STATUS: Record<string, string> = {
   missing: "нет в пакете",
   failed: "не прочитан",
   empty: "пустой",
+  unused: "не использован",
 };
 
 /** What the xref package consisted of and what made it into the plan. */
 function PackageSummary({ pkg }: { pkg: PackageInfo }) {
   const [open, setOpen] = useState(false);
-  const refs = pkg.sources.filter((s) => s.kind !== "base");
+  const unused = pkg.sources.filter((s) => s.status === "unused");
+  const refs = pkg.sources.filter((s) => s.kind !== "base" && s.status !== "unused");
   const merged = refs.filter((s) => s.status === "merged");
   const problems = refs.filter((s) => s.status !== "merged");
   const byTitle = new Map<string, number>();
@@ -188,6 +190,12 @@ function PackageSummary({ pkg }: { pkg: PackageInfo }) {
           title={problems.map((s) => `${s.name}: ${s.detail}`).join("\n")}
         >
           Не подключены: {problems.map((s) => `${s.name} (${PACKAGE_STATUS[s.status] ?? s.status})`).join(", ")}.
+        </div>
+      )}
+      {unused.length > 0 && (
+        <div className="text-amber-700 dark:text-amber-400" title={unused.map((s) => s.file).join("\n")}>
+          Не использованы — отдельные чертежи, на которые основной не ссылается (другой объект; загрузите
+          каждый отдельно): {unused.map((s) => s.name).join(", ")}.
         </div>
       )}
       <button className="mt-0.5 underline decoration-dotted hover:text-ink-200" onClick={() => setOpen(!open)}>

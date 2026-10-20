@@ -91,6 +91,28 @@ def build_explanation(p: Placement, iteration: int, registry: RuleRegistry,
                        "role": rule.role, "source": src,
                        "reason": reason})
 
+    for rule in registry.rules_for(p.kind, {"outside_area"}, species_id=p.speciesId):
+        if rule.effective_source == "inactive":
+            continue
+        cats = rule.appliesTo.get("obstacle_type", [])
+        present, inside_id = oracle.covering_area(cats, pt)
+        src = {"document": rule.source.document, "clause": rule.source.clause,
+               "title": rule.source.title, "status": rule.status, "alsoCited": []}
+        row = {"ruleId": rule.id, "actualM": None, "requiredM": None, "comparator": "outside",
+               "obstacleCategory": ",".join(cats), "effectiveSource": rule.effective_source,
+               "role": rule.role, "source": src}
+        if not present:
+            checks.append({**row, "result": "NOT_APPLICABLE",
+                           "note": "no areas of this type in the drawing",
+                           "reason": "объектов этого типа нет в чертеже"})
+            continue
+        status, reason = _check_status_and_reason(rule, p, inside_id is None)
+        if inside_id is not None:
+            reason = "посадка внутри контура (" + rule.source.title + ")"
+        any_failed = any_failed or status == "FAIL"
+        has_unverified = has_unverified or status == "UNVERIFIED"
+        checks.append({**row, "result": status, "reason": reason})
+
     if site_boundary is not None:
         inside = site_boundary.covers(pt)
         boundary_detected = site_boundary_source == "detected"

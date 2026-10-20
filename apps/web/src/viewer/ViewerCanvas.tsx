@@ -9,6 +9,7 @@ import { clearMoveToast, movePlacement, select, setMassingDetail, setViewMode } 
 import { getTheme, useTheme } from "../theme";
 import { AGE_STOPS } from "./growth";
 import { type Season } from "./PanoramaViewer";
+import { DEFAULT_RECONSTRUCTION } from "./blenderPreview";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -93,12 +94,12 @@ export function ViewerCanvas() {
   const checkerRef = useRef<DragChecker | null>(null);
   if (!checkerRef.current) checkerRef.current = new DragChecker();
 
-  const [reconstruction,setReconstruction]=useState({buildingHeightM:9,showFences:false});
+  const [reconstruction,setReconstruction]=useState(DEFAULT_RECONSTRUCTION);
   const [renderAspect,setRenderAspect]=useState<number|null>(16/9);
   const [frameSize,setFrameSize]=useState({width:0,height:0});
   useEffect(()=>{const el=containerRef.current;if(!el)return;const observer=new ResizeObserver(([entry])=>setFrameSize({width:entry.contentRect.width,height:entry.contentRect.height}));observer.observe(el);return()=>observer.disconnect();},[]);
   const doc = useApp((s) => s.document);
-  useEffect(()=>{const initial={buildingHeightM:9,showFences:false};setReconstruction(initial);mgrRef.current?.setReconstruction(initial);},[doc?.projectId]);
+  useEffect(()=>{setReconstruction(DEFAULT_RECONSTRUCTION);mgrRef.current?.setReconstruction(DEFAULT_RECONSTRUCTION);},[doc?.projectId]);
   const constraints = useApp((s) => s.constraints);
   const iteration = useApp((s) => s.activeIteration);
   const chunks = useApp((s) => s.chunks);

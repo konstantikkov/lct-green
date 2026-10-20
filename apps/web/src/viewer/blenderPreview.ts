@@ -6,7 +6,8 @@ import type { Theme } from "../theme";
 
 const loader = new GLTFLoader();
 const models = new Map<string, Promise<THREE.Group>>();
-export type ReconstructionSettings={buildingHeightM:number;showFences:boolean};
+export type ReconstructionSettings={buildingHeightM:number;showFences:boolean;excavationsAsBuildings:boolean};
+export const DEFAULT_RECONSTRUCTION:ReconstructionSettings={buildingHeightM:9,showFences:false,excavationsAsBuildings:false};
 const requests = new WeakMap<ProjectDocument, Map<string,Promise<{modelUrl:string;origin:number[];sourceBuildings:number;sourceFences:number}>>>();
 function model(url:string) {
   let p=models.get(url);
@@ -18,7 +19,7 @@ function model(url:string) {
   }
   return p;
 }
-async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false}) {
+async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:string)=>void,settings:ReconstructionSettings=DEFAULT_RECONSTRUCTION) {
   const key=JSON.stringify(settings);let cache=requests.get(doc);if(!cache){cache=new Map();requests.set(doc,cache);}
   let request=cache.get(key);
   if (!request) {
@@ -67,7 +68,7 @@ export interface EditablePreview {
 }
 /** Blender-built environment + independently editable, instanced crown circles. */
 export function buildEditablePreview(doc:ProjectDocument, placements:Placement[], theme:Theme,
-  invalidate:()=>void,status:(s:string)=>void,settings:ReconstructionSettings={buildingHeightM:9,showFences:false},lawn?:LawnInfo):EditablePreview {
+  invalidate:()=>void,status:(s:string)=>void,settings:ReconstructionSettings=DEFAULT_RECONSTRUCTION,lawn?:LawnInfo):EditablePreview {
   const group=new THREE.Group();group.name="blender-editor";
   const controller=new AbortController();let disposed=false;
   const circleMeshes:THREE.InstancedMesh[]=[];

@@ -24,6 +24,13 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # "Кабель связи" is a comms cable, but bare 'кабел' (electricity, 0.86)
     # outscores bare 'связ' (0.84), so name the combination explicitly.
     (r"кабел[а-я]*\s*(связи|телефон|телеграф)|волоконно[\s-]*оптич", "UTILITY_COMMUNICATION", 0.88),
+    # a vehicle traffic scheme ("ГП линия движения легкового транспорта",
+    # "Направление движения пож техники") is arrows over the drawn driveways;
+    # pedestrian routes are handled by _pedestrian_route
+    (r"(лини[яи]|направлени[ея]|схем[аы])[\s_]*движени", "ANNOTATION", 0.92),
+    # coordinate call-outs of the boundary or of driveways are labels and
+    # leader lines, not the boundary or the road ("1КООРДИНАТЫ_граница_значения")
+    (r"координат", "ANNOTATION", 0.92),
     # --- site boundary ---
     # \bотвод, not bare 'отвод': without the word boundary it swallows
     # "Водоотводные лотки" (a drain) and files it as a site boundary.
@@ -31,6 +38,16 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # --- buildings ---
     (r"здан|строен|сооруж|корпус|дом[а-я]*\b|фундамент|отмостк|крыльц|build|wall|house", "BUILDING", 0.85),
     (r"кровл|контур\s*здан", "BUILDING", 0.8),
+    # "Стены" are building walls (a retaining wall is "подпорная стенка");
+    # "Жилое" is the residential-building layer of a topographic plan
+    (r"(?<![а-яё])(стен[аы]?|жилое)(?![а-яё])", "BUILDING", 0.8),
+    # transliterated topographic layers (236285.dxf: DOM, DOROGA, ZABOR).
+    # DOROGA holds the carriageway EDGES: open lines along the road and
+    # closed loops round lawn islands (71 % of their area is lawn) — an edge
+    # like a curb, measured as a line, never a paved area
+    (r"(?<![a-z])dom(?![a-z])", "BUILDING", 0.8),
+    (r"(?<![a-z])doroga", "CURB", 0.8),
+    (r"(?<![a-z])zabor", "FENCE", 0.8),
     # --- roads / transport ---
     (r"проезж|дорог|проезд|асфальт|а\/б|улиц|магистрал|road|driveway|carriage", "ROAD", 0.85),
     (r"борт|бордюр|curb|бр\s?100", "CURB", 0.85),
@@ -38,7 +55,14 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     # "ДВ_ГП_П_…" (design general plan) layer prefix never matches
     (r"^гп\s*\d", "CURB", 0.85),
     (r"тротуар|пешеход|дорожк|плитк|мощени|sidewalk|footpath|path", "SIDEWALK", 0.85),
+    # rubber-crumb safety surfacing of play and sports grounds: hard cover
+    (r"резинов[а-я]*[\s_]*(крошк|покрыт)", "SIDEWALK", 0.8),
     (r"парковк|стоянк|машином|parking", "PARKING", 0.85),
+    # an underground car park ("ГП паркинг (покрытия)", "контур паркинга") is
+    # a slab under the yard, not a car park: below every surface word, so
+    # "мульча под кустарники над паркингом" stays the shrub bed it is
+    (r"паркинг", "UNDERGROUND_PARKING", 0.7),
+    (r"подземн[а-я]*[\s_]*(автостоянк|парковк|гараж|паркинг)", "UNDERGROUND_PARKING", 0.88),
     (r"пожарн[а-я]*\s*(проезд|подъезд)|подъезд", "ACCESS_ROUTE", 0.8),
     # --- utilities (specific first) ---
     (r"водопров|водоснабж|\bв1\b|\bхвс\b|\bгвс\b|water", "UTILITY_WATER", 0.86),
@@ -73,6 +97,7 @@ _KEYWORD_RULES: list[tuple[str, str, float]] = [
     (r"колодц|\bлюк", "UTILITY", 0.7),
     (r"выгребн", "UTILITY_SEWER", 0.7),
     (r"парапет", "FENCE", 0.7),
+    (r"подпорн", "RETAINING_WALL", 0.88),
     (r"лестниц", "SIDEWALK", 0.7),
     (r"\bмост", "ROAD", 0.7),
     # relief, survey marks, signs and small architectural forms: drawn
@@ -132,16 +157,46 @@ def _cover_transition(name: str) -> LayerClassification | None:
                                requiresReview=False, matchedKeyword=f"cover:{m.group(2).strip()}")
 
 
-def classify_layer_name(name: str) -> LayerClassification:
-    name = _BIND_PREFIX.sub("", name)
-    cover = _cover_transition(name)
-    if cover is not None:
-        return cover
+# A pedestrian (МГН) movement line runs along a path that is often not drawn
+# itself (it lives in an xref): the line stands in for the path, so nothing
+# is planted on it. It is a centre line, never the edge of a surface — the 3D
+# scene does not pave the loops it forms (matchedKeyword "route:…").
+_PEDESTRIAN_ROUTE_RX = re.compile(
+    r"(лини[яи]|направлени[ея]|схем[аы]|пут[иь])[\s_]*движени[яе][\s_]*(пешеход|мгн)", re.IGNORECASE)
+
+
+def _pedestrian_route(name: str) -> LayerClassification | None:
+    m = _PEDESTRIAN_ROUTE_RX.search(name)
+    if not m:
+        return None
+    return LayerClassification(category="SIDEWALK", confidence=0.85, source="rule",
+                               requiresReview=False, matchedKeyword=f"route:{m.group(0)}")
+
+
+def _best_rule(name: str) -> tuple[str, float, str] | None:
     best: tuple[str, float, str] | None = None
     for rx, cat, conf in _COMPILED:
         m = rx.search(name)
         if m and (best is None or conf > best[1]):
             best = (cat, conf, m.group(0))
+    return best
+
+
+# "К1"/"К2" alone is a sewer network, but after another subject it is the
+# building (корпус) the layer belongs to: "ГП озеленение К2", "_ГП МАФ К1".
+_SEWER_CODE = re.compile(r"\bк[12]\b", re.IGNORECASE)
+
+
+def classify_layer_name(name: str) -> LayerClassification:
+    name = _BIND_PREFIX.sub("", name)
+    special = _cover_transition(name) or _pedestrian_route(name)
+    if special is not None:
+        return special
+    best = _best_rule(name)
+    if best and _SEWER_CODE.fullmatch(best[2]):
+        subject = _best_rule(_SEWER_CODE.sub(" ", name))
+        if subject and subject[0] not in ("UTILITY", "UTILITY_SEWER"):
+            best = subject
     if best:
         cat, conf, kw = best
         return LayerClassification(category=cat, confidence=conf, source="rule",

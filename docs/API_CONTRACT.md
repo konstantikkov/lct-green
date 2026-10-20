@@ -171,7 +171,8 @@ type Category =
   | "UTILITY_SEWER" | "UTILITY_HEAT" | "UTILITY_DRAINAGE" | "UTILITY_COMMUNICATION"
   | "POWER_LINE_OVERHEAD"
   | "EXISTING_TREE" | "EXISTING_SHRUB" | "GREEN_AREA" | "PARKING"
-  | "ACCESS_ROUTE" | "FENCE" | "LIGHTING" | "ANNOTATION" | "UNKNOWN";
+  | "ACCESS_ROUTE" | "FENCE" | "LIGHTING" | "RETAINING_WALL" | "UNDERGROUND_PARKING"
+  | "ANNOTATION" | "UNKNOWN";
 
 type PipelineState =
   | "UPLOADED" | "CONVERTING" | "PARSING" | "CLASSIFYING"
@@ -192,7 +193,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   UTILITY_SEWER: "#a78bfa", UTILITY_HEAT: "#fb923c", UTILITY_DRAINAGE: "#22d3ee",
   UTILITY_COMMUNICATION: "#c084fc", POWER_LINE_OVERHEAD: "#ef4444", EXISTING_TREE: "#4ade80", EXISTING_SHRUB: "#86efac",
   GREEN_AREA: "#166534", PARKING: "#475569", ACCESS_ROUTE: "#818cf8",
-  FENCE: "#9ca3af", LIGHTING: "#fde047", ANNOTATION: "#556070", UNKNOWN: "#6b7280",
+  FENCE: "#9ca3af", LIGHTING: "#fde047", RETAINING_WALL: "#a16207", UNDERGROUND_PARKING: "#0e7490",
+  ANNOTATION: "#556070", UNKNOWN: "#6b7280",
 };
 ```
 
@@ -425,7 +427,7 @@ interface Explanation {
   llmNarrative: string | null;           // only if local LLM available
   checks: {
     ruleId: string; result: "passed" | "n/a";
-    actualM: number | null; requiredM: number | null; comparator: ">=";
+    actualM: number | null; requiredM: number | null; comparator: ">=" | "outside";
     obstacleCategory: string;
     effectiveSource: "verified" | "assumption";
     source: { document: string; clause: string | null; title: string; status: string };

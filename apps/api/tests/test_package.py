@@ -430,6 +430,21 @@ def test_unattached_ird_drawing_is_merged(tmp_path):
     assert "not attached" in orphans[0].detail
 
 
+def test_unrelated_drawing_is_listed_not_merged(tmp_path):
+    """newtest: six separate objects zipped together — only the base is the
+    plan; the others are reported as unused instead of vanishing."""
+    z, z2 = _package(tmp_path), tmp_path / "o.zip"
+    with zipfile.ZipFile(z) as src, zipfile.ZipFile(z2, "w") as dst:
+        for info in src.infolist():
+            dst.writestr(info.filename, src.read(info))
+        dst.writestr("236285.dxf", _dxf_bytes(_tp))
+    res = cad_package.ingest_package(z2, tmp_path / "w")
+    unused = [s for s in res.sources if s.name == "236285"]
+    assert len(unused) == 1 and unused[0].status == "unused" and not unused[0].entities_in
+    assert unused[0].to_api()["title"] == "отдельный чертёж"
+    assert any("236285 — unused" in m for m in res.log)
+
+
 def test_unreadable_libredwg_output_is_repaired(tmp_path):
     """A table record without a name and an MTEXT column type out of range
     break even ezdxf's recover mode — the tag-level repair makes it loadable."""

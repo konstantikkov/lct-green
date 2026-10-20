@@ -67,7 +67,7 @@ KIND_TITLES = {
     "base": "основной чертёж", "tp": "топоплан", "up": "существующие сети",
     "pp": "проектируемые сети", "kl": "красные линии", "brd": "рамки и граница съёмки",
     "work_boundary": "границы работ", "curbs": "бортовой камень", "covers": "покрытия (заливки)",
-    "other": "прочая ссылка",
+    "other": "прочая ссылка", "unused": "отдельный чертёж",
 }
 
 
@@ -83,7 +83,7 @@ class PackageSource:
     kind: str
     file: str = ""            # path inside the package ("" when not found)
     prefix: str = ""          # layer prefix in the merged DXF ("" for the base)
-    status: str = "merged"    # merged | missing | failed | empty | nested_skipped
+    status: str = "merged"    # merged | missing | failed | empty | nested_skipped | unused
     entities_in: int = 0
     entities_kept: int = 0
     detail: str = ""
@@ -733,6 +733,18 @@ def ingest_package(zip_path: Path, workdir: Path, converter: DwgConverter | None
         except Exception as exc:  # noqa: BLE001
             log.warning("package: merge of %s failed", osrc.name, exc_info=True)
             osrc.status, osrc.detail = "failed", f"{osrc.detail}; merge failed: {exc}"
+
+    # --- drawings nothing refers to: another object, with its own site and
+    # coordinates — not merged, but listed, so a ZIP of several objects does
+    # not silently become a plan of one of them
+    for d in sorted(drawings, key=lambda p: _rel_depth(p, unpack)):
+        if d.resolve() in seen or d.name.lower() in merged_names:
+            continue
+        merged_names.add(d.name.lower())
+        sources.append(PackageSource(name=d.stem, kind="unused", file=str(d.relative_to(unpack)),
+                                     status="unused",
+                                     detail="not referenced by the base drawing — a separate object, "
+                                            "upload it on its own"))
 
     # --- work boundary: from its own file and/or any "Граница работ" layer ---
     wb_prefixes = {s.prefix for s in sources if s.kind == "work_boundary" and s.status == "merged"}

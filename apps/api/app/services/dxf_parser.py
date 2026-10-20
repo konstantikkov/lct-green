@@ -58,10 +58,30 @@ def _entity_color(entity, doc, layer):
     return _aci_hex(aci)
 
 
-def _guess_units(code: int, span: float) -> tuple[str, float, str]:
+MIN_SITE_SPAN_M = 5.0  # a site plan narrower than this means a wrong $INSUNITS
+
+
+def _core_span(points: list[tuple[float, float]]) -> float:
+    """Span of the bulk of the drawing (2nd–98th percentile of entity
+    anchors): a stray object at the origin (236287.dxf) does not count."""
+    if len(points) < 2:
+        return 0.0
+    import numpy as np
+    lo, hi = np.percentile(np.asarray(points, dtype=float), [2, 98], axis=0)
+    return float(max(hi - lo))
+
+
+def _guess_units(code: int, span: float, core_span: float | None = None) -> tuple[str, float, str]:
     """Return (unit label, scale_to_meters, note)."""
     name, scale = _INSUNITS.get(code, ("unknown", None))
     if scale is not None:
+        # metric templates default to mm while the plan is drawn in meters
+        # (236285.dxf: $INSUNITS=mm, a 580-unit plan — not a 0.6 m site)
+        core = span if core_span is None else core_span
+        if core * scale < MIN_SITE_SPAN_M <= core <= 20000:
+            return ("m (header says " + name + ")", 1.0,
+                    f"$INSUNITS={code} ({name}) would make the site {core * scale:.2f} m across; "
+                    f"span {core:.0f} → assumed meters")
         return name, scale, ""
     # Heuristic for unitless drawings: site plans larger than 2 km are implausible,
     # so a >20000-unit span is almost certainly millimeters.
@@ -446,6 +466,7 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
 
     minx = miny = math.inf
     maxx = maxy = -math.inf
+    anchors: list[tuple[float, float]] = []  # one point per entity
 
     def _feed(pts):
         nonlocal minx, miny, maxx, maxy
@@ -454,6 +475,8 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
             if y < miny: miny = y
             if x > maxx: maxx = x
             if y > maxy: maxy = y
+        if pts:
+            anchors.append(tuple(pts[0]))
 
     for _, mode, (kind, g), _bn in [(r[0], r[1], r[2], r[3]) for r in raw_entities]:
         if kind == "polyline":
@@ -468,7 +491,7 @@ def parse_dxf(path: Path, document_id: str, file_name: str, source_format: str =
         maxx = maxy = 1.0
 
     span = max(maxx - minx, maxy - miny)
-    units, scale, note = _guess_units(insunits, span)
+    units, scale, note = _guess_units(insunits, span, _core_span(anchors))
     log = list(conversion_log or [])
     if note:
         log.append(f"units: {note}")
