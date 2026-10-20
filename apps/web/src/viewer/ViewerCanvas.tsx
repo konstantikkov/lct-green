@@ -218,7 +218,7 @@ export function ViewerCanvas() {
   },[viewMode]);
   useEffect(()=>{
     const exit=(e:KeyboardEvent)=>{
-      if((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"]'))return;
+      if(e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable="true"]'))return;
       if(e.key==='Escape'||e.key.toLowerCase()==='f'){
         mgrRef.current?.exitHumanView();mgrRef.current?.setPointPicker(null);setHumanView(false);setHumanPick(false);
       }

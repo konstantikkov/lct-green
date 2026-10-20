@@ -1383,7 +1383,7 @@ export class SceneManager {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    const target=e.target as HTMLElement|null;
+    const target=e.target instanceof Element?e.target:null;
     if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
     if(this.human&&this.mode==='3d'){
       const key=e.key.toLowerCase(),step=e.shiftKey?3:.75;
