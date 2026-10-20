@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Btn } from "../components/ui";
+import { ActionIcon, buttonClassName, Btn } from "../components/ui";
 import { ageLabel } from "./growth";
 
 /** One standing point; `links` are ids of neighbours with a clear line of sight. */
@@ -341,7 +341,7 @@ export function PanoramaViewer({ items, startId, onClose }: { items: Panorama[];
           <div className="text-white/70">Взгляд: {compass} · {Math.round(bearing)}° · переходов отсюда: {neighbours.length}</div>
         </div>
         <div className="pointer-events-auto flex gap-2">
-          <a href={place.imageUrl} download className="rounded bg-black/60 px-3 py-2 text-xs text-white underline">Скачать</a>
+          <a href={place.imageUrl} download className={buttonClassName}><ActionIcon name="download" />Скачать</a>
           <Btn onClick={() => void toggleFullscreen()} title="Полный экран (F)">Полный экран</Btn>
           <Btn onClick={onClose} title="Закрыть (Esc)">Закрыть</Btn>
         </div>

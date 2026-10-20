@@ -26,15 +26,15 @@ function PlanView() {
       <div className="flex min-h-0 flex-1">
         <WorkspacePanel />
         <main
-          className={`min-w-0 flex-1 bg-ink-950 ${
+          className={`flex min-h-0 min-w-0 flex-1 flex-col bg-ink-950 ${
             // On mobile the fixed bottom sheet covers the bottom of the screen;
             // pad the canvas so its visible area ends at the sheet's peek edge.
             doc ? "pb-[calc(56px_+_env(safe-area-inset-bottom))] md:pb-0" : ""
           }`}
         >
-          <ViewerCanvas />
+          <div className="min-h-0 flex-1"><ViewerCanvas /></div>
+          <Inspector />
         </main>
-        <Inspector />
       </div>
     </div>
   );

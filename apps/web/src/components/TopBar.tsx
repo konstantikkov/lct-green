@@ -4,7 +4,7 @@ import { isDebug } from "../debug";
 import { generateNow, newProject, openProject, setNav } from "../state/actions";
 import { useApp, useStage, type NavView } from "../state/store";
 import { toggleTheme, useTheme } from "../theme";
-import { Badge, Btn, Dropdown, Spinner } from "./ui";
+import { ActionIcon, Badge, Btn, Dropdown, Spinner } from "./ui";
 import type { PipelineState } from "../api/types";
 import { pipelineStateLabel } from "../labels";
 
@@ -113,17 +113,17 @@ function MobileOverflowMenu() {
         }
       >
         <button
-          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center gap-2 px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={!canExport}
           onClick={() => {
             setOpen(false);
             if (doc) window.open(api.exportDxfUrl(doc.projectId), "_blank");
           }}
         >
-          Экспорт DXF
+          <ActionIcon name="dxf" /> Экспорт DXF
         </button>
         <button
-          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center gap-2 px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={!canExport}
           title="Только слои AI_GREENING_* в координатах исходного чертежа — подключить к генплану как внешнюю ссылку"
           onClick={() => {
@@ -134,14 +134,14 @@ function MobileOverflowMenu() {
           Экспорт DXF — только слои результата
         </button>
         <button
-          className="block w-full px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center gap-2 px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={!canExport}
           onClick={() => {
             setOpen(false);
             if (doc) window.open(api.exportReportUrl(doc.projectId), "_blank");
           }}
         >
-          Экспорт отчёта
+          <ActionIcon name="report" /> Экспорт отчёта
         </button>
         <div className="my-1 border-t border-ink-600" />
         <div className="px-2 pb-1 pt-0.5 text-2xs uppercase tracking-wider text-ink-500">Проекты</div>
@@ -228,7 +228,6 @@ export function SecondaryNav({ className = "hidden md:flex" }: { className?: str
   const nav = useApp((s) => s.nav);
   const items: { id: NavView; label: string; testid: string }[] = [
     { id: "regulations", label: "Нормативы", testid: "nav-regulations" },
-    { id: "quality", label: "Качество", testid: "nav-quality" },
   ];
   return (
     <div className={`items-center gap-0.5 ${className}`}>
@@ -236,9 +235,7 @@ export function SecondaryNav({ className = "hidden md:flex" }: { className?: str
         <button
           key={t.id}
           data-testid={t.testid}
-          className={`rounded-sm px-1.5 py-0.5 text-2xs transition-colors ${
-            nav === t.id ? "bg-ink-800 text-ink-200" : "text-ink-500 hover:text-ink-300"
-          }`}
+          className={`ui-button inline-flex h-7 items-center justify-center rounded-sm border border-ink-600 px-2.5 text-xs transition-colors ${nav===t.id?'bg-ink-700 text-ink-100':'bg-ink-800 text-ink-200 hover:bg-ink-700 hover:text-ink-100'}`}
           onClick={() => setNav(t.id)}
         >
           {t.label}
@@ -338,14 +335,14 @@ export function TopBar() {
             title="Скачать DXF со сгенерированными посадками"
             data-testid="export-dxf"
           >
-            Экспорт DXF
+            <ActionIcon name="dxf" /> Экспорт DXF
           </Btn>
           <Btn
             onClick={() => window.open(api.exportReportUrl(doc.projectId), "_blank")}
             title="Скачать отчёт в JSON"
             data-testid="export-report"
           >
-            Экспорт отчёта
+            <ActionIcon name="report" /> Экспорт отчёта
           </Btn>
         </div>
       )}
@@ -358,8 +355,8 @@ export function TopBar() {
             await openProject(doc.projectId);
             window.alert("Импорт обновлён. Сгенерируйте план заново для проверки по полной геометрии.");
           } catch (e) { window.alert(String(e)); }
-        }} title="Повторно прочитать сохранённый CAD новым импортёром; после обновления пересчитайте план">Обновить импорт</Btn>
-        <Btn onClick={() => window.open(`/api/projects/${doc.projectId}/cad-preview.svg`, "_blank")} title="Исходный CAD: текст, штриховки, блоки и цвета без фильтрации по классификации">CAD оригинал</Btn>
+        }} title="Повторно прочитать сохранённый CAD новым импортёром; после обновления пересчитайте план"><ActionIcon name="refresh" /><span className="sr-only md:not-sr-only">Обновить импорт</span></Btn>
+        <Btn onClick={() => window.open(`/api/projects/${doc.projectId}/cad-preview.svg`, "_blank")} title="Исходный CAD: текст, штриховки, блоки и цвета без фильтрации по классификации"><ActionIcon name="cad" /><span className="sr-only md:not-sr-only">CAD оригинал</span></Btn>
       </div>}
       {doc && <MobileOverflowMenu />}
 

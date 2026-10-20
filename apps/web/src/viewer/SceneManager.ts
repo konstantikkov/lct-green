@@ -169,7 +169,7 @@ export class SceneManager {
   constructor(canvas: HTMLCanvasElement, cb: SceneCallbacks, theme: Theme) {
     this.canvas = canvas;
     this.cb = cb;
-    this.theme = theme;
+    this.theme = theme;this.appliedCadTheme=theme;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(CLEAR_COLORS[theme]["2d"], 1);
@@ -533,22 +533,22 @@ export class SceneManager {
   }
 
   /** Live theme switch: recolors CAD linework and rebuilds tinted overlays. */
+  private appliedCadTheme:Theme='light';
+  /** Interface theme recolors CAD only; the 3D scene and photo guides stay stable. */
   setTheme(theme: Theme) {
-    if (theme === this.theme) return;
-    this.theme = theme;
-    this.renderer.setClearColor(CLEAR_COLORS[theme][this.mode], 1);
-    if (this.doc) this.updateLayerInfo(this.doc.layers);
-    this.setConstraints(this.constraints);
-    this.setIteration(this.iteration);
-    this.setChunks(this.chunks);
-    // the massing model is palette-baked — rebuild immediately when visible
-    if (this.mode === "3d") this.rebuild3d();
+    this.theme=theme;
+    if(this.mode==='3d'||this.appliedCadTheme===theme)return;
+    this.appliedCadTheme=theme;
+    this.renderer.setClearColor(CLEAR_COLORS[theme]['2d'],1);
+    if(this.doc)this.updateLayerInfo(this.doc.layers);
+    this.setConstraints(this.constraints);this.setIteration(this.iteration);this.setChunks(this.chunks);
     this.invalidate();
   }
 
   setMode(mode: ViewMode) {
     if (mode === this.mode) return;
     this.mode = mode;
+    if(mode==='2d')this.setTheme(this.theme);
     this.renderer.setClearColor(CLEAR_COLORS[this.theme][mode], 1);
     this.renderer.toneMapping = mode === "3d" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.scene.fog = mode === "3d" ? this.fog3d : null;
@@ -758,7 +758,7 @@ export class SceneManager {
     if(this.massing){this.root3d.remove(this.massing);disposeObject(this.massing);this.massing=null;}
     this.pickMeshes3d=[];this.trunks3d=null;this.fog3d=null;this.detailGroup3d=null;
     if(this.doc){
-      const build=buildEditablePreview(this.doc,this.iteration?.placements??[],this.theme,
+      const build=buildEditablePreview(this.doc,this.iteration?.placements??[],"light",
         ()=>{if(!this.dragging&&!this.placementDrag)this.fit3d();this.invalidate(true);},text=>{
           if(text.startsWith("Сцена недоступна")||text.startsWith("Модели растений"))this.massingDirty=true;
           this.cb.onPreviewStatus(text);

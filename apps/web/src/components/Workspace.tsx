@@ -225,9 +225,9 @@ export function WorkspaceTabs() {
         data-testid="open-wizard"
         className="mr-1 flex shrink-0 items-center gap-1 self-center rounded-sm border border-ink-600 bg-ink-800 px-2 py-0.5 text-2xs text-ink-300 transition-colors hover:bg-ink-700 hover:text-ink-100"
         onClick={() => openWizard(1)}
-        title="Пошаговый мастер: Ограничения → Условия → Генерация → Итоги"
+        title="Конфигурация: Ограничения → Условия → Генерация → Итоги"
       >
-        Мастер
+        Конфигурация
       </button>
     </div>
   );
@@ -242,7 +242,7 @@ export function WorkspacePanel() {
   if (!doc || collapsed) return null;
 
   return (
-    <aside style={{width:resize.width}} className="relative hidden shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900 md:flex">
+    <aside data-sidebar style={{width:resize.width}} className="relative hidden shrink-0 flex-col overflow-y-auto border-r border-ink-600 bg-ink-900 md:flex">
       {resize.handle}
       <WorkspaceTabContent tab={tab} />
     </aside>

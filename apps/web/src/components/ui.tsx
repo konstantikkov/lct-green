@@ -24,6 +24,19 @@ export function Section({
   );
 }
 
+export const buttonClassName = "ui-button inline-flex items-center justify-center gap-1.5 border border-ink-600 bg-ink-800 px-2.5 h-7 text-xs rounded-sm text-ink-200 transition-colors hover:bg-ink-700 hover:text-ink-100";
+
+export function ActionIcon({name}:{name:'dxf'|'report'|'refresh'|'cad'|'download'}) {
+  const paths={
+    dxf:<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 15l3-3 3 3 3-3M8 18h8"/></>,
+    report:<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></>,
+    refresh:<><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-2l2 2M4 17l2 2a7 7 0 0 0 12-2"/></>,
+    cad:<><path d="M3 3h18v18H3zM7 16l4-8 3 5 3-2M7 7h1"/></>,
+    download:<><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></>,
+  };
+  return <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">{paths[name]}</svg>;
+}
+
 export function Btn({
   children, onClick, disabled, variant = "default", className = "", title,
   "data-testid": testid,
@@ -37,7 +50,7 @@ export function Btn({
   "data-testid"?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 border px-2.5 h-7 text-xs rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+    "ui-button inline-flex items-center justify-center gap-1.5 border px-2.5 h-7 text-xs rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
   const styles = {
     default: "border-ink-600 bg-ink-800 text-ink-200 hover:bg-ink-700 hover:text-ink-100",
     primary:

@@ -207,3 +207,9 @@ remain panorama controls; the camera photo uses its current editor camera.
 
 Map panorama pins are opaque and depth-tested, and cannot be selected through
 opaque trees or buildings. Pins remain excluded from photo captures.
+
+The interface theme recolors UI and CAD only. Theme toggles in 3D do not rebuild
+the scene or reset its camera; the 3D underlay uses a fixed light palette. CAD
+recolors on returning to CAD mode. This keeps captured photo guides independent
+of light/dark UI settings. Desktop selections open an inspector below the viewer;
+mobile selections continue to use the bottom sheet.

@@ -868,7 +868,7 @@ export function Wizard() {
             data-testid="wizard-skip"
             title="Закрыть мастер и продолжить в обычном рабочем пространстве"
           >
-            Пропустить мастер
+            Пропустить шаги
           </button>
         </div>
 

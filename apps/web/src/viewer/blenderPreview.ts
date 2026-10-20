@@ -36,7 +36,7 @@ async function environment(doc:ProjectDocument, signal:AbortSignal, status:(s:st
       throw new Error("Подготовка сцены занимает слишком много времени. Откройте проект повторно.");
     })(); cache.set(key,request); request.catch(()=>cache!.delete(key));
   }
-  status("Подготовка 3D-сцены Blender… Круги уже доступны для редактирования.");
+  status("Подготовка 3D-сцены…");
   const result=await request;
   if(signal.aborted)throw new DOMException("Aborted","AbortError");
   return result;

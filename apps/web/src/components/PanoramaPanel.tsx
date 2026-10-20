@@ -113,7 +113,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
         <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
       <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass && season !== "winter"} disabled={season === "winter"} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
     </fieldset>
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2">
       <Btn variant="primary" onClick={() => void startTour()} disabled={disabled || starting || !!active}>{starting ? "Запуск…" : "Создать тур автоматически"}</Btn>
 
     </div>
@@ -126,7 +126,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
 
     <details className="mt-3 rounded border border-ink-700 p-2">
       <summary className="cursor-pointer">Добавить точку вручную</summary>
-      <div className="my-2 flex flex-wrap gap-2">
+      <div className="my-2 flex flex-col gap-2">
         <Btn onClick={pickPoint} disabled={disabled}>{picking ? "Отменить выбор" : "Указать кликом"}</Btn>
         <Btn onClick={centrePoint} disabled={disabled || picking}>Центр экрана</Btn>
         <Btn onClick={() => void startPoint()} disabled={disabled || starting || !point}>Рендер точки</Btn>

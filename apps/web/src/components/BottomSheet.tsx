@@ -124,6 +124,7 @@ export function BottomSheet() {
 
   return (
     <div
+      data-sidebar
       ref={sheetRef}
       className="fixed inset-x-0 bottom-0 z-30 flex h-[88vh] flex-col rounded-t-xl border-x border-t border-ink-600 bg-ink-900 shadow-[0_-8px_28px_rgba(0,0,0,0.25)] transition-transform duration-300 ease-out will-change-transform md:hidden"
       style={{

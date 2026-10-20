@@ -55,7 +55,7 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
     try{const r=await fetch(result.statusUrl+'/refine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text.trim()})});const d=await r.json();if(!r.ok)throw Error(d.detail?.message||"Не удалось отправить сообщение");setMessages(d.conversation);setText("");setStatus(d.reply);if(d.job){setJob(d.job);setBusy(true);setProgress({state:'QUEUED',progressPercent:1});setDeadline(Date.now()+420000);}}
     catch(e){setStatus(e instanceof Error?e.message:String(e));}finally{setSending(false);}
   }
-  return <section ref={panel} style={{"--render-panel-width":`${resize.width}px`} as import("react").CSSProperties} className="relative shrink-0 max-h-[48%] overflow-y-auto border-t border-ink-600 bg-ink-900 px-4 pt-4 pb-20 text-ink-100 md:max-h-full md:w-[var(--render-panel-width)] md:border-l md:border-t-0 md:pb-4" aria-label="Инструменты 3D">
+  return <section data-sidebar ref={panel} style={{"--render-panel-width":`${resize.width}px`} as import("react").CSSProperties} className="relative shrink-0 max-h-[48%] overflow-y-auto border-t border-ink-600 bg-ink-900 px-4 pt-4 pb-20 text-ink-100 md:max-h-full md:w-[var(--render-panel-width)] md:border-l md:border-t-0 md:pb-4" aria-label="Инструменты 3D">
     {resize.handle}
     <div role="tablist" aria-label="Режим визуализации" className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-ink-800 p-1">
       {([['tour','Тур'],['render','Рендер']] as const).map(([value,label])=><button key={value} id={`workflow-tab-${value}`} type="button" role="tab" aria-selected={tab===value} aria-controls={`workflow-${value}`} tabIndex={tab===value?0:-1}
@@ -82,7 +82,7 @@ export function RenderWorkflow({projectId,capture,camera,sceneReady,onAspectChan
 
       <label>Ракурс<select aria-label="Ракурс" defaultValue="current" disabled={busy||sending} className="mt-1 block rounded border border-ink-600 bg-ink-800 p-2" onChange={e=>{if(e.target.value!=='current')camera(e.target.value as 'aerial'|'garden');e.currentTarget.value='current';}}><option value="current">Текущая камера</option><option value="aerial">Сверху</option><option value="garden">С уровня человека</option></select></label>
       <Btn onClick={()=>void generate()} disabled={busy||sending||!plan||!!loading||!!moving||!ready||!sceneReady}>{busy?"Генерация…":"Сгенерировать 3D-рендер"}</Btn>
-      {moving&&<span className="text-ink-400">Сохраняем перемещение…</span>}
+      {moving>0&&<span className="text-ink-400">Сохраняем перемещение…</span>}
     </div>
     {busy&&<div className="mt-3" aria-live="polite"><div className="mb-1 flex justify-between gap-2 text-xs"><span>{status}</span><span>{progress?.progressPercent||1}% · {minutes(Math.max(0,(deadline-now)/1000))} осталось</span></div><progress aria-label="Прогресс генерации" className="h-2 w-full accent-emerald-500" max="100" value={progress?.progressPercent||1}/></div>}
     {!busy&&status&&<p className="mt-2 text-xs" role="status">{status}</p>}

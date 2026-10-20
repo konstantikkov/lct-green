@@ -1,4 +1,3 @@
-import {usePanelResize} from "./PanelResize";
 import { useState } from "react";
 import { normalizeCheckResult } from "../api/types";
 import type { ExclusionZone, Explanation, Placement } from "../api/types";
@@ -279,24 +278,23 @@ export function InspectorContent() {
 }
 
 export function Inspector() {
-  const resize=usePanelResize("greenplan-inspector-width",320,"left");
   const selection = useApp((s) => s.selection);
   if (!selection) return null;
 
   return (
-    <aside style={{width:resize.width}} className="relative hidden shrink-0 flex-col border-l border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
-      {resize.handle}
+    <aside data-sidebar className="relative hidden min-h-0 max-h-[32vh] w-full shrink-0 flex-col border-t border-ink-600 bg-ink-900 md:flex" data-testid="inspector">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-ink-600 px-2">
         <span className="text-2xs font-semibold uppercase tracking-wider text-ink-300">Инспектор</span>
         <button
           className="px-1 text-ink-500 hover:text-ink-100"
           onClick={() => select(null)}
+          aria-label="Закрыть инспектор"
           title="Закрыть"
         >
           ✕
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <SelectionBody selection={selection} />
       </div>
     </aside>
