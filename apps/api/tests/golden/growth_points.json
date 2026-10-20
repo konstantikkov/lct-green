@@ -1,0 +1,257 @@
+{
+ "_comment": "Shared checkpoints of app/services/growth.py and apps/web/src/viewer/growth.ts, from rules/species.yaml. Regenerate when growth or planting_stock values change.",
+ "points": [
+  {
+   "speciesId": "tree_linden",
+   "years": 0,
+   "crownM": 0.8,
+   "heightM": 3.75
+  },
+  {
+   "speciesId": "tree_linden",
+   "years": 5,
+   "crownM": 1.1281,
+   "heightM": 5.7248
+  },
+  {
+   "speciesId": "tree_linden",
+   "years": 15,
+   "crownM": 1.7281,
+   "heightM": 9.3359
+  },
+  {
+   "speciesId": "tree_linden",
+   "years": 30,
+   "crownM": 2.4875,
+   "heightM": 13.9062
+  },
+  {
+   "speciesId": "tree_linden",
+   "years": 100,
+   "crownM": 3.5,
+   "heightM": 20.0
+  },
+  {
+   "speciesId": "tree_linden",
+   "years": null,
+   "crownM": 3.5,
+   "heightM": 20.0
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": 0,
+   "crownM": 0.9,
+   "heightM": 3.75
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": 5,
+   "crownM": 1.3495,
+   "heightM": 6.3963
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": 15,
+   "crownM": 2.1555,
+   "heightM": 11.1412
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": 30,
+   "crownM": 3.132,
+   "heightM": 16.89
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": 100,
+   "crownM": 4.0,
+   "heightM": 22.0
+  },
+  {
+   "speciesId": "tree_maple",
+   "years": null,
+   "crownM": 4.0,
+   "heightM": 22.0
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": 0,
+   "crownM": 0.6,
+   "heightM": 2.75
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": 5,
+   "crownM": 1.132,
+   "heightM": 4.78
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": 15,
+   "crownM": 1.968,
+   "heightM": 7.97
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": 30,
+   "crownM": 2.5,
+   "heightM": 10.0
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": 100,
+   "crownM": 2.5,
+   "heightM": 10.0
+  },
+  {
+   "speciesId": "tree_rowan",
+   "years": null,
+   "crownM": 2.5,
+   "heightM": 10.0
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": 0,
+   "crownM": 0.6,
+   "heightM": 2.75
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": 5,
+   "crownM": 0.948,
+   "heightM": 5.9763
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": 15,
+   "crownM": 1.572,
+   "heightM": 11.7613
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": 30,
+   "crownM": 2.328,
+   "heightM": 18.77
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": 100,
+   "crownM": 3.0,
+   "heightM": 25.0
+  },
+  {
+   "speciesId": "tree_larch",
+   "years": null,
+   "crownM": 3.0,
+   "heightM": 25.0
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": 0,
+   "crownM": 0.4,
+   "heightM": 1.1
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": 5,
+   "crownM": 0.992,
+   "heightM": 2.6608
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": 15,
+   "crownM": 1.5,
+   "heightM": 4.0
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": 30,
+   "crownM": 1.5,
+   "heightM": 4.0
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": 100,
+   "crownM": 1.5,
+   "heightM": 4.0
+  },
+  {
+   "speciesId": "shrub_lilac",
+   "years": null,
+   "crownM": 1.5,
+   "heightM": 4.0
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": 0,
+   "crownM": 0.25,
+   "heightM": 0.7
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": 5,
+   "crownM": 0.6582,
+   "heightM": 1.6648
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": 15,
+   "crownM": 0.8,
+   "heightM": 2.0
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": 30,
+   "crownM": 0.8,
+   "heightM": 2.0
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": 100,
+   "crownM": 0.8,
+   "heightM": 2.0
+  },
+  {
+   "speciesId": "shrub_cotoneaster",
+   "years": null,
+   "crownM": 0.8,
+   "heightM": 2.0
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": 0,
+   "crownM": 0.35,
+   "heightM": 0.9
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": 5,
+   "crownM": 0.8812,
+   "heightM": 2.2125
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": 15,
+   "crownM": 1.2,
+   "heightM": 3.0
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": 30,
+   "crownM": 1.2,
+   "heightM": 3.0
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": 100,
+   "crownM": 1.2,
+   "heightM": 3.0
+  },
+  {
+   "speciesId": "shrub_mockorange",
+   "years": null,
+   "crownM": 1.2,
+   "heightM": 3.0
+  }
+ ]
+}

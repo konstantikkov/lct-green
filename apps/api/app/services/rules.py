@@ -281,6 +281,8 @@ def load_species() -> list[dict]:
     out = []
     for s in raw.get("species", []):
         p = s.get("parameters", {})
+        stock = s.get("planting_stock") or {}
+        growth = s.get("growth") or {}
         out.append({
             "id": s["id"], "kind": s["kind"],
             "displayName": s.get("display_name", s["id"]),
@@ -291,6 +293,9 @@ def load_species() -> list[dict]:
                 "matureHeightM": float(p.get("mature_height_m", 10.0)),
                 "rootZoneRadiusM": float(p.get("root_zone_radius_m", 1.5)),
             },
+            # illustrative nursery-stock and growth defaults (see species.yaml)
+            "plantingStock": {_snake_to_camel(k): v for k, v in stock.items()} or None,
+            "growth": {_snake_to_camel(k): v for k, v in growth.items()} or None,
             "regulatoryStatus": "unknown",  # until ППМ 369-ПП list is verified
         })
     return out

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "./ui";
-import { PanoramaViewer, type Panorama } from "../viewer/PanoramaViewer";
+import { PanoramaViewer, panoramaConditions, type Panorama } from "../viewer/PanoramaViewer";
 import type { PanoramaMarker } from "../viewer/SceneManager";
 
 export type PanoramaTools = {
@@ -23,6 +23,8 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
   const [picking, setPicking] = useState(false);
   const [eyeHeight, setEyeHeight] = useState(1.6), [quality, setQuality] = useState("high"), [grass, setGrass] = useState(true);
   const [count, setCount] = useState(12);
+  // "" = mature (as checked and exported)
+  const [age, setAge] = useState("");
   const [status, setStatus] = useState(""), [starting, setStarting] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
@@ -51,7 +53,8 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
     try {
       const r = await fetch(`/api/projects/${projectId}/${path}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, eyeHeight, quality, grass, iterationId, reconstruction }),
+        body: JSON.stringify({ ...body, eyeHeight, quality, grass, iterationId, reconstruction,
+          ageYears: age === "" ? null : Number(age) }),
       });
       const d = await r.json();
       if (!r.ok) throw Error(d.detail?.message || "Не удалось запустить рендер");
@@ -108,7 +111,10 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
       <label>Высота глаз<select aria-label="Высота глаз" value={eyeHeight} onChange={e => setEyeHeight(Number(e.target.value))} className={select}>
         <option value={1.6}>1,6 м · пешеход</option><option value={5}>5 м · 2-й этаж</option><option value={15}>15 м · 5-й этаж</option><option value={40}>40 м · дрон</option></select></label>
       <label className="flex items-end gap-2 pb-2"><input type="checkbox" checked={grass} onChange={e => setGrass(e.target.checked)} />Объёмная трава</label>
+      <label title="Условная модель роста (rules/species.yaml). План, проверка норм и DXF не меняются">Возраст посадок<select aria-label="Возраст посадок" value={age} onChange={e => setAge(e.target.value)} className={select}>
+        <option value="">Зрелые · как в проверке</option><option value="0">При посадке</option><option value="5">Через 5 лет</option><option value="15">Через 15 лет</option><option value="30">Через 30 лет</option></select></label>
     </fieldset>
+    {age !== "" && <p className="-mt-1 mb-2 text-2xs text-ink-400">Возраст меняет только размер растений в кадре — по условной модели роста. Проверка норм и экспорт DXF всегда по зрелым размерам.</p>}
     <div className="flex flex-wrap gap-2">
       <Btn variant="primary" onClick={() => void startTour()} disabled={disabled || starting || !!active}>{starting ? "Запуск…" : "Создать тур автоматически"}</Btn>
       <Btn onClick={() => done[0] && setViewing((done.find(i => i.tour) ?? done[0]).id)} disabled={!done.length}>Открыть панорамы{done.length ? ` · ${done.length}` : ""}</Btn>
@@ -136,7 +142,7 @@ export function PanoramaPanel({ projectId, iterationId, reconstruction, tools, d
         const first = group[0], ready = group.filter(i => i.state === "COMPLETED");
         const failed = group.find(i => i.state === "FAILED");
         return <li key={first.jobId} className="flex items-center justify-between gap-2 rounded bg-ink-800 p-2">
-          <span>{first.tour ? `Тур · ${group.length} точек` : `Точка ${first.x.toFixed(0)}, ${first.y.toFixed(0)}`} · {first.eyeHeight} м
+          <span>{first.tour ? `Тур · ${group.length} точек` : `Точка ${first.x.toFixed(0)}, ${first.y.toFixed(0)}`} · {first.eyeHeight} м · {panoramaConditions(first)}
             <span className="block text-2xs text-ink-400">{failed ? <span className="text-red-400" title={failed.error}>Ошибка рендера</span> : group.some(pending) ? `готово ${ready.length} из ${group.length}` : QUALITY[first.quality]}</span></span>
           <span className="flex gap-1">
             {ready.length > 0 && <Btn onClick={() => setViewing(ready[0].id)}>Открыть</Btn>}

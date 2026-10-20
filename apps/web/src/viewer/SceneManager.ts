@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import type {
   ChunkInfo, ConstraintsResponse, ExclusionZone, IterationDetail,
-  LayerInfo, Placement, ProjectDocument,
+  LayerInfo, Placement, ProjectDocument, SpeciesInfo,
 } from "../api/types";
+import { scaleAt } from "./growth";
 import { buildCadGroups, disposeObject, layerColor } from "./cadGeometry";
 import { buildEditablePreview, downloadSourceModel, type EditablePreview } from "./blenderPreview";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -681,6 +682,27 @@ export class SceneManager {
   }
 
   private reconstruction={buildingHeightM:9,showFences:false};
+  private plantAge: number | null = null;
+  private speciesById = new Map<string, SpeciesInfo>();
+
+  /** Visual plant age (null = mature). Scales each plant's crown (XY) and
+   *  height (Z) by the growth model; circles, picking, checks and exports
+   *  keep the mature footprint. */
+  setPlantAge(years: number | null, species: SpeciesInfo[] | null) {
+    this.plantAge = years;
+    this.speciesById = new Map((species ?? []).map((sp) => [sp.id, sp]));
+    this.applyPlantAge();
+  }
+
+  private applyPlantAge() {
+    const preview = this.editablePreview;
+    if (!preview) return;
+    for (const p of this.iteration?.placements ?? []) {
+      const [crown, height] = scaleAt(this.speciesById.get(p.speciesId), this.plantAge);
+      preview.plantGroups.get(p.id)?.scale.set(crown, crown, height);
+    }
+    this.invalidate(true);
+  }
 
   setReconstruction(settings:{buildingHeightM:number;showFences:boolean}) {this.reconstruction=settings;this.massingDirty=true;if(this.mode==="3d")this.rebuild3d();}
 
@@ -697,6 +719,7 @@ export class SceneManager {
       this.editablePreview=build;build.circleMeshes.forEach(m=>m.material instanceof THREE.Material && (m.material.opacity=this.plantingCircles?.65:0));this.massing=build.group;this.pickMeshes3d=build.pickMeshes;
       this.fog3d=build.fog;this.detailGroup3d=build.detailGroup;
       this.detailGroup3d.visible=this.massingDetail;this.root3d.add(build.group);
+      this.applyPlantAge();
     }
     if(this.mode==="3d")this.scene.fog=this.fog3d;
     this.massingDirty=false;this.applyVisibility();this.invalidate(true);

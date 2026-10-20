@@ -7,6 +7,7 @@ import { hud } from "./hud";
 import { useApp, getState } from "../state/store";
 import { clearMoveToast, movePlacement, select, setMassingDetail, setViewMode } from "../state/actions";
 import { getTheme, useTheme } from "../theme";
+import { AGE_STOPS, ageLabel } from "./growth";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -105,6 +106,9 @@ export function ViewerCanvas() {
   const selection = useApp((s) => s.selection);
   const viewMode = useApp((s) => s.viewMode);
   const massingDetail = useApp((s) => s.massingDetail);
+  const species = useApp((s) => s.species);
+  const [ageStop, setAgeStop] = useState(AGE_STOPS.length - 1);
+  const plantAge = AGE_STOPS[ageStop];
   const theme = useTheme();
 
   useEffect(() => {
@@ -199,6 +203,7 @@ export function ViewerCanvas() {
   useEffect(() => { mgrRef.current?.setTheme(theme); }, [theme]);
   useEffect(() => { mgrRef.current?.setMode(viewMode); }, [viewMode]);
   useEffect(() => { mgrRef.current?.setMassingDetail(massingDetail); }, [massingDetail]);
+  useEffect(() => { mgrRef.current?.setPlantAge(plantAge, species); }, [plantAge, species, iteration]);
   useEffect(() => {
     mgrRef.current?.setSelectedPlacement(selection?.type === "placement" ? selection.placement : null);
   }, [selection]);
@@ -220,6 +225,15 @@ export function ViewerCanvas() {
           <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`rounded px-3 py-1.5 text-xs transition-colors ${viewMode === mode ? "bg-ink-600 text-ink-100" : "text-ink-400 hover:bg-ink-800 hover:text-ink-100"}`}>{label}</button>
         ))}
       </div>
+      {viewMode === "3d" && iteration && <div className="absolute right-3 top-14 z-20 w-56 rounded border border-ink-600 bg-ink-900/95 px-3 py-2 text-xs text-ink-200 shadow-sm" data-testid="plant-age">
+        <label className="flex items-center justify-between gap-2"><span>Возраст посадок</span><span className="font-semibold">{ageLabel(plantAge)}</span></label>
+        <input type="range" min={0} max={AGE_STOPS.length - 1} step={1} value={ageStop} aria-label="Возраст посадок"
+          onChange={(e) => setAgeStop(Number(e.target.value))} className="mt-1 w-full accent-emerald-500" />
+        <div className="flex justify-between text-2xs text-ink-400"><span>посадка</span><span>5</span><span>15</span><span>30 лет</span><span>зрелые</span></div>
+        <p className="mt-1 text-2xs text-ink-400" title="Размеры саженцев и годы до зрелости — условные садоводческие значения rules/species.yaml">
+          Только визуализация по условной модели роста. Проверка норм и экспорт DXF всегда используют размеры зрелых растений; круги показывают зрелую крону.
+        </p>
+      </div>}
       {viewMode === "3d" && <div className="pointer-events-none absolute bottom-8 left-3 z-10 max-w-[calc(100%-1.5rem)] md:bottom-auto md:top-3 md:max-w-[42%] rounded border border-ink-600 bg-ink-900/90 px-3 py-2 text-xs text-ink-200" data-testid="editor-preview-status">{previewStatus}<div className="mt-1 text-2xs text-ink-400">Клик по кругу → перетащите посадку · F — весь участок</div><div className="mt-1 text-2xs text-ink-400">Выберите угол камеры, затем сгенерируйте рендер ниже</div></div>}
       <div
         ref={tooltipRef}

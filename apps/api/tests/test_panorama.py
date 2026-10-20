@@ -133,3 +133,35 @@ def test_portable_bundle_ships_the_lawn_module():
     from app.services import local_render
     assert '"blender_grass.py"' in Path(local_render.__file__).read_text(encoding='utf-8')
     assert Path(local_render.__file__).with_name('blender_grass.py').is_file()
+
+
+def test_age_reaches_blender_without_changing_the_plan(monkeypatch, tmp_path):
+    from app import config
+    monkeypatch.setattr(config, 'OUTPUT_DIR', tmp_path)
+    submitted = []
+    main = _patch(monkeypatch, submitted)
+    with TestClient(main.app) as c:
+        r = c.post('/api/projects/p/panoramas', json={'x': 32, 'y': 20, 'ageYears': 15})
+        assert r.status_code == 202, r.text
+        assert r.json()[0]['ageYears'] == 15
+        data, settings, kw = submitted[-1]
+        assert settings['age_years'] == 15 and kw['meta']['ageYears'] == 15
+        r = c.post('/api/projects/p/panorama-tour', json={'maxPoints': 4})
+        assert submitted[-1][1]['age_years'] is None and r.json()[0]['ageYears'] is None
+        assert c.post('/api/projects/p/panoramas', json={'x': 32, 'y': 20, 'ageYears': -1}).status_code == 422
+
+
+def test_scene_carries_mature_placements_and_growth_parameters():
+    from app.services.local_render import scene_data
+    doc = SimpleNamespace(layer_map=lambda: {}, entities=[],
+                          extents=SimpleNamespace(model_dump=lambda: {'min': [0, 0], 'max': [10, 10]}))
+    import app.services.source_reconstruction as sr
+    rec = {'placements': [{'id': 't', 'kind': 'TREE', 'speciesId': 'tree_linden', 'position': [5, 5], 'crownRadiusM': 3.5}]}
+    orig = (sr.excavation_buildings, sr.enrich_surfaces)
+    try:
+        sr.excavation_buildings, sr.enrich_surfaces = (lambda *a: []), (lambda *a: {})
+        data = scene_data(doc, rec)
+    finally:
+        sr.excavation_buildings, sr.enrich_surfaces = orig
+    assert data['placements'][0]['crownRadiusM'] == 3.5
+    assert data['species']['tree_linden']['growth']['yearsToMature'] > 0

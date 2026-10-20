@@ -1,6 +1,23 @@
 # Plant catalog. Crown/root parameters are HORTICULTURAL defaults (editable),
 # not regulatory values. regulatory_status stays "unknown" until the verified
 # invasive-species list (ППМ № 369-ПП) is loaded into INVASIVE_SPECIES_BLACKLIST.
+#
+# planting_stock — size of the nursery stock written to the planting schedule
+# (ГОСТ 21.508-2020, форма 9: «Возраст, лет», «Примечание»). ILLUSTRATIVE
+# defaults (status: illustrative): typical-looking values for a demo, NOT taken
+# from a nursery standard (e.g. ГОСТ 24835-81 / ГОСТ 24909-81, which are not in
+# this repository) or a supplier catalog. The designer must replace them.
+#   age_years       age of the planting material
+#   height_m        [min, max] stock height
+#   trunk_girth_cm  [min, max] trunk girth at 1.3 m (trees only)
+#   root_ball_m     [length, width, depth] of the root ball; omitted = bare root
+#   crown_radius_m  crown radius at planting (growth model start point)
+#
+# growth — ILLUSTRATIVE horticultural default for the visual age slider and
+# age-scaled panoramas only. Size grows from planting_stock to the mature
+# parameters along a gentle ease-out u·(1.5 − 0.5·u), u = min(years / years_to_mature, 1)
+# (app/services/growth.py, apps/web/src/viewer/growth.ts). Norm checks and the
+# DXF export always use the mature parameters.
 species:
   - id: tree_linden
     kind: TREE
@@ -8,39 +25,53 @@ species:
     display_name_ru: "Липа мелколистная"
     latin: "Tilia cordata"
     parameters: { crown_radius_m: 3.5, mature_height_m: 20.0, root_zone_radius_m: 2.5 }
+    planting_stock: { status: illustrative, age_years: 10, height_m: [3.5, 4.0], trunk_girth_cm: [12, 14], root_ball_m: [1.0, 1.0, 0.6], crown_radius_m: 0.8 }
+    growth: { status: illustrative, years_to_mature: 60 }
   - id: tree_maple
     kind: TREE
     display_name: "Norway maple"
     display_name_ru: "Клен остролистный"
     latin: "Acer platanoides"
     parameters: { crown_radius_m: 4.0, mature_height_m: 22.0, root_zone_radius_m: 2.5 }
+    planting_stock: { status: illustrative, age_years: 10, height_m: [3.5, 4.0], trunk_girth_cm: [12, 14], root_ball_m: [1.0, 1.0, 0.6], crown_radius_m: 0.9 }
+    growth: { status: illustrative, years_to_mature: 50 }
   - id: tree_rowan
     kind: TREE
     display_name: "Rowan"
     display_name_ru: "Рябина обыкновенная"
     latin: "Sorbus aucuparia"
     parameters: { crown_radius_m: 2.5, mature_height_m: 10.0, root_zone_radius_m: 1.8 }
+    planting_stock: { status: illustrative, age_years: 8, height_m: [2.5, 3.0], trunk_girth_cm: [8, 10], root_ball_m: [0.8, 0.8, 0.5], crown_radius_m: 0.6 }
+    growth: { status: illustrative, years_to_mature: 25 }
   - id: tree_larch
     kind: TREE
     display_name: "Siberian larch"
     display_name_ru: "Лиственница сибирская"
     latin: "Larix sibirica"
     parameters: { crown_radius_m: 3.0, mature_height_m: 25.0, root_zone_radius_m: 2.2 }
+    planting_stock: { status: illustrative, age_years: 8, height_m: [2.5, 3.0], trunk_girth_cm: [8, 10], root_ball_m: [0.8, 0.8, 0.6], crown_radius_m: 0.6 }
+    growth: { status: illustrative, years_to_mature: 50 }
   - id: shrub_lilac
     kind: SHRUB
     display_name: "Common lilac"
     display_name_ru: "Сирень обыкновенная"
     latin: "Syringa vulgaris"
     parameters: { crown_radius_m: 1.5, mature_height_m: 4.0, root_zone_radius_m: 1.0 }
+    planting_stock: { status: illustrative, age_years: 5, height_m: [1.0, 1.2], root_ball_m: [0.4, 0.4, 0.3], crown_radius_m: 0.4 }
+    growth: { status: illustrative, years_to_mature: 12 }
   - id: shrub_cotoneaster
     kind: SHRUB
     display_name: "Shiny cotoneaster"
     display_name_ru: "Кизильник блестящий"
     latin: "Cotoneaster lucidus"
     parameters: { crown_radius_m: 0.8, mature_height_m: 2.0, root_zone_radius_m: 0.6 }
+    planting_stock: { status: illustrative, age_years: 5, height_m: [0.6, 0.8], root_ball_m: [0.3, 0.3, 0.25], crown_radius_m: 0.25 }
+    growth: { status: illustrative, years_to_mature: 8 }
   - id: shrub_mockorange
     kind: SHRUB
     display_name: "Mock orange"
     display_name_ru: "Чубушник венечный"
     latin: "Philadelphus coronarius"
     parameters: { crown_radius_m: 1.2, mature_height_m: 3.0, root_zone_radius_m: 0.8 }
+    planting_stock: { status: illustrative, age_years: 5, height_m: [0.8, 1.0], root_ball_m: [0.3, 0.3, 0.25], crown_radius_m: 0.35 }
+    growth: { status: illustrative, years_to_mature: 10 }

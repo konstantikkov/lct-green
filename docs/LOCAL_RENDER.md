@@ -118,7 +118,7 @@ point takes about a minute and a 6-point 2K tour about three and a half minutes;
 a CPU is much slower. The API needs Blender: set `BLENDER_EXECUTABLE`.
 
 API: `POST /api/projects/{pid}/panorama-tour` (`maxPoints`, `eyeHeight`,
-`quality`, `grass`, optional `iterationId`, `reconstruction`) and
+`quality`, `grass`, optional `iterationId`, `reconstruction`, `ageYears`) and
 `POST /api/projects/{pid}/panoramas` (`x`, `y` in CAD metres, `heading` = compass
 bearing of the image centre, 0 = +Y, clockwise) return one item per point;
 `GET /api/projects/{pid}/panoramas` lists points with state, progress and links;
@@ -129,6 +129,30 @@ tour or point. Locally (`points.json`: `[{x, y, heading, output}]`):
 ```sh
 blender -b -t 8 --python render.py -- --scene scene.json --output pano_000.jpg --view panorama --points points.json --width 4096 --height 2048 --samples 192 --device AUTO --grass-radius 30
 ```
+
+## Plant age
+
+Plants can be shown younger than mature: **при посадке**, **через 5 / 15 / 30
+лет**, or **зрелые** (default). The 3D editor has an «Возраст посадок» slider;
+the panorama panel has the same choice for tours and single points
+(`ageYears` in `POST /panoramas` and `POST /panorama-tour`, passed to Blender
+as `--age-years`; omitted = mature). The viewer header shows the age
+(«через 15 лет»).
+
+Size follows an **illustrative** growth model, not survey or nursery data:
+`rules/species.yaml` gives each species a planting stock (`planting_stock`:
+height range and crown radius at planting) and `growth.years_to_mature`, both
+`status: illustrative`. Size grows from the stock to the mature parameters
+along u·(1.5 − 0.5·u), u = min(years / years_to_mature, 1). The same function
+exists in `app/services/growth.py` (imported by `blender_scene.py` and shipped
+in the portable bundle) and `apps/web/src/viewer/growth.ts`;
+`tests/test_growth.py` checks both against `tests/golden/growth_points.json`.
+
+Each plant instance is scaled by the ratio of its age size to its mature size:
+crown radius in plan (X, Y), height vertically. The mature look of a plant
+stays as before. Age affects **only the picture**: the plan, the validator,
+the planting schedule and the DXF export always use mature crowns. The
+editor's planting circles keep showing the mature crown footprint.
 
 ## Validation
 

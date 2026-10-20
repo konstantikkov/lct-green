@@ -1,13 +1,21 @@
 import * as THREE from "three";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "../components/ui";
+import { ageLabel } from "./growth";
 
 /** One standing point; `links` are ids of neighbours with a clear line of sight. */
 export type Panorama = {
   id: string; jobId: string; index: number; x: number; y: number; heading: number; eyeHeight: number;
   quality: string; tour: boolean; links: string[]; imageUrl: string; state: string;
   progressPercent?: number; remainingSeconds?: number; error?: string; createdAt?: number; iterationId?: string | null;
+  /** years after planting (null/absent = mature) */
+  ageYears?: number | null;
 };
+
+/** «через 15 лет» etc. for the header and the panel list. */
+export function panoramaConditions(p: Pick<Panorama, "ageYears">): string {
+  return p.ageYears == null ? "зрелые посадки" : p.ageYears === 0 ? "при посадке" : ageLabel(p.ageYears);
+}
 
 type Neighbour = { item: Panorama; bearing: number; distance: number };
 
@@ -324,7 +332,7 @@ export function PanoramaViewer({ items, startId, onClose }: { items: Panorama[];
       <canvas ref={canvasRef} className={`block h-full w-full touch-none transition-opacity duration-200 ${fading ? "opacity-30" : "opacity-100"}`} style={{ cursor: "grab" }} />
       <div className="pointer-events-none absolute left-3 right-3 top-3 flex flex-wrap items-start justify-between gap-2">
         <div className="rounded bg-black/60 px-3 py-2 text-xs text-white">
-          <div className="font-semibold">{place.tour ? `Тур · точка ${place.index + 1} из ${total}` : "Панорама 360°"} · высота глаз {place.eyeHeight} м</div>
+          <div className="font-semibold">{place.tour ? `Тур · точка ${place.index + 1} из ${total}` : "Панорама 360°"} · высота глаз {place.eyeHeight} м · {panoramaConditions(place)}</div>
           <div className="text-white/70">Взгляд: {compass} · {Math.round(bearing)}° · переходов отсюда: {neighbours.length}</div>
         </div>
         <div className="pointer-events-auto flex gap-2">

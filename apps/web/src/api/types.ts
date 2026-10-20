@@ -266,6 +266,13 @@ export interface SpeciesInfo {
   displayName: string;
   displayNameRu: string;
   parameters: { crownRadiusM: number; matureHeightM: number; rootZoneRadiusM: number };
+  /** Illustrative nursery-stock defaults (rules/species.yaml planting_stock). */
+  plantingStock?: {
+    status?: string; ageYears?: number; heightM?: number[] | number; trunkGirthCm?: number[];
+    rootBallM?: number[]; crownRadiusM?: number;
+  } | null;
+  /** Illustrative growth defaults for the visual age slider. */
+  growth?: { status?: string; yearsToMature?: number } | null;
   regulatoryStatus: "allowed" | "unknown";
 }
 

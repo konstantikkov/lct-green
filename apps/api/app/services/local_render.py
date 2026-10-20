@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
+from .rules import load_species
+
 
 def scene_data(doc, iteration, options=None):
     options=options or {}
@@ -70,6 +72,8 @@ def scene_data(doc, iteration, options=None):
     evidence=enrich_surfaces(doc,surfaces,options)
     return {**evidence,"reconstruction":options,"sourceOnly":True,"extents": doc.extents.model_dump(), "surfaces": surfaces,
             "placements": iteration["placements"], "seed": 42,
+            # growth parameters for --age-years (growth.py inside Blender)
+            "species": {sp["id"]: sp for sp in load_species()},
             "linearFeatures":linear_features,"pointFeatures":point_features,
             "assumptions": (["Excavation outlines interpreted as buildings by user setting; short CAD dash gaps are closed for visualization only."] if interpreted else []) + ["Building heights use CAD thickness/labels where present, otherwise an explicit adjustable fallback; materials are illustrative.",
                             "Vegetation depicts indicative mature form, not a survey of existing trees.",
@@ -82,7 +86,7 @@ def write_bundle(path: Path, doc, iteration, dxf: Path):
     with ZipFile(path, "w", ZIP_DEFLATED) as z:
         z.writestr("scene.json", json.dumps(scene_data(doc, iteration), ensure_ascii=False))
         z.write(script, "render.py")
-        for dependency in ("blender_landscape.py","blender_grass.py","render_geometry.py","preview_materials.py","source_materials.py"):
+        for dependency in ("blender_landscape.py","blender_grass.py","render_geometry.py","preview_materials.py","source_materials.py","growth.py"):
             z.write(script.with_name(dependency),dependency)
         assets = Path(__file__).parents[1]/'assets'
         if assets.is_dir():

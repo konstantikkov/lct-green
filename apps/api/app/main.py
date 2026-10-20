@@ -1151,6 +1151,9 @@ class PanoramaSettings(BaseModel):
     grass: bool = True
     reconstruction: ReconstructionSettings | None = None
     iterationId: str | None = Field(default=None, max_length=128)
+    # Years after planting for the growth model (None = mature). Scales
+    # the rendered plants only; the plan, checks and DXF stay mature.
+    ageYears: int | None = Field(default=None, ge=0, le=100)
 
 
 class PanoramaRequest(PanoramaSettings):
@@ -1177,10 +1180,11 @@ def _submit_panoramas(pid: str, req: PanoramaSettings, points: list, scene: dict
     width, samples = PANORAMA_QUALITY[req.quality]
     settings = {'view': 'panorama', 'eye_height': req.eyeHeight, 'width': width, 'height': width//2,
                 'samples': samples, 'grass_radius': 30 if req.grass else 0, 'exposure': -.2,
+                'age_years': req.ageYears,
                 'device': 'CPU' if os.environ.get('BLENDER_DEVICE', 'AUTO').upper() == 'CPU' else 'AUTO'}
     meta = {'kind': 'panorama', 'tour': tour, 'points': points, 'eyeHeight': req.eyeHeight,
             'quality': req.quality, 'grass': req.grass, 'iterationId': rec.get('iterationId'),
-            'createdAt': time.time()}
+            'ageYears': req.ageYears, 'createdAt': time.time()}
     try:
         jid = render_jobs.submit(pid, scene, settings, timeout=600+2400*len(points), meta=meta,
                                  points=[{k: p[k] for k in ('x', 'y', 'heading')} for p in points])
@@ -1213,6 +1217,7 @@ def _panorama_items(pid: str, job: dict) -> list[dict]:
         item = {'id': f'{jid}-{i}', 'jobId': jid, 'index': i, 'x': point['x'], 'y': point['y'],
                 'heading': point.get('heading', 0), 'eyeHeight': job['eyeHeight'], 'quality': job['quality'],
                 'tour': job.get('tour', False), 'iterationId': job.get('iterationId'), 'createdAt': job.get('createdAt'),
+                'ageYears': job.get('ageYears'),
                 'links': [f'{jid}-{j}' for j in point.get('links', [])], 'state': state,
                 'imageUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/image',
                 'manifestUrl': f'/api/projects/{pid}/panoramas/{jid}/{i}/manifest'}

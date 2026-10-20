@@ -103,6 +103,8 @@ def main():
     p.add_argument('--heading', type=float, default=0)
     p.add_argument('--eye-height', type=float, default=1.6)
     p.add_argument('--grass-radius', type=float, default=0)
+    # Years after planting (growth.py); omitted = mature, as checked and exported.
+    p.add_argument('--age-years', type=float, default=None)
     p.add_argument('--device', choices=['CPU','AUTO'], default='CPU')
     # Tour: JSON list of {x, y, heading, output}; one scene, one render per point.
     p.add_argument('--points')
@@ -358,6 +360,8 @@ def main():
         prototypes[key]=obj
         return obj
 
+    sys.path.insert(0,str(Path(__file__).resolve().parent))
+    from growth import scale_at
     for i,item in enumerate([] if a.preview_only else data['placements']):
         kind=item['kind']; proto=plant(kind,i%4)
         obj=bpy.data.objects.new(item['id'],proto.data)
@@ -365,7 +369,9 @@ def main():
         scene.collection.objects.link(obj)
         x,y=item['position']; obj.location=(x-ox,y-oy,.06)
         r=float(item['crownRadiusM'])
-        obj.scale=(r/1.45,r/1.45,r/1.45)
+        # crown (XY) and height (Z) ratios of the illustrative growth model
+        crown,height=scale_at(data.get('species',{}).get(item.get('speciesId')),a.age_years)
+        obj.scale=(r/1.45*crown,r/1.45*crown,r/1.45*height)
         obj.rotation_euler.z=rng.random()*math.tau
     sys.path.insert(0,str(Path(__file__).resolve().parent))
     from blender_landscape import enrich
@@ -421,7 +427,7 @@ def main():
               'assumptions':data.get('assumptions',[]),'sourcePlantingCoordinates':[p['position'] for p in data['placements']],
               'illustrativeObjects':[o.name for o in scene.objects if o.name.startswith('Illustrative')],
               'cameraPosition':list(cam.location),'meshObjects':sum(o.type=='MESH' for o in scene.objects),
-              'device':device,'panorama':panorama}
+              'device':device,'panorama':panorama,'ageYears':a.age_years}
     if a.points:
         render_tour(scene,cam,a,ox,oy,data,manifest)
         return
